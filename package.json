@@ -9,5 +9,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.86.2",
+    "openai": "^6.10.0"
+  }
 }
