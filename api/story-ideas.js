@@ -69,20 +69,24 @@ Child:
       if (updateError) console.error(updateError);
 
     } else {
-      // INSERT NEW ROW
-      const { data, error } = await supabase
-        .from("book_projects")
-        .insert({
-          kid_name: name,
-          kid_interests: interests,
-          story_ideas: parsed.ideas
-        })
-        .select();
+  // INSERT NEW ROW
+  const { data, error } = await supabase
+    .from("book_projects")
+    .insert({
+      kid_name: name,
+      kid_interests: interests,
+      story_ideas: parsed.ideas
+    })
+    .select("*")
+    .single();
 
-      if (error) console.error(error);
+  if (error) {
+    console.error("Insert error:", error);
+    return res.status(500).json({ error: "Insert failed" });
+  }
 
-      finalProjectId = data?.[0]?.id;
-    }
+  finalProjectId = data.id;
+}
 
     return res.status(200).json({
       ideas: parsed.ideas,
