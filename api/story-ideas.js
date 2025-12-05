@@ -32,33 +32,39 @@ Child:
 - Age: unknown (assume 4-7 years old)
 `;
 
-    const response = await client.responses.create({
+const response = await client.responses.create({
   model: "gpt-4.1-mini",
   input: prompt,
-  text: {
-    format: "json_schema",
+  response_format: {
+    type: "json_schema",
     json_schema: {
-      type: "object",
-      properties: {
-        ideas: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" }
-            },
-            required: ["title", "description"]
+      name: "storyIdeas",
+      schema: {
+        type: "object",
+        properties: {
+          ideas: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                description: { type: "string" }
+              },
+              required: ["title", "description"]
+            }
           }
-        }
-      },
-      required: ["ideas"]
+        },
+        required: ["ideas"],
+        additionalProperties: false
+      }
     }
   }
 });
 
 
-    const parsed = JSON.parse(response.output_text);
+
+const parsed = JSON.parse(response.output[0].content[0].text);
+
 
 
     // Save result in Supabase (optional)
