@@ -22,6 +22,20 @@ async function fetchIdeas() {
 }
 
 function renderIdeas(ideas) {
+	
+function renderStory(story) {
+  const resultsDiv = document.getElementById("results");
+
+  const pagesHtml = story.pages
+    .map(p => `<div class="story-page"><h3>Page ${p.page}</h3><p>${p.text}</p></div>`)
+    .join("");
+
+  resultsDiv.innerHTML = `
+    <h2>${story.title}</h2>
+    ${pagesHtml}
+  `;
+}
+
   const resultsDiv = document.getElementById("results");
 
   resultsDiv.innerHTML = `
@@ -32,7 +46,7 @@ function renderIdeas(ideas) {
 
   const ideasContainer = document.getElementById("ideas-container");
 
-  ideas.forEach((idea, index) => {
+  ideas.forEach((idea) => {
     const card = document.createElement("div");
     card.className = "idea-card";
     card.innerHTML = `
@@ -40,16 +54,38 @@ function renderIdeas(ideas) {
       <p>${idea.description}</p>
     `;
 
-    card.onclick = () => {
-      alert(`You chose: ${idea.title}`);
+    // THIS IS THE IMPORTANT PART:
+    // When they click a card, immediately write the story
+    card.onclick = async () => {
       localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
+
+      // Start writing the story
+      resultsDiv.innerHTML = "Writing the story...";
+
+      const name = document.getElementById("kid-name").value;
+      const interests = document.getElementById("kid-interests").value;
+
+      const res = await fetch("/api/write-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          interests,
+          selectedIdea: idea
+        })
+      });
+
+      const story = await res.json();
+      renderStory(story);
     };
 
     ideasContainer.appendChild(card);
   });
 
+  // Regenerate button
   document.getElementById("regenerate").onclick = fetchIdeas;
 }
+
 
 // Handle form submit
 document.getElementById("kid-form").addEventListener("submit", (e) => {
