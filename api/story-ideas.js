@@ -10,6 +10,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// 🔥 CLEAN JSON OUTPUT FROM MODEL
+function cleanJsonOutput(text) {
+  if (!text) return text;
+
+  text = text.replace(/```json/gi, "");
+  text = text.replace(/```/g, "");
+  text = text.trim();
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error("No JSON object found in model output.");
+  }
+
+  return text.substring(firstBrace, lastBrace + 1);
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -23,7 +41,7 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
+You are a children's author. Create 5 fun, kid-friendly story ideas.
 
 Return ONLY JSON:
 {
@@ -48,11 +66,13 @@ Child:
       raw = response.output[0].content[0].text;
     }
 
-    const parsed = JSON.parse(raw);
+    // ⭐ CLEAN THE MODEL OUTPUT
+    const cleaned = cleanJsonOutput(raw);
+    const parsed = JSON.parse(cleaned);
 
     let finalProjectId;
 
-    // 🟦 UPDATE EXISTING ROW — only if projectId is valid
+    // UPDATE PATH
     if (projectId && projectId !== "undefined" && projectId !== null) {
       const { data, error } = await supabase
         .from("book_projects")
@@ -63,17 +83,18 @@ Child:
         })
         .eq("id", projectId)
         .select("*")
-        .single();     // 🔥 ensures we get the updated row
+        .single();
 
       if (error) {
-        console.error("Update error:", error);
+        console.error("Update failed:", error);
         return res.status(500).json({ error: "Update failed", details: error });
       }
 
       finalProjectId = data.id;
+    }
 
-    } else {
-      // 🟦 INSERT NEW ROW — guaranteed to return row now
+    // INSERT PATH
+    else {
       const { data, error } = await supabase
         .from("book_projects")
         .insert({
@@ -85,7 +106,7 @@ Child:
         .single();
 
       if (error) {
-        console.error("Insert error:", error);
+        console.error("Insert failed:", error);
         return res.status(500).json({ error: "Insert failed", details: error });
       }
 
