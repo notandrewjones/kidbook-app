@@ -33,31 +33,33 @@ Child:
 `;
 
     const response = await client.responses.create({
-      model: "gpt-4.1-mini",
-      input: prompt,
-      text: {
-        format: "json_schema",
-        schema: {
-          type: "object",
-          properties: {
-            ideas: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  title: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["title", "description"]
-              }
-            }
-          },
-          required: ["ideas"]
+  model: "gpt-4.1-mini",
+  input: prompt,
+  text: {
+    format: "json_schema",
+    json_schema: {
+      type: "object",
+      properties: {
+        ideas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" }
+            },
+            required: ["title", "description"]
+          }
         }
-      }
-    });
+      },
+      required: ["ideas"]
+    }
+  }
+});
+
 
     const parsed = JSON.parse(response.output_text);
+
 
     // Save result in Supabase (optional)
     const { error: dbError } = await supabase
