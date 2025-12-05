@@ -1,3 +1,16 @@
+import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
+
+// 🔥 THIS LINE WAS MISSING IN YOUR DEPLOYMENT
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -11,10 +24,23 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-You are a children's author. Create 5 fun story ideas...
-(Return ONLY JSON)
-    `;
+You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
 
+Return ONLY JSON:
+{
+  "ideas": [
+    { "title": "...", "description": "..." },
+    ...
+  ]
+}
+
+Child:
+- Name: ${name}
+- Interests: ${interests || "not specified"}
+- Age: assume 4–7 years old
+`;
+
+    // ⭐ THE CLIENT WAS NOT DEFINED BEFORE — FIXED NOW
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt
@@ -31,19 +57,16 @@ You are a children's author. Create 5 fun story ideas...
 
     if (projectId) {
       // UPDATE EXISTING ROW
-      const { data, error } = await supabase
+      const { error: updateError } = await supabase
         .from("book_projects")
         .update({
           kid_name: name,
           kid_interests: interests,
           story_ideas: parsed.ideas
         })
-        .eq("id", projectId)
-        .select();
+        .eq("id", projectId);
 
-      if (error) console.error("Update error:", error);
-
-      finalProjectId = projectId;
+      if (updateError) console.error(updateError);
 
     } else {
       // INSERT NEW ROW
@@ -56,7 +79,7 @@ You are a children's author. Create 5 fun story ideas...
         })
         .select();
 
-      if (error) console.error("Insert error:", error);
+      if (error) console.error(error);
 
       finalProjectId = data?.[0]?.id;
     }
