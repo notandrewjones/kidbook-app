@@ -24,48 +24,41 @@ export default async function handler(req, res) {
   try {
     const prompt = `
 You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
-Return them as JSON array of ideas with "title" and "description".
+
+Return ONLY valid JSON in this exact format:
+
+{
+  "ideas": [
+    { "title": "...", "description": "..." },
+    { "title": "...", "description": "..." },
+    { "title": "...", "description": "..." },
+    { "title": "...", "description": "..." },
+    { "title": "...", "description": "..." }
+  ]
+}
 
 Child:
 - Name: ${name}
 - Interests: ${interests || "not specified"}
-- Age: unknown (assume 4-7 years old)
+- Age: assume 4–7 years old
 `;
 
-const response = await client.responses.create({
-  model: "gpt-4.1-mini",
-  input: prompt,
-  response_format: {
-    type: "json_schema",
-    json_schema: {
-      name: "storyIdeas",
-      schema: {
-        type: "object",
-        properties: {
-          ideas: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                description: { type: "string" }
-              },
-              required: ["title", "description"]
-            }
-          }
-        },
-        required: ["ideas"],
-        additionalProperties: false
-      }
+    // SIMPLE call – no response_format
+    const response = await client.responses.create({
+      model: "gpt-4.1-mini",
+      input: prompt
+    });
+
+    // Extract text (SDK handles this field)
+    let raw = response.output_text;
+
+    // Fallback (older SDK shapes)
+    if (!raw && response.output?.[0]?.content?.[0]?.text) {
+      raw = response.output[0].content[0].text;
     }
-  }
-});
 
-
-
-const parsed = JSON.parse(response.output[0].content[0].text);
-
-
+    // Parse JSON
+    const parsed = JSON.parse(raw);
 
     // Save result in Supabase (optional)
     const { error: dbError } = await supabase
