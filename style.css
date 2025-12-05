@@ -1,21 +1,146 @@
-.idea-card {
-  border: 2px solid #ccc;
+<head>
+<link rel="stylesheet" href="styles.css" />
+</head>
+
+body {
+  font-family: Inter, system-ui, sans-serif;
+  background: #f5f7fa;
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  max-width: 650px;
+  margin: 40px auto;
+  background: white;
+  padding: 40px 30px;
+  border-radius: 20px;
+  box-shadow: 0px 10px 30px rgba(0,0,0,0.08);
+}
+
+.title {
+  text-align: center;
+  font-size: 32px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.input-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 15px;
+}
+
+label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+input {
+  padding: 12px;
+  border: 1px solid #dcdcdc;
   border-radius: 10px;
-  padding: 15px;
-  margin: 10px 0;
+  font-size: 16px;
+}
+
+input:focus {
+  outline: 2px solid #8ec5ff;
+}
+
+.primary-btn {
+  margin-top: 10px;
+  padding: 14px;
+  background: #4b8ef7;
+  border: none;
+  color: white;
+  border-radius: 12px;
+  font-size: 18px;
   cursor: pointer;
-  transition: 0.2s ease-in-out;
+  transition: background 0.3s;
+}
+
+.primary-btn:hover {
+  background: #3277e6;
+}
+
+.secondary-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 12px;
+  background: #dadada;
+  border: none;
+  color: #333;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.results {
+  margin-top: 30px;
+}
+
+/* Story Idea Cards */
+#ideas-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.idea-card {
+  background: #f3f6ff;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid #dce3ff;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .idea-card:hover {
-  background-color: #f7f7f7;
+  transform: scale(1.02);
+  box-shadow: 0px 8px 20px rgba(0,0,0,0.1);
 }
 
 .idea-card h3 {
   margin: 0;
   font-size: 20px;
+  color: #334;
 }
 
 .idea-card p {
-  margin: 5px 0 0 0;
+  margin-top: 6px;
+  color: #555;
+}
+
+/* Story Pages */
+.story-page {
+  background: #fafafa;
+  padding: 20px;
+  margin-bottom: 15px;
+  border-radius: 12px;
+  border-left: 5px solid #4b8ef7;
+}
+
+.story-page h3 {
+  margin: 0;
+  color: #333;
+}
+
+#upload-btn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 12px;
+  background: #4b8ef7;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+#character-preview img {
+  margin-top: 15px;
+  border-radius: 14px;
+  box-shadow: 0px 6px 20px rgba(0,0,0,0.12);
 }

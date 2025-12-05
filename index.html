@@ -1,32 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>KidBook Prototype</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
 <body>
-  <h1>Create a Story Idea</h1>
+  <div class="app-container">
 
-  <form id="kid-form">
-  <label>
-    Child's Name:
-    <input type="text" id="kid-name" required />
-  </label>
-  <br />
+    <h1 class="title">Kids Book Creator</h1>
 
-  <label>
-    Interests:
-    <input type="text" id="kid-interests" />
-  </label>
-  <br />
+    <form id="kid-form" class="input-card">
+      <label>Child's Name</label>
+      <input id="kid-name" type="text" placeholder="Name" required />
 
-  <button type="submit">Generate Story Ideas</button>
-</form>
+      <label>Child's Interests</label>
+      <input id="kid-interests" type="text" placeholder="Interests" />
 
-<div id="results"></div>
+      <button type="submit" class="primary-btn">Generate Story Ideas</button>
+    </form>
 
-<script src="script.js"></script>
+    <button id="reset-session" class="secondary-btn">Start New Book</button>
 
+    <div id="results" class="results"></div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
-</html>
