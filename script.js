@@ -5,7 +5,7 @@ async function fetchIdeas() {
   const resultsDiv = document.getElementById("results");
   resultsDiv.innerHTML = "Generating story ideas...";
 
-  const existingProjectId = localStorage.getItem("projectId");  // ← CORRECT HERE
+  const existingProjectId = localStorage.getItem("projectId");
 
   try {
     const res = await fetch("/api/story-ideas", {
@@ -28,12 +28,6 @@ async function fetchIdeas() {
   }
 }
 
-  } catch (err) {
-    console.error(err);
-    resultsDiv.innerHTML = "Something went wrong.";
-  }
-}
-
 function renderStory(story) {
   const resultsDiv = document.getElementById("results");
 
@@ -45,20 +39,17 @@ function renderStory(story) {
     <h2>${story.title}</h2>
     ${pagesHtml}
   `;
-  resultsDiv.innerHTML += `
-  <h3>Upload a photo of your child</h3>
-  <input type="file" id="child-photo" accept="image/*">
-  <button id="upload-btn">Upload Photo</button>
-  <div id="upload-status"></div>
-  <div id="character-preview"></div>
-  `;
 
+  resultsDiv.innerHTML += `
+    <h3>Upload a photo of your child</h3>
+    <input type="file" id="child-photo" accept="image/*">
+    <button id="upload-btn">Upload Photo</button>
+    <div id="upload-status"></div>
+    <div id="character-preview"></div>
+  `;
 }
 
 function renderIdeas(ideas) {
-	
-
-
   const resultsDiv = document.getElementById("results");
 
   resultsDiv.innerHTML = `
@@ -77,41 +68,35 @@ function renderIdeas(ideas) {
       <p>${idea.description}</p>
     `;
 
-    // THIS IS THE IMPORTANT PART:
-    // When they click a card, immediately write the story
     card.onclick = async () => {
-  const projectId = localStorage.getItem("projectId");
-  localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
+      const projectId = localStorage.getItem("projectId");
+      localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
 
-  resultsDiv.innerHTML = "Writing the story...";
+      resultsDiv.innerHTML = "Writing the story...";
 
-  const name = document.getElementById("kid-name").value;
-  const interests = document.getElementById("kid-interests").value;
+      const name = document.getElementById("kid-name").value;
+      const interests = document.getElementById("kid-interests").value;
 
-  const res = await fetch("/api/write-story", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      interests,
-      selectedIdea: idea,
-      projectId
-    })
-  });
+      const res = await fetch("/api/write-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          interests,
+          selectedIdea: idea,
+          projectId
+        })
+      });
 
-  const story = await res.json();
-  renderStory(story);
-};
-
+      const story = await res.json();
+      renderStory(story);
+    };
 
     ideasContainer.appendChild(card);
   });
 
-  // Regenerate button
   document.getElementById("regenerate").onclick = fetchIdeas;
 }
-
-
 
 // Handle form submit
 document.getElementById("kid-form").addEventListener("submit", (e) => {
@@ -119,8 +104,7 @@ document.getElementById("kid-form").addEventListener("submit", (e) => {
   fetchIdeas();
 });
 
-//Handler for upload image button
-
+// Handle photo upload button
 document.addEventListener("change", () => {
   const uploadBtn = document.getElementById("upload-btn");
   if (uploadBtn) {
@@ -162,4 +146,3 @@ async function uploadPhoto() {
     uploadStatus.innerText = "Upload failed.";
   }
 }
-
