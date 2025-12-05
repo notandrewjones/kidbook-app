@@ -34,6 +34,14 @@ function renderStory(story) {
     <h2>${story.title}</h2>
     ${pagesHtml}
   `;
+  resultsDiv.innerHTML += `
+  <h3>Upload a photo of your child</h3>
+  <input type="file" id="child-photo" accept="image/*">
+  <button id="upload-btn">Upload Photo</button>
+  <div id="upload-status"></div>
+  <div id="character-preview"></div>
+  `;
+
 }
 
 function renderIdeas(ideas) {
@@ -99,3 +107,48 @@ document.getElementById("kid-form").addEventListener("submit", (e) => {
   e.preventDefault();
   fetchIdeas();
 });
+
+//Handler for upload image button
+
+document.addEventListener("change", () => {
+  const uploadBtn = document.getElementById("upload-btn");
+  if (uploadBtn) {
+    uploadBtn.onclick = uploadPhoto;
+  }
+});
+
+async function uploadPhoto() {
+  const projectId = localStorage.getItem("projectId");
+  const fileInput = document.getElementById("child-photo");
+  const uploadStatus = document.getElementById("upload-status");
+
+  if (!fileInput.files.length) {
+    uploadStatus.innerText = "Please choose a photo.";
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  const formData = new FormData();
+  formData.append("photo", file);
+  formData.append("projectId", projectId);
+
+  uploadStatus.innerText = "Uploading...";
+
+  const res = await fetch("/api/upload-child-photo", {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+
+  if (data.photoUrl) {
+    uploadStatus.innerText = "Photo uploaded!";
+    document.getElementById("character-preview").innerHTML = `
+      <img src="${data.photoUrl}" style="width:200px;border-radius:10px;margin-top:10px;">
+    `;
+  } else {
+    uploadStatus.innerText = "Upload failed.";
+  }
+}
+
