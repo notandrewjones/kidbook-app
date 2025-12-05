@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
-// 🔥 THIS LINE WAS MISSING IN YOUR DEPLOYMENT
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -29,8 +28,7 @@ You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
 Return ONLY JSON:
 {
   "ideas": [
-    { "title": "...", "description": "..." },
-    ...
+    { "title": "...", "description": "..." }
   ]
 }
 
@@ -40,7 +38,6 @@ Child:
 - Age: assume 4–7 years old
 `;
 
-    // ⭐ THE CLIENT WAS NOT DEFINED BEFORE — FIXED NOW
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt
@@ -53,40 +50,47 @@ Child:
 
     const parsed = JSON.parse(raw);
 
-    let finalProjectId = projectId;
+    let finalProjectId;
 
-    if (projectId) {
-      // UPDATE EXISTING ROW
-      const { error: updateError } = await supabase
+    // 🟦 UPDATE EXISTING ROW — only if projectId is valid
+    if (projectId && projectId !== "undefined" && projectId !== null) {
+      const { data, error } = await supabase
         .from("book_projects")
         .update({
           kid_name: name,
           kid_interests: interests,
           story_ideas: parsed.ideas
         })
-        .eq("id", projectId);
+        .eq("id", projectId)
+        .select("*")
+        .single();     // 🔥 ensures we get the updated row
 
-      if (updateError) console.error(updateError);
+      if (error) {
+        console.error("Update error:", error);
+        return res.status(500).json({ error: "Update failed", details: error });
+      }
+
+      finalProjectId = data.id;
 
     } else {
-  // INSERT NEW ROW
-  const { data, error } = await supabase
-    .from("book_projects")
-    .insert({
-      kid_name: name,
-      kid_interests: interests,
-      story_ideas: parsed.ideas
-    })
-    .select("*")
-    .single();
+      // 🟦 INSERT NEW ROW — guaranteed to return row now
+      const { data, error } = await supabase
+        .from("book_projects")
+        .insert({
+          kid_name: name,
+          kid_interests: interests,
+          story_ideas: parsed.ideas
+        })
+        .select("*")
+        .single();
 
-  if (error) {
-    console.error("Insert error:", error);
-    return res.status(500).json({ error: "Insert failed" });
-  }
+      if (error) {
+        console.error("Insert error:", error);
+        return res.status(500).json({ error: "Insert failed", details: error });
+      }
 
-  finalProjectId = data.id;
-}
+      finalProjectId = data.id;
+    }
 
     return res.status(200).json({
       ideas: parsed.ideas,
