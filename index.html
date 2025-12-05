@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>KidBook Prototype</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Create a Story Idea</h1>
+
+  <form id="kid-form">
+    <label>
+      Child's Name:
+      <input type="text" id="kid-name" required />
+    </label>
+    <br />
+    <label>
+      Interests:
+      <input type="text" id="kid-interests" placeholder="animals, space, cars" />
+    </label>
+    <br />
+    <button type="submit">Generate Story Ideas</button>
+  </form>
+
+  <div id="results"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
