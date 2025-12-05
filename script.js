@@ -5,24 +5,28 @@ async function fetchIdeas() {
   const resultsDiv = document.getElementById("results");
   resultsDiv.innerHTML = "Generating story ideas...";
 
+  const existingProjectId = localStorage.getItem("projectId");  // ← CORRECT HERE
+
   try {
     const res = await fetch("/api/story-ideas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      const existingProjectId = localStorage.getItem("projectId");
-
-	  body: JSON.stringify({
-	  name,
-	  interests,
-	  projectId: existingProjectId || null
-	  })
-
+      body: JSON.stringify({
+        name,
+        interests,
+        projectId: existingProjectId || null
+      })
     });
 
     const data = await res.json();
     localStorage.setItem("projectId", data.projectId);
-	renderIdeas(data.ideas);
+    renderIdeas(data.ideas);
 
+  } catch (err) {
+    console.error(err);
+    resultsDiv.innerHTML = "Something went wrong.";
+  }
+}
 
   } catch (err) {
     console.error(err);
