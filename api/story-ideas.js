@@ -25,15 +25,11 @@ export default async function handler(req, res) {
     const prompt = `
 You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
 
-Return ONLY valid JSON in this exact format:
-
+Return ONLY JSON:
 {
   "ideas": [
     { "title": "...", "description": "..." },
-    { "title": "...", "description": "..." },
-    { "title": "...", "description": "..." },
-    { "title": "...", "description": "..." },
-    { "title": "...", "description": "..." }
+    ...
   ]
 }
 
@@ -41,39 +37,42 @@ Child:
 - Name: ${name}
 - Interests: ${interests || "not specified"}
 - Age: assume 4–7 years old
+
+Do NOT use markdown or code fences.
 `;
 
-    // SIMPLE call – no response_format
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt
     });
 
-    // Extract text (SDK handles this field)
     let raw = response.output_text;
-
-    // Fallback (older SDK shapes)
     if (!raw && response.output?.[0]?.content?.[0]?.text) {
       raw = response.output[0].content[0].text;
     }
 
-    // Parse JSON
     const parsed = JSON.parse(raw);
 
-    // Save result in Supabase (optional)
-    const { error: dbError } = await supabase
+    // CREATE the row in Supabase
+    const { data, error: dbError } = await supabase
       .from("book_projects")
       .insert({
         kid_name: name,
         kid_interests: interests,
         story_ideas: parsed.ideas
-      });
+      })
+      .select();
 
     if (dbError) {
       console.error("Supabase insert error:", dbError);
     }
 
-    return res.status(200).json(parsed);
+    const projectId = data?.[0]?.id;
+
+    return res.status(200).json({
+      ideas: parsed.ideas,
+      projectId
+    });
 
   } catch (error) {
     console.error("Error generating story ideas:", error);

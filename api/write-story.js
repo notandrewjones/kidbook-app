@@ -10,68 +10,59 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Clean JSON output from OpenAI
 function extractJson(text) {
   if (!text) return text;
 
-  // Remove ```json or ``` or ```anything code fences
-  text = text.replace(/```json/gi, '').replace(/```/g, '');
+  text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-  // Trim whitespace
-  text = text.trim();
-
-  // Find the first { and the last }
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
 
   if (firstBrace === -1 || lastBrace === -1) {
-    throw new Error("No JSON object found in model output");
+    throw new Error("No JSON found in model output.");
   }
 
   return text.substring(firstBrace, lastBrace + 1);
 }
-
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { name, interests, selectedIdea } = req.body;
+  const { name, interests, selectedIdea, projectId } = req.body;
 
-  if (!name || !selectedIdea) {
-    return res.status(400).json({ error: "Missing name or selected story idea" });
+  if (!projectId) {
+    return res.status(400).json({ error: "Missing projectId" });
   }
 
   try {
     const prompt = `
-Write a children's picture book story for ages 3–6 based on the following information.
+Write a children's picture book story for ages 3–6.
 
-CHILD:
+Story Idea:
+- Title: ${selectedIdea.title}
+- Description: ${selectedIdea.description}
+Child:
 - Name: ${name}
 - Interests: ${interests || "not specified"}
 
-STORY IDEA:
-- Title: ${selectedIdea.title}
-- Description: ${selectedIdea.description}
-
-REQUIREMENTS:
-- Return ONLY valid JSON.
-- The JSON should look like this:
-
+Return ONLY JSON:
 {
   "title": "...",
   "pages": [
     { "page": 1, "text": "..." },
-    { "page": 2, "text": "..." }
+    ...
   ]
 }
 
-RULES:
-- 8 to 14 pages total.
-- Each page should be 1–3 short, simple sentences.
-- Rhythmic, fun, expressive, and kid-friendly.
-- No scary or negative themes.
-- Do NOT use markdown or code fences. Output ONLY raw JSON.
+Rules:
+- 8 to 14 pages
+- Each page 1–3 simple sentences
+- The last word of each line must rhyme with the line before it. Only break this pattern to start new rhymes after two lines or more. Always break rhymes on the even number line, never break a rhyme after rhyming an odd number of lines.
+- No markdown or code fences
+- No general scary themes.
 `;
 
     const response = await client.responses.create({
@@ -85,25 +76,20 @@ RULES:
     }
 
     const cleaned = extractJson(raw);
-	const story = JSON.parse(cleaned);
+    const story = JSON.parse(cleaned);
 
-
-    // Save story in supabase
+    // UPDATE existing row instead of inserting new
     const { data, error: dbError } = await supabase
-  .from("book_projects")
-  .insert({
-    kid_name: name,
-    kid_interests: interests,
-    selected_idea: selectedIdea,
-    story_json: story
-  })
-  .select();
-
-console.log("DB insert:", { data, dbError });
-
+      .from("book_projects")
+      .update({
+        selected_idea: selectedIdea,
+        story_json: story
+      })
+      .eq("id", projectId)
+      .select();
 
     if (dbError) {
-      console.error("Supabase insert error:", dbError);
+      console.error("Supabase update error:", dbError);
     }
 
     return res.status(200).json(story);

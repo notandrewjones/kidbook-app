@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@supabase/supabase-js": "^2.86.2",
+    "busboy": "^1.6.0",
     "openai": "^6.10.0"
   }
 }

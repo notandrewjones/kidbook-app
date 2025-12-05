@@ -13,7 +13,9 @@ async function fetchIdeas() {
     });
 
     const data = await res.json();
-    renderIdeas(data.ideas);
+    localStorage.setItem("projectId", data.projectId);
+	renderIdeas(data.ideas);
+
 
   } catch (err) {
     console.error(err);
@@ -21,8 +23,6 @@ async function fetchIdeas() {
   }
 }
 
-function renderIdeas(ideas) {
-	
 function renderStory(story) {
   const resultsDiv = document.getElementById("results");
 
@@ -35,6 +35,10 @@ function renderStory(story) {
     ${pagesHtml}
   `;
 }
+
+function renderIdeas(ideas) {
+	
+
 
   const resultsDiv = document.getElementById("results");
 
@@ -57,27 +61,29 @@ function renderStory(story) {
     // THIS IS THE IMPORTANT PART:
     // When they click a card, immediately write the story
     card.onclick = async () => {
-      localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
+  const projectId = localStorage.getItem("projectId");
+  localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
 
-      // Start writing the story
-      resultsDiv.innerHTML = "Writing the story...";
+  resultsDiv.innerHTML = "Writing the story...";
 
-      const name = document.getElementById("kid-name").value;
-      const interests = document.getElementById("kid-interests").value;
+  const name = document.getElementById("kid-name").value;
+  const interests = document.getElementById("kid-interests").value;
 
-      const res = await fetch("/api/write-story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          interests,
-          selectedIdea: idea
-        })
-      });
+  const res = await fetch("/api/write-story", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      interests,
+      selectedIdea: idea,
+      projectId
+    })
+  });
 
-      const story = await res.json();
-      renderStory(story);
-    };
+  const story = await res.json();
+  renderStory(story);
+};
+
 
     ideasContainer.appendChild(card);
   });
@@ -85,6 +91,7 @@ function renderStory(story) {
   // Regenerate button
   document.getElementById("regenerate").onclick = fetchIdeas;
 }
+
 
 
 // Handle form submit
