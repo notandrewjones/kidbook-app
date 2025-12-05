@@ -10,6 +10,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+function extractJson(text) {
+  if (!text) return text;
+
+  // Remove ```json or ``` or ```anything code fences
+  text = text.replace(/```json/gi, '').replace(/```/g, '');
+
+  // Trim whitespace
+  text = text.trim();
+
+  // Find the first { and the last }
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error("No JSON object found in model output");
+  }
+
+  return text.substring(firstBrace, lastBrace + 1);
+}
+
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -50,6 +71,7 @@ RULES:
 - Each page should be 1–3 short, simple sentences.
 - Rhythmic, fun, expressive, and kid-friendly.
 - No scary or negative themes.
+- Do NOT use markdown or code fences. Output ONLY raw JSON.
 `;
 
     const response = await client.responses.create({
@@ -62,7 +84,9 @@ RULES:
       raw = response.output[0].content[0].text;
     }
 
-    const story = JSON.parse(raw);
+    const cleaned = extractJson(raw);
+	const story = JSON.parse(cleaned);
+
 
     // Save story in supabase
     const { data, error: dbError } = await supabase
