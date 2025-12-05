@@ -76,10 +76,12 @@ export default async function handler(req, res) {
 
     // Generate public URL
     const { data: publicUrlData } = supabase.storage
-      .from("book_images")
-      .getPublicUrl(filePath);
+  .from("book_images")
+  .getPublicUrl(filePath);
 
-    const photoUrl = publicUrlData.publicUrl;
+const photoUrl = publicUrlData.publicUrl;
+console.log("Returning public image URL:", photoUrl);
+
 
     // Save into book_projects
     await supabase
