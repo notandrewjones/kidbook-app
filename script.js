@@ -9,7 +9,14 @@ async function fetchIdeas() {
     const res = await fetch("/api/story-ideas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, interests })
+      const existingProjectId = localStorage.getItem("projectId");
+
+	  body: JSON.stringify({
+	  name,
+	  interests,
+	  projectId: existingProjectId || null
+	  })
+
     });
 
     const data = await res.json();

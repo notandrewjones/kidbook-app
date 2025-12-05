@@ -1,21 +1,9 @@
-import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { name, interests } = req.body;
+  const { name, interests, projectId } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: "Missing child name" });
@@ -23,23 +11,9 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
-
-Return ONLY JSON:
-{
-  "ideas": [
-    { "title": "...", "description": "..." },
-    ...
-  ]
-}
-
-Child:
-- Name: ${name}
-- Interests: ${interests || "not specified"}
-- Age: assume 4–7 years old
-
-Do NOT use markdown or code fences.
-`;
+You are a children's author. Create 5 fun story ideas...
+(Return ONLY JSON)
+    `;
 
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
@@ -53,29 +27,47 @@ Do NOT use markdown or code fences.
 
     const parsed = JSON.parse(raw);
 
-    // CREATE the row in Supabase
-    const { data, error: dbError } = await supabase
-      .from("book_projects")
-      .insert({
-        kid_name: name,
-        kid_interests: interests,
-        story_ideas: parsed.ideas
-      })
-      .select();
+    let finalProjectId = projectId;
 
-    if (dbError) {
-      console.error("Supabase insert error:", dbError);
+    if (projectId) {
+      // UPDATE EXISTING ROW
+      const { data, error } = await supabase
+        .from("book_projects")
+        .update({
+          kid_name: name,
+          kid_interests: interests,
+          story_ideas: parsed.ideas
+        })
+        .eq("id", projectId)
+        .select();
+
+      if (error) console.error("Update error:", error);
+
+      finalProjectId = projectId;
+
+    } else {
+      // INSERT NEW ROW
+      const { data, error } = await supabase
+        .from("book_projects")
+        .insert({
+          kid_name: name,
+          kid_interests: interests,
+          story_ideas: parsed.ideas
+        })
+        .select();
+
+      if (error) console.error("Insert error:", error);
+
+      finalProjectId = data?.[0]?.id;
     }
-
-    const projectId = data?.[0]?.id;
 
     return res.status(200).json({
       ideas: parsed.ideas,
-      projectId
+      projectId: finalProjectId
     });
 
   } catch (error) {
-    console.error("Error generating story ideas:", error);
+    console.error("Error generating ideas:", error);
     return res.status(500).json({ error: "Failed to generate story ideas" });
   }
 }
