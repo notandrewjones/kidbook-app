@@ -1,5 +1,3 @@
-// api/story-ideas.js
-
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
@@ -11,7 +9,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -27,7 +24,7 @@ export default async function handler(req, res) {
   try {
     const prompt = `
 You are a children's author. Create 5 fun, kid-friendly story ideas for a child.
-Return them as JSON array of objects with "title" and "description".
+Return them as JSON array of ideas with "title" and "description".
 
 Child:
 - Name: ${name}
@@ -38,48 +35,41 @@ Child:
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "story_ideas",
-          schema: {
-            type: "object",
-            properties: {
-              ideas: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    description: { type: "string" }
-                  },
-                  required: ["title", "description"],
-                  additionalProperties: false
-                }
+      text: {
+        format: "json_schema",
+        schema: {
+          type: "object",
+          properties: {
+            ideas: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["title", "description"]
               }
-            },
-            required: ["ideas"],
-            additionalProperties: false
-          }
+            }
+          },
+          required: ["ideas"]
         }
       }
     });
 
-        const parsed = JSON.parse(response.output[0].content[0].text);
+    const parsed = JSON.parse(response.output_text);
 
-    // Save project to Supabase
-    const { data, error: dbError } = await supabase
+    // Save result in Supabase (optional)
+    const { error: dbError } = await supabase
       .from("book_projects")
       .insert({
         kid_name: name,
         kid_interests: interests,
-        story_ideas: parsed.ideas  // if you added a JSONB column
-      })
-      .select()
-      .single();
+        story_ideas: parsed.ideas
+      });
 
     if (dbError) {
-      console.error("Error saving to Supabase:", dbError);
+      console.error("Supabase insert error:", dbError);
     }
 
     return res.status(200).json(parsed);
