@@ -1,4 +1,4 @@
-import OpenAI, { toFile } from "openai";
+import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
 const client = new OpenAI({
@@ -22,125 +22,81 @@ export default async function handler(req, res) {
   }
 
   try {
-    //
-    // 1) Fetch the existing project to get the uploaded photo URL
-    //
+    // Fetch project to get uploaded child photo
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
       .select("photo_url")
       .eq("id", projectId)
       .single();
 
-    if (projectError) {
-      console.error("Project lookup error:", projectError);
-      return res.status(400).json({ error: "Unable to find project" });
+    if (projectError || !project || !project.photo_url) {
+      return res.status(400).json({ error: "Child photo not found." });
     }
 
-    if (!project?.photo_url) {
-      return res
-        .status(400)
-        .json({ error: "No source photo found for this project" });
-    }
+    // Fetch the image from its public URL and convert it to base64
+    const imgResp = await fetch(project.photo_url);
+    const arrayBuffer = await imgResp.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
 
-    const sourcePhotoUrl = project.photo_url;
-
-    //
-    // 2) Download the child's photo and convert to a File object
-    //
-    const photoResp = await fetch(sourcePhotoUrl);
-    if (!photoResp.ok) {
-      console.error("Failed to fetch source photo:", photoResp.status);
-      return res.status(500).json({ error: "Failed to fetch source photo" });
-    }
-
-    const contentType =
-      photoResp.headers.get("content-type") || "image/jpeg";
-    const arrayBuffer = await photoResp.arrayBuffer();
-    const blob = new Blob([arrayBuffer], { type: contentType });
-
-    const imageFile = await toFile(blob, "child-photo", {
-      type: contentType,
-    });
-
-    //
-    // 3) The optimized, consistent, token-efficient Jett Book Style prompt
-    //
-    const childNameSafe = kidName || "the child";
-
+    // ---------------------------
+    // CHARACTER MODEL PROMPT
+    // ---------------------------
     const prompt = `
-Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build.
+Create a full-body cartoon character model sheet of the child shown in the attached image.
 
-This is a character model sheet, not a scene. The character must appear fully in view.
+STYLE REQUIREMENTS (Jett Book Style):
+• Soft, rounded cartoon proportions
+• Slightly oversized head, friendly bright eyes
+• Simple pastel-adjacent palette, gentle gradients
+• Clean, medium-weight outlines
+• Consistent warm neutral white balance (5000–5500K)
+• Soft ambient lighting, minimal shadows
+• No background — transparent PNG preferred
 
-Do not match the cropping of the reference image. Instead generate a fully visible, head-to-toe character model.
+FRAMING RULES (IMPORTANT):
+• Show the child fully head-to-toe.
+• ABSOLUTELY NO CROPPING of head, hair, chin, shoes, or feet.
+• Leave at least 15% empty margin above the head and below the feet.
+• Leave 10% margin on left and right.
+• Character must be completely visible in-frame.
+• Center the character vertically and horizontally.
+• Neutral standing pose with relaxed arms.
 
+OUTPUT:
+• A full-body character model sheet
+• Transparent background (or pure white fallback)
+• Portrait ratio
+    `;
 
-STYLE:
-• Modern children's board-book illustration  
-• Semi-flat with soft shading  
-• Smooth rounded outlines, medium weight, no sketch texture  
-• Slightly oversized head (20–25%), expressive eyes, small nose, gentle smile  
-• Soft gradients for skin, clothes, and hair  
-• Pastel-adjacent but vivid color palette; never neon  
-• Clean vector-like shapes with subtle painterly depth  
-• Simple, kid-friendly clothing with light shading  
-• Transparent PNG background  
-
-LIGHTING / COLOR:
-• Even daylight-balanced lighting (5000–5500K)  
-• No white balance shifts between images  
-• No harsh shadows, no dramatic contrast  
-
-POSE / FRAMING:
-• Full-body standing pose, neutral and friendly  
-• Face fully visible; feet fully visible  
-• No props, no scenery, no text  
-• The entire head must be fully visible with space above it  
-• The entire body must be visible including feet  
-• Do NOT crop at the forehead, knees, or shins  
-• Frame the character with a generous margin around all edges  
-• Portrait-style composition with the figure centered  
-
-Create a full-body character model sheet of the child from the attached image.
-
-REQUIRED FRAMING:
-• Show the character fully head-to-toe.
-• Do NOT crop the head, hair, hands, shoes, or feet.
-• Leave 10% margin around the entire body.
-• Neutral standing pose, arms naturally at sides or slight bend.
-• Character should be centered vertically and horizontally.
-• Transparent background.
-
-PRIORITIES:
-1. Keep the child's likeness  
-2. Match this art style exactly  
-3. Maintain consistent lighting and white balance  
-4. Maintain proper framing. Do not cut off any part of the character model by shortening or condensing the framing of the image, even if the original image has crops.
-5. Do not render any text in this image. No text should be visible on shirts, tattoos, hats, etc.
-`;
-
-    //
-    // 4) Call the OpenAI Images Edit API
-    //
-    const imgResponse = await client.images.edit({
+    // ---------------------------
+    // CALL GPT-IMAGE-1 (multimodal)
+    // ---------------------------
+    const imageResponse = await client.images.generate({
       model: "gpt-image-1",
-      image: [imageFile],
-      prompt,
       size: "1024x1536",
-      output_format: "png",
-      background: "transparent",
-      input_fidelity: "high",
-      n: 1,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: prompt
+            },
+            {
+              type: "input_image",
+              data: base64Image,
+              mime_type: "image/png"
+            }
+          ]
+        }
+      ]
     });
 
-    const base64 = imgResponse.data[0].b64_json;
-    const buffer = Buffer.from(base64, "base64");
+    const base64Output = imageResponse.data[0].b64_json;
+    const buffer = Buffer.from(base64Output, "base64");
 
-    //
-    // 5) Upload to Supabase
-    //
+    // Upload to Supabase storage
     const filePath = `character_models/${projectId}.png`;
-
     const { error: uploadError } = await supabase.storage
       .from("book_images")
       .upload(filePath, buffer, {
@@ -149,37 +105,26 @@ PRIORITIES:
       });
 
     if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
-      return res
-        .status(500)
-        .json({ error: "Failed to upload character model image" });
+      console.error(uploadError);
+      return res.status(500).json({ error: "Failed to upload character model." });
     }
 
-    //
-    // 6) Get public URL
-    //
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrl } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    const characterUrl = publicUrlData.publicUrl;
-
-    //
-    // 7) Save URL to database
-    //
+    // Update DB
     await supabase
       .from("book_projects")
-      .update({ character_model_url: characterUrl })
+      .update({ character_model_url: publicUrl.publicUrl })
       .eq("id", projectId);
 
-    //
-    // 8) Return to frontend
-    //
-    return res.status(200).json({ characterModelUrl: characterUrl });
+    return res.status(200).json({
+      characterModelUrl: publicUrl.publicUrl
+    });
+
   } catch (err) {
     console.error("Character model generation error:", err);
-    return res
-      .status(500)
-      .json({ error: "Failed to generate character model" });
+    return res.status(500).json({ error: "Failed to generate character model." });
   }
 }

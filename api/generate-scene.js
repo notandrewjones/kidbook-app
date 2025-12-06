@@ -10,9 +10,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Future toggle — streaming will hook into this later
-const STREAMING_ENABLED = false;
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -25,85 +22,79 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Load project to get character model
+    // Fetch required project fields
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
       .select("character_model_url, illustrations")
       .eq("id", projectId)
       .single();
 
-    if (projectError || !project) {
-      console.error(projectError);
-      return res.status(400).json({ error: "Project not found" });
+    if (projectError || !project || !project.character_model_url) {
+      return res.status(400).json({ error: "Character model not generated yet." });
     }
 
-    if (!project.character_model_url) {
-      return res.status(400).json({ error: "Character model not generated yet" });
-    }
+    // Download character model → base64
+    const modelResp = await fetch(project.character_model_url);
+    const arrayBuffer = await modelResp.arrayBuffer();
+    const base64Model = Buffer.from(arrayBuffer).toString("base64");
 
-    // 2) Fetch the character model PNG as base64
-    const imgResp = await fetch(project.character_model_url);
-    const arrayBuffer = await imgResp.arrayBuffer();
-    const base64Character = Buffer.from(arrayBuffer).toString("base64");
-
-    // 3) Create scene prompt (Hybrid style)
+    // ---------------------------
+    // Scene prompt
+    // ---------------------------
     const prompt = `
-Create a children's book illustration for this story page:
+Create a children's book illustration for the following story page:
 
 PAGE TEXT:
 "${pageText}"
 
-Use the attached character model exactly as the main character.
+Use the attached character model EXACTLY as the main character.
+Maintain consistent proportions, face shape, clothing, color palette, and style.
 
 STYLE:
-• Hybrid children's storybook scene
-• Soft, simple, pastel-adjacent shapes
-• Bright but not neon colors
-• Smooth rounded outlines, medium weight
-• Slight depth but not realistic shading
-• Gentle gradients and soft ambient light
-• Clear, readable composition for young children
-• No clutter, minimal complexity
-• Maintain consistent daylight-balanced lighting at 5000–5500K
-• Make the environment lively but clean (e.g., soft background animals, trees, clouds)
+• Hybrid children's book look (soft shapes + gentle depth)
+• Pastel-friendly palette, clean outlines
+• Slight gradients, soft ambient light
+• Balanced daylight color temperature (5000–5500K)
+• Friendly cartoon environment with minimal clutter
+• Background inspired by the context of the page text
 
 COMPOSITION:
-• Character should be the clear focus
-• Full body visible unless page text specifies otherwise
-• Entire head and feet visible (no cropping)
-• Character should look consistent with model sheet
-• Place character naturally inside the scene described by the page text
-
-BACKGROUND:
-• Simple cartoon environment inspired by the text
-• Soft shapes, pastel palette, consistent white balance
+• Character must be fully visible (head-to-toe)
+• No cropping of head, hair, hands, legs, or feet
+• Leave 10% margin around character
+• Character should be the visual focus
+• Scene should support the text but stay simple and readable
 
 OUTPUT:
-• Full-page 1024x1024 illustration
-• Transparent PNG or full background if scene requires
-• No text on image
+• Full-page illustration (square)
+• PNG
+• No text inside the image
 `;
 
-    // 4) CALL IMAGES.GENERATE (non-streaming for now)
-const imageResponse = await client.images.generate({
-  model: "gpt-image-1",
-  prompt,
-  size: "1024x1024",
-  input_images: [
-    {
-      data: base64Character,
-      mime_type: "image/png"
-    }
-  ]
-});
+    // ---------------------------
+    // CALL GPT-IMAGE-1 (multimodal)
+    // ---------------------------
+    const imageResponse = await client.images.generate({
+      model: "gpt-image-1",
+      size: "1024x1024",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: prompt },
+            {
+              type: "input_image",
+              data: base64Model,
+              mime_type: "image/png"
+            }
+          ]
+        }
+      ]
+    });
 
-    
-
-    // final output (if streaming is off)
     const base64Output = imageResponse.data[0].b64_json;
     const buffer = Buffer.from(base64Output, "base64");
 
-    // 5) Upload to Supabase
     const filePath = `illustrations/${projectId}-page-${page}.png`;
     const { error: uploadError } = await supabase.storage
       .from("book_images")
@@ -114,32 +105,25 @@ const imageResponse = await client.images.generate({
 
     if (uploadError) {
       console.error(uploadError);
-      return res.status(500).json({ error: "Failed to upload illustration" });
+      return res.status(500).json({ error: "Failed to upload illustration." });
     }
 
-    // 6) Get public URL
     const { data: publicUrl } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // 7) Update DB
     const newIllustration = { page, image_url: publicUrl.publicUrl };
-
-    const updatedList = [
-      ...(project.illustrations || []),
-      newIllustration
-    ];
+    const updated = [...(project.illustrations || []), newIllustration];
 
     await supabase
       .from("book_projects")
-      .update({ illustrations: updatedList })
+      .update({ illustrations: updated })
       .eq("id", projectId);
 
-    // 8) Return illustration to frontend
     return res.status(200).json(newIllustration);
 
-  } catch (err) {
-    console.error("Illustration generation error:", err);
-    return res.status(500).json({ error: "Failed to generate illustration" });
+  } catch (error) {
+    console.error("Illustration generation error:", error);
+    return res.status(500).json({ error: "Failed to generate illustration." });
   }
 }
