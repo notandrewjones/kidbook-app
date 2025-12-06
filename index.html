@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Load your CSS -->
   <link rel="stylesheet" href="styles.css" />
 
   <title>Kids Book Creator</title>
@@ -28,6 +27,18 @@
     <button id="reset-session" class="secondary-btn">Start New Book</button>
 
     <div id="results" class="results"></div>
+  </div>
+
+  <!-- 🔍 Illustration Modal -->
+  <div id="image-modal" class="modal hidden">
+    <div class="modal-inner" onclick="event.stopPropagation()">
+      <img id="modal-image" src="" alt="Illustration preview" />
+      <textarea id="revision-notes" placeholder="Add notes for regeneration (optional)..."></textarea>
+      <div class="modal-actions">
+        <button id="regen-btn" class="primary-btn">Regenerate</button>
+        <button id="close-modal" class="secondary-btn">Close</button>
+      </div>
+    </div>
   </div>
 
   <script src="script.js"></script>

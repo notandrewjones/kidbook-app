@@ -99,11 +99,12 @@ POSE / FRAMING:
 • Frame the character with a generous margin around all edges  
 • Portrait-style composition with the figure centered  
 
-
 PRIORITIES:
 1. Keep the child's likeness  
 2. Match this art style exactly  
 3. Maintain consistent lighting and white balance  
+4. Maintain proper framing. Do not cut off any part of the character model by shortening or condensing the framing of the image, even if the original image has crops.
+5. Do not render any text in this image. No text should be visible on shirts, tattoos, hats, etc.
 `;
 
     //
