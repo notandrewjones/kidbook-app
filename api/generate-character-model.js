@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing projectId" });
 
   try {
-    // Fetch child photo
+    // Get child photo URL
     const { data: project } = await supabase
       .from("book_projects")
       .select("photo_url")
@@ -33,60 +33,62 @@ export default async function handler(req, res) {
     if (!project?.photo_url)
       return res.status(400).json({ error: "Child photo not found." });
 
-    // Convert child image to base64
-    const resp = await fetch(project.photo_url);
-    const base64 = Buffer.from(await resp.arrayBuffer()).toString("base64");
-    const dataUrl = `data:image/png;base64,${base64}`;
+    // Convert image to base64
+    const fetchResp = await fetch(project.photo_url);
+    const arrayBuffer = await fetchResp.arrayBuffer();
+    const base64Photo = Buffer.from(arrayBuffer).toString("base64");
+    const dataUrl = `data:image/png;base64,${base64Photo}`;
 
-    // Your prompt
+    // Prompt for GPT-4.1
     const prompt = `
-Create a **full-body cartoon character model sheet** of the child shown in the reference image.
+Create a full-body cartoon character model sheet in Jett-Book style.
 
-STYLE REQUIREMENTS (Jett Book Style):
-• Soft rounded proportions
-• Slightly oversized head
-• Pastel-adjacent palette
+Requirements:
+• Head-to-toe visible
+• 15% top/bottom margin
+• Soft pastel shading
 • Clean outlines
 • Transparent background
-• FULL head-to-toe, 15% margin, NEVER crop
+• 1024x1536 PNG
 
-Output: 1024×1536 PNG
+Use the attached image as the reference for the child's appearance.
 `;
 
-    // -----------------------------
-    // GPT-4.1 with TOOL ENABLED
-    // -----------------------------
+    // -----------------------------------------
+    // 🔥 NEW CORRECT GPT-4.1 IMAGE GENERATION
+    // -----------------------------------------
     const response = await client.responses.create({
       model: "gpt-4.1",
+
       input: [
         {
           role: "user",
           content: [
-            { type: "input_image", image_url: dataUrl },
-            { type: "input_text", text: prompt }
+            { type: "input_text", text: prompt },
+            { type: "input_image", image_url: dataUrl }
           ]
         }
+      ],
+
+      tools: [
+        { type: "image_generation" }   // ← THE KEY FIX
       ]
-	  tools: [{ type: "image_generation" }],
     });
 
-    // -----------------------------
-    // PARSE TOOL CALL
-    // -----------------------------
-    const toolCall = response.output[0]?.content?.find(
-      c => c.type === "tool_call"
+    // -----------------------------------------
+    // 🔥 Extract image data (NEW FORMAT)
+    // -----------------------------------------
+    const imageCall = response.output.find(
+      out => out.type === "image_generation_call"
     );
 
-    if (!toolCall) {
-      console.error("No tool call found:", response);
-      return res.status(500).json({
-        error: "Image generation tool was not invoked."
-      });
+    if (!imageCall) {
+      console.error("NO IMAGE CALL:", response);
+      return res.status(500).json({ error: "Model didn't generate image." });
     }
 
-    // Extract actual base64 PNG
-    const imageBase64 = toolCall.output[0].b64_json;
-    const pngBuffer = Buffer.from(imageBase64, "base64");
+    const base64Image = imageCall.result;
+    const pngBuffer = Buffer.from(base64Image, "base64");
 
     // Upload to Supabase
     const filePath = `character_models/${projectId}.png`;
@@ -95,26 +97,25 @@ Output: 1024×1536 PNG
       .from("book_images")
       .upload(filePath, pngBuffer, {
         contentType: "image/png",
-        upsert: true
+        upsert: true,
       });
 
-    if (uploadError)
+    if (uploadError) {
+      console.error(uploadError);
       return res.status(500).json({ error: "Upload failed." });
+    }
 
-    // Get public URL
     const { data: urlData } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // Update DB
+    // Save URL to DB
     await supabase
       .from("book_projects")
       .update({ character_model_url: urlData.publicUrl })
       .eq("id", projectId);
 
-    return res.status(200).json({
-      characterModelUrl: urlData.publicUrl
-    });
+    return res.status(200).json({ characterModelUrl: urlData.publicUrl });
 
   } catch (err) {
     console.error("Character model generation error:", err);
