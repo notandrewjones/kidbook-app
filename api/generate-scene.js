@@ -22,95 +22,70 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch required project fields
-    const { data: project, error: projectError } = await supabase
+    // Fetch project data
+    const { data: project } = await supabase
       .from("book_projects")
       .select("character_model_url, illustrations")
       .eq("id", projectId)
       .single();
 
-    if (projectError || !project || !project.character_model_url) {
+    if (!project?.character_model_url) {
       return res.status(400).json({ error: "Character model not generated yet." });
     }
 
-    // Download character model → base64
+    // Download the transparent character PNG
     const modelResp = await fetch(project.character_model_url);
-    const arrayBuffer = await modelResp.arrayBuffer();
-    const base64Model = Buffer.from(arrayBuffer).toString("base64");
+    const imageBuffer = Buffer.from(await modelResp.arrayBuffer());
 
-    // ---------------------------
     // Scene prompt
-    // ---------------------------
     const prompt = `
-Create a children's book illustration for this story page:
+Use this transparent PNG of the child's character model and place them into a full illustrated children's book scene.
+
+RULES:
+- DO NOT redraw, modify, or alter the character. Preserve every pixel.
+- The character must remain fully visible, including head, hair, hands, legs, feet.
+- Place the character naturally into a background scene that fits this page text:
 
 "${pageText}"
 
-REQUIREMENTS:
-• Use the attached character model EXACTLY as the main character.
-• Maintain consistent facial features, body proportions, clothing style, and colors.
-• Soft pastel aesthetic with clean outlines and gentle gradients.
-• Warm daylight color balance (5000–5500K).
-• Scene should support the text but stay simple and readable.
-
-FRAMING:
-• Character must be fully visible (head-to-toe).
-• Leave 10% margin on all sides.
-• No cropping of head, hair, hands, legs or feet.
-• Background should fit narrative context.
-• No text inside image.
+STYLE:
+- Hybrid children’s book style (soft pastel, gentle gradients, clean outlines)
+- Warm daylight white balance
+- Background must be fully illustrated behind the transparent regions
+- Do not overwrite or distort the character
+- The result must look like a finished page illustration
 
 OUTPUT:
-• Square illustration (1024×1024)
-• PNG format
+- 1024×1024 square
+- PNG
 `;
 
-    // ---------------------------
-    // GPT-IMAGE-1 MULTIMODAL REQUEST
-    // ---------------------------
-    const imageResponse = await client.images.generate({
+    // Call GPT-image-1 edit endpoint
+    const imageResponse = await client.images.edit({
       model: "gpt-image-1",
+      image: imageBuffer,       // transparent character PNG
+      prompt: prompt,
       size: "1024x1024",
-
-      // Required placeholder
-      prompt: "See messages for full instruction.",
-
-      input: [
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: prompt },
-            {
-              type: "input_image",
-              data: base64Model,
-              mime_type: "image/png"
-            }
-          ]
-        }
-      ]
+      quality: "high"
     });
 
+    // Convert model output from base64
     const base64Output = imageResponse.data[0].b64_json;
     const buffer = Buffer.from(base64Output, "base64");
 
+    // Upload to Supabase
     const filePath = `illustrations/${projectId}-page-${page}.png`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, buffer, {
-        contentType: "image/png",
-        upsert: true
-      });
-
-    if (uploadError) {
-      console.error(uploadError);
-      return res.status(500).json({ error: "Failed to upload illustration." });
-    }
+    await supabase.storage.from("book_images").upload(filePath, buffer, {
+      contentType: "image/png",
+      upsert: true
+    });
 
     const { data: publicUrl } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
+    // Update DB
     const newIllustration = { page, image_url: publicUrl.publicUrl };
     const updated = [...(project.illustrations || []), newIllustration];
 

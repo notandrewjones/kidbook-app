@@ -15,116 +15,74 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { projectId, kidName } = req.body;
+  const { projectId } = req.body;
 
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
   }
 
   try {
-    // Fetch project to get uploaded child photo
-    const { data: project, error: projectError } = await supabase
+    // Fetch the photo URL
+    const { data: project } = await supabase
       .from("book_projects")
       .select("photo_url")
       .eq("id", projectId)
       .single();
 
-    if (projectError || !project || !project.photo_url) {
+    if (!project?.photo_url) {
       return res.status(400).json({ error: "Child photo not found." });
     }
 
-    // Download child photo → base64
-    const downloaded = await fetch(project.photo_url);
-    const arrayBuffer = await downloaded.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    // Download the photo
+    const imgResp = await fetch(project.photo_url);
+    const imageBuffer = Buffer.from(await imgResp.arrayBuffer());
 
-    // ---------------------------
-    // CHARACTER MODEL PROMPT
-    // ---------------------------
+    // Prompt
     const prompt = `
-Create a full-body cartoon character model sheet of the child in the attached image.
-
-STYLE (Jett Book Style):
-• Soft rounded cartoon proportions
-• Slightly oversized head, friendly bright eyes
-• Simple pastel-adjacent color palette
-• Clean medium-weight outlines
-• Soft ambient lighting, minimal shadows
-• Warm white balance (5000–5500K)
-• Transparent background preferred
-
+Generate a full-body cartoon character model of the child in this photo.
+STYLE:
+- Soft pastel coloring
+- Clean outlines
+- Friendly proportions
+- Transparent background
 FRAMING:
-• Full head-to-toe visible
-• NO CROPPING: head, hair, chin, shoes, feet
-• 15% empty margin above head and below feet
-• 10% margin left and right
-• Neutral standing pose
-• Character centered
+- Full head-to-toe
+- No cropping
+- Leave 15% margin top/bottom
 `;
 
-    // ---------------------------
-    // GPT-IMAGE-1 MULTIMODAL REQUEST
-    // ---------------------------
-    const imageResponse = await client.images.generate({
+    // GPT-image-1 edit call
+    const editResponse = await client.images.edit({
       model: "gpt-image-1",
+      image: imageBuffer,
+      prompt,
       size: "1024x1536",
-
-      // REQUIRED placeholder even when using messages
-      prompt: "See messages for full instruction.",
-
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: prompt
-            },
-            {
-              type: "input_image",
-              data: base64Image,
-              mime_type: "image/png"
-            }
-          ]
-        }
-      ]
     });
 
-    // Convert output to buffer
-    const base64Output = imageResponse.data[0].b64_json;
-    const buffer = Buffer.from(base64Output, "base64");
+    const base64 = editResponse.data[0].b64_json;
+    const buffer = Buffer.from(base64, "base64");
 
-    // Upload to Supabase
-    const filePath = `character_models/${projectId}.png`;
+    // Upload
+    const path = `character_models/${projectId}.png`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, buffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error(uploadError);
-      return res.status(500).json({ error: "Failed to upload character model." });
-    }
+    await supabase.storage.from("book_images").upload(path, buffer, {
+      contentType: "image/png",
+      upsert: true,
+    });
 
     const { data: publicUrl } = supabase.storage
       .from("book_images")
-      .getPublicUrl(filePath);
+      .getPublicUrl(path);
 
-    // Save to DB
     await supabase
       .from("book_projects")
       .update({ character_model_url: publicUrl.publicUrl })
       .eq("id", projectId);
 
-    return res.status(200).json({
-      characterModelUrl: publicUrl.publicUrl
-    });
+    return res.status(200).json({ characterModelUrl: publicUrl.publicUrl });
 
   } catch (err) {
-    console.error("Character model generation error:", err);
-    return res.status(500).json({ error: "Failed to generate character model." });
+    console.error("Character model error:", err);
+    return res.status(500).json({ error: "Failed to generate model" });
   }
 }
