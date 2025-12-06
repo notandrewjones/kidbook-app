@@ -45,9 +45,14 @@ function renderStory(story) {
     <input type="file" id="child-photo" accept="image/*">
     <button id="upload-btn">Upload Photo</button>
     <div id="upload-status"></div>
+
+    <h3 style="margin-top:20px;">Character Model</h3>
+    <button id="generate-character-btn">Generate Character Model</button>
+    <div id="character-status"></div>
     <div id="character-preview"></div>
   `;
 }
+
 
 function renderIdeas(ideas) {
   const resultsDiv = document.getElementById("results");
@@ -103,6 +108,48 @@ document.getElementById("kid-form").addEventListener("submit", (e) => {
   e.preventDefault();
   fetchIdeas();
 });
+
+// Attach click handler for character generation
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "generate-character-btn") {
+    generateCharacterModel();
+  }
+});
+
+async function generateCharacterModel() {
+  const projectId = localStorage.getItem("projectId");
+  const characterStatus = document.getElementById("character-status");
+
+  if (!projectId) {
+    characterStatus.innerText = "No project found. Please generate a story first.";
+    return;
+  }
+
+  characterStatus.innerText = "Generating character model...";
+
+  const kidName = document.getElementById("kid-name").value;
+
+  const res = await fetch("/api/generate-character-model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId,
+      kidName
+    })
+  });
+
+  const data = await res.json();
+
+  if (data.characterModelUrl) {
+    characterStatus.innerText = "Character model generated!";
+    document.getElementById("character-preview").innerHTML = `
+      <img src="${data.characterModelUrl}" style="width:250px;border-radius:14px;margin-top:10px;">
+    `;
+  } else {
+    characterStatus.innerText = "Failed to generate character model.";
+  }
+}
+
 
 // Handle photo upload button
 document.addEventListener("change", () => {
