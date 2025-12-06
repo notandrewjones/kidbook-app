@@ -33,52 +33,61 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Character model not generated yet." });
     }
 
-    // Download character model → Buffer (not base64 string)
+    // Download character model → base64
     const modelResp = await fetch(project.character_model_url);
     const arrayBuffer = await modelResp.arrayBuffer();
-    const imageBuffer = Buffer.from(arrayBuffer);
+    const base64Model = Buffer.from(arrayBuffer).toString("base64");
 
     // ---------------------------
     // Scene prompt
     // ---------------------------
     const prompt = `
-Create a children's book illustration for the following story page:
+Create a children's book illustration for this story page:
 
-PAGE TEXT:
 "${pageText}"
 
-Use the attached character model EXACTLY as the main character.
-Maintain consistent proportions, face shape, clothing, color palette, and style.
+REQUIREMENTS:
+• Use the attached character model EXACTLY as the main character.
+• Maintain consistent facial features, body proportions, clothing style, and colors.
+• Soft pastel aesthetic with clean outlines and gentle gradients.
+• Warm daylight color balance (5000–5500K).
+• Scene should support the text but stay simple and readable.
 
-STYLE:
-- Hybrid children's book look (soft shapes + gentle depth)
-- Pastel-friendly palette, clean outlines
-- Slight gradients, soft ambient light
-- Balanced daylight color temperature (5000–5500K)
-- Friendly cartoon environment with minimal clutter
-- Background inspired by the context of the page text
-
-COMPOSITION:
-- Character must be fully visible (head-to-toe)
-- No cropping of head, hair, hands, legs, or feet
-- Leave 10% margin around character
-- Character should be the visual focus
-- Scene should support the text but stay simple and readable
+FRAMING:
+• Character must be fully visible (head-to-toe).
+• Leave 10% margin on all sides.
+• No cropping of head, hair, hands, legs or feet.
+• Background should fit narrative context.
+• No text inside image.
 
 OUTPUT:
-- Full-page illustration (square)
-- PNG
-- No text inside the image
+• Square illustration (1024×1024)
+• PNG format
 `;
 
     // ---------------------------
-    // CALL GPT-IMAGE-1 (Image Edit endpoint)
+    // GPT-IMAGE-1 MULTIMODAL REQUEST
     // ---------------------------
-    const imageResponse = await client.images.edit({
+    const imageResponse = await client.images.generate({
       model: "gpt-image-1",
-      image: imageBuffer,
-      prompt: prompt,
       size: "1024x1024",
+
+      // Required placeholder
+      prompt: "See messages for full instruction.",
+
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: prompt },
+            {
+              type: "input_image",
+              data: base64Model,
+              mime_type: "image/png"
+            }
+          ]
+        }
+      ]
     });
 
     const base64Output = imageResponse.data[0].b64_json;
@@ -90,7 +99,7 @@ OUTPUT:
       .from("book_images")
       .upload(filePath, buffer, {
         contentType: "image/png",
-        upsert: true,
+        upsert: true
       });
 
     if (uploadError) {
@@ -111,6 +120,7 @@ OUTPUT:
       .eq("id", projectId);
 
     return res.status(200).json(newIllustration);
+
   } catch (error) {
     console.error("Illustration generation error:", error);
     return res.status(500).json({ error: "Failed to generate illustration." });

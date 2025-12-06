@@ -33,60 +33,70 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Child photo not found." });
     }
 
-    // Fetch the image from its public URL and convert it to base64
-    const imgResp = await fetch(project.photo_url);
-    const arrayBuffer = await imgResp.arrayBuffer();
+    // Download child photo → base64
+    const downloaded = await fetch(project.photo_url);
+    const arrayBuffer = await downloaded.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString("base64");
 
     // ---------------------------
     // CHARACTER MODEL PROMPT
     // ---------------------------
     const prompt = `
-Create a full-body cartoon character model sheet of the child shown in the attached image.
+Create a full-body cartoon character model sheet of the child in the attached image.
 
-STYLE REQUIREMENTS (Jett Book Style):
-• Soft, rounded cartoon proportions
+STYLE (Jett Book Style):
+• Soft rounded cartoon proportions
 • Slightly oversized head, friendly bright eyes
-• Simple pastel-adjacent palette, gentle gradients
-• Clean, medium-weight outlines
-• Consistent warm neutral white balance (5000–5500K)
+• Simple pastel-adjacent color palette
+• Clean medium-weight outlines
 • Soft ambient lighting, minimal shadows
-• No background — transparent PNG preferred
+• Warm white balance (5000–5500K)
+• Transparent background preferred
 
-FRAMING RULES (IMPORTANT):
-• Show the child fully head-to-toe.
-• ABSOLUTELY NO CROPPING of head, hair, chin, shoes, or feet.
-• Leave at least 15% empty margin above the head and below the feet.
-• Leave 10% margin on left and right.
-• Character must be completely visible in-frame.
-• Center the character vertically and horizontally.
-• Neutral standing pose with relaxed arms.
-
-OUTPUT:
-• A full-body character model sheet
-• Transparent background (or pure white fallback)
-• Portrait ratio
-    `;
+FRAMING:
+• Full head-to-toe visible
+• NO CROPPING: head, hair, chin, shoes, feet
+• 15% empty margin above head and below feet
+• 10% margin left and right
+• Neutral standing pose
+• Character centered
+`;
 
     // ---------------------------
-    // CALL GPT-IMAGE-1 (multimodal)
+    // GPT-IMAGE-1 MULTIMODAL REQUEST
     // ---------------------------
-	const imgResp = await fetch(project.photo_url);
-	const imageBuffer = Buffer.from(await imgResp.arrayBuffer());
+    const imageResponse = await client.images.generate({
+      model: "gpt-image-1",
+      size: "1024x1536",
 
-	const imageResponse = await client.images.edit({
-	  model: "gpt-image-1",
-	  image: imageBuffer,
-	  prompt: prompt,
-	  size: "1024x1536",
-	  quality: "high",
-	});
+      // REQUIRED placeholder even when using messages
+      prompt: "See messages for full instruction.",
 
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: prompt
+            },
+            {
+              type: "input_image",
+              data: base64Image,
+              mime_type: "image/png"
+            }
+          ]
+        }
+      ]
+    });
+
+    // Convert output to buffer
     const base64Output = imageResponse.data[0].b64_json;
     const buffer = Buffer.from(base64Output, "base64");
 
-    // Upload to Supabase storage
+    // Upload to Supabase
     const filePath = `character_models/${projectId}.png`;
+
     const { error: uploadError } = await supabase.storage
       .from("book_images")
       .upload(filePath, buffer, {
@@ -103,7 +113,7 @@ OUTPUT:
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // Update DB
+    // Save to DB
     await supabase
       .from("book_projects")
       .update({ character_model_url: publicUrl.publicUrl })
