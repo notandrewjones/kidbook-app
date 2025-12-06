@@ -58,31 +58,6 @@ Output: 1024×1536 PNG
     // -----------------------------
     const response = await client.responses.create({
       model: "gpt-4.1",
-
-		tools: [
-		  {
-		    name: "generate_image",   // REQUIRED BY API
-		    type: "function",
-		    function: {
-		      name: "generate_image",  // MUST MATCH tools[0].name
-		      description: "Generate a PNG image",
-		      parameters: {
-		        type: "object",
-		        properties: {
-		          prompt: { type: "string" },
-		          size: { type: "string" }
-		        },
-		        required: ["prompt", "size"]
-		      }
-		    }
-		  }
-		],
-
-		tool_choice: {
-		  type: "generate_image"
-		},
-      
-
       input: [
         {
           role: "user",
@@ -92,6 +67,7 @@ Output: 1024×1536 PNG
           ]
         }
       ]
+	  tools: [{ type: "image_generation" }],
     });
 
     // -----------------------------
