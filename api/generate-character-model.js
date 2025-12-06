@@ -77,7 +77,7 @@ OUTPUT:
       messages: [
         {
           role: "user",
-          content: [
+          prompt: [
             {
               type: "input_text",
               text: prompt
