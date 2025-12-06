@@ -78,7 +78,7 @@ COMPOSITION:
           role: "user",
           content: [
             { type: "input_image", image_url: dataUrl },
-            { type: "text", text: prompt }
+            { type: "input_text", text: prompt }
           ]
         }
       ]
