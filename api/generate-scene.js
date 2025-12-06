@@ -97,7 +97,7 @@ OUTPUT:
 		],
 
 		tool_choice: {
-		  type: "file_search"
+		  type: "generate_image"
 		},
       
 
