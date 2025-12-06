@@ -33,10 +33,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Character model not generated yet." });
     }
 
-    // Download character model → base64
+    // Download character model → Buffer (not base64 string)
     const modelResp = await fetch(project.character_model_url);
     const arrayBuffer = await modelResp.arrayBuffer();
-    const base64Model = Buffer.from(arrayBuffer).toString("base64");
+    const imageBuffer = Buffer.from(arrayBuffer);
 
     // ---------------------------
     // Scene prompt
@@ -51,51 +51,41 @@ Use the attached character model EXACTLY as the main character.
 Maintain consistent proportions, face shape, clothing, color palette, and style.
 
 STYLE:
-• Hybrid children's book look (soft shapes + gentle depth)
-• Pastel-friendly palette, clean outlines
-• Slight gradients, soft ambient light
-• Balanced daylight color temperature (5000–5500K)
-• Friendly cartoon environment with minimal clutter
-• Background inspired by the context of the page text
+- Hybrid children's book look (soft shapes + gentle depth)
+- Pastel-friendly palette, clean outlines
+- Slight gradients, soft ambient light
+- Balanced daylight color temperature (5000–5500K)
+- Friendly cartoon environment with minimal clutter
+- Background inspired by the context of the page text
 
 COMPOSITION:
-• Character must be fully visible (head-to-toe)
-• No cropping of head, hair, hands, legs, or feet
-• Leave 10% margin around character
-• Character should be the visual focus
-• Scene should support the text but stay simple and readable
+- Character must be fully visible (head-to-toe)
+- No cropping of head, hair, hands, legs, or feet
+- Leave 10% margin around character
+- Character should be the visual focus
+- Scene should support the text but stay simple and readable
 
 OUTPUT:
-• Full-page illustration (square)
-• PNG
-• No text inside the image
+- Full-page illustration (square)
+- PNG
+- No text inside the image
 `;
 
     // ---------------------------
-    // CALL GPT-IMAGE-1 (multimodal)
+    // CALL GPT-IMAGE-1 (Image Edit endpoint)
     // ---------------------------
-    const imageResponse = await client.images.generate({
+    const imageResponse = await client.images.edit({
       model: "gpt-image-1",
+      image: imageBuffer,
+      prompt: prompt,
       size: "1024x1024",
-      messages: [
-        {
-          role: "user",
-          prompt: [
-            { type: "input_text", text: prompt },
-            {
-              type: "input_image",
-              data: base64Model,
-              mime_type: "image/png"
-            }
-          ]
-        }
-      ]
     });
 
     const base64Output = imageResponse.data[0].b64_json;
     const buffer = Buffer.from(base64Output, "base64");
 
     const filePath = `illustrations/${projectId}-page-${page}.png`;
+
     const { error: uploadError } = await supabase.storage
       .from("book_images")
       .upload(filePath, buffer, {
@@ -121,7 +111,6 @@ OUTPUT:
       .eq("id", projectId);
 
     return res.status(200).json(newIllustration);
-
   } catch (error) {
     console.error("Illustration generation error:", error);
     return res.status(500).json({ error: "Failed to generate illustration." });

@@ -71,26 +71,16 @@ OUTPUT:
     // ---------------------------
     // CALL GPT-IMAGE-1 (multimodal)
     // ---------------------------
-    const imageResponse = await client.images.generate({
-      model: "gpt-image-1",
-      size: "1024x1536",
-      messages: [
-        {
-          role: "user",
-          prompt: [
-            {
-              type: "input_text",
-              text: prompt
-            },
-            {
-              type: "input_image",
-              data: base64Image,
-              mime_type: "image/png"
-            }
-          ]
-        }
-      ]
-    });
+	const imgResp = await fetch(project.photo_url);
+	const imageBuffer = Buffer.from(await imgResp.arrayBuffer());
+
+	const imageResponse = await client.images.edit({
+	  model: "gpt-image-1",
+	  image: imageBuffer,
+	  prompt: prompt,
+	  size: "1024x1536",
+	  quality: "high",
+	});
 
     const base64Output = imageResponse.data[0].b64_json;
     const buffer = Buffer.from(base64Output, "base64");
