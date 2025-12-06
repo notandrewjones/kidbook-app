@@ -75,7 +75,7 @@ OUTPUT:
       // Required placeholder
       prompt: "See messages for full instruction.",
 
-      messages: [
+      input: [
         {
           role: "user",
           content: [

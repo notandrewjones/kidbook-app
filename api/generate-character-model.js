@@ -72,7 +72,7 @@ FRAMING:
       // REQUIRED placeholder even when using messages
       prompt: "See messages for full instruction.",
 
-      messages: [
+      input: [
         {
           role: "user",
           content: [
