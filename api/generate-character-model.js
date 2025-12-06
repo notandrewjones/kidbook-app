@@ -68,7 +68,8 @@ export default async function handler(req, res) {
     const childNameSafe = kidName || "the child";
 
     const prompt = `
-Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build.
+Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build. Do not match the cropping of the reference image. Instead generate a fully visible, head-to-toe character model.
+
 
 STYLE:
 • Modern children's board-book illustration  
@@ -90,6 +91,12 @@ POSE / FRAMING:
 • Full-body standing pose, neutral and friendly  
 • Face fully visible; feet fully visible  
 • No props, no scenery, no text  
+• The entire head must be fully visible with space above it  
+• The entire body must be visible including feet  
+• Do NOT crop at the forehead, knees, or shins  
+• Frame the character with a generous margin around all edges  
+• Portrait-style composition with the figure centered  
+
 
 PRIORITIES:
 1. Keep the child's likeness  
