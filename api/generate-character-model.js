@@ -79,7 +79,7 @@ Output: 1024×1536 PNG
 		],
 
 		tool_choice: {
-		  type: "auto"
+		  type: "file_search"
 		},
       
 

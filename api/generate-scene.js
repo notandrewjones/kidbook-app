@@ -97,7 +97,7 @@ OUTPUT:
 		],
 
 		tool_choice: {
-		  type: "auto"
+		  type: "file_search"
 		},
       
 
