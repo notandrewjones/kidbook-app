@@ -1,9 +1,21 @@
+function showLoader(message) {
+  const resultsDiv = document.getElementById("results");
+  resultsDiv.innerHTML = `
+    <div class="loader-container">
+      <div class="spinner"></div>
+      <p>${message}</p>
+    </div>
+  `;
+}
+
+
 async function fetchIdeas() {
   const name = document.getElementById("kid-name").value;
   const interests = document.getElementById("kid-interests").value;
 
   const resultsDiv = document.getElementById("results");
-  resultsDiv.innerHTML = "Generating story ideas...";
+  showLoader("Generating story ideas...");
+  
 
   const existingProjectId = localStorage.getItem("projectId");
 
@@ -77,7 +89,7 @@ function renderIdeas(ideas) {
       const projectId = localStorage.getItem("projectId");
       localStorage.setItem("selectedStoryIdea", JSON.stringify(idea));
 
-      resultsDiv.innerHTML = "Writing the story...";
+	  showLoader("Writing the story...");
 
       const name = document.getElementById("kid-name").value;
       const interests = document.getElementById("kid-interests").value;
@@ -125,7 +137,7 @@ async function generateCharacterModel() {
     return;
   }
 
-  characterStatus.innerText = "Generating character model...";
+  showLoader("Generating character model...");
 
   const kidName = document.getElementById("kid-name").value;
 

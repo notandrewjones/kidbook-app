@@ -68,7 +68,9 @@ export default async function handler(req, res) {
     const childNameSafe = kidName || "the child";
 
     const prompt = `
-Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build. Do not match the cropping of the reference image. Instead generate a fully visible, head-to-toe character model.
+Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build.
+	
+Do not match the cropping of the reference image. Instead generate a fully visible, head-to-toe character model.
 
 
 STYLE:
