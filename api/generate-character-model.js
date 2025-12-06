@@ -99,6 +99,16 @@ POSE / FRAMING:
 • Frame the character with a generous margin around all edges  
 • Portrait-style composition with the figure centered  
 
+Create a full-body character model sheet of the child from the attached image.
+
+REQUIRED FRAMING:
+• Show the character fully head-to-toe.
+• Do NOT crop the head, hair, hands, shoes, or feet.
+• Leave 10% margin around the entire body.
+• Neutral standing pose, arms naturally at sides or slight bend.
+• Character should be centered vertically and horizontally.
+• Transparent background.
+
 PRIORITIES:
 1. Keep the child's likeness  
 2. Match this art style exactly  
@@ -114,7 +124,7 @@ PRIORITIES:
       model: "gpt-image-1",
       image: [imageFile],
       prompt,
-      size: "1024x1024",
+      size: "1024x1536",
       output_format: "png",
       background: "transparent",
       input_fidelity: "high",

@@ -85,20 +85,27 @@ OUTPUT:
 `;
 
     // 4) CALL IMAGES.GENERATE (non-streaming for now)
-    const imageResponse = await client.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      size: "1024x1024",
-      image: [
+const imageResponse = await client.images.generate({
+  model: "gpt-image-1",
+  size: "1024x1024",
+  input: [
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: prompt
+        },
         {
           type: "input_image",
           data: base64Character,
           mime_type: "image/png"
         }
-      ],
-      // prepare for streaming but not enabled yet
-      stream: STREAMING_ENABLED ? true : false
-    });
+      ]
+    }
+  ]
+});
+    
 
     // final output (if streaming is off)
     const base64Output = imageResponse.data[0].b64_json;
