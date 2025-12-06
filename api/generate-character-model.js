@@ -69,7 +69,9 @@ export default async function handler(req, res) {
 
     const prompt = `
 Create a full-body cartoon character model of ${childNameSafe}. Use the reference photo to match their face, hair, skin tone, and build.
-	
+
+This is a character model sheet, not a scene. The character must appear fully in view.
+
 Do not match the cropping of the reference image. Instead generate a fully visible, head-to-toe character model.
 
 

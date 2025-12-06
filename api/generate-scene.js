@@ -87,24 +87,16 @@ OUTPUT:
     // 4) CALL IMAGES.GENERATE (non-streaming for now)
 const imageResponse = await client.images.generate({
   model: "gpt-image-1",
+  prompt,
   size: "1024x1024",
-  input: [
+  input_images: [
     {
-      role: "user",
-      content: [
-        {
-          type: "input_text",
-          text: prompt
-        },
-        {
-          type: "input_image",
-          data: base64Character,
-          mime_type: "image/png"
-        }
-      ]
+      data: base64Character,
+      mime_type: "image/png"
     }
   ]
 });
+
     
 
     // final output (if streaming is off)
