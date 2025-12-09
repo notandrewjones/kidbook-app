@@ -350,7 +350,7 @@ Now call the image_generation tool.
     // 8. Persist registry to Supabase
     const { error: registryUpdateError } = await supabase
       .from("book_projects")
-      .update({ props_registry: updatedRegistry })
+      .update({ props_registry: [updatedRegistry] })   // <-- FIXED HERE
       .eq("id", projectId);
 
     if (registryUpdateError) {
@@ -358,6 +358,7 @@ Now call the image_generation tool.
     } else {
       console.log("REGISTRY UPDATE SUCCESS");
     }
+    
 
     // 9. Save illustration metadata
     const updatedIllustrations = [
