@@ -1,11 +1,15 @@
-const OpenAI = require("openai").default;
+// api/generate-scene.js (CommonJS Version with Tool-Call Enforcement)
+
+const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 
-module.exports.config = {
+exports.config = {
   api: { bodyParser: { sizeLimit: "10mb" } }
 };
 
-// Initialize OpenAI + Supabase
+// --------------------------------------
+// OpenAI + Supabase Clients
+// --------------------------------------
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -15,20 +19,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// -----------------------------------------------------------------------------
-// LOGGING HELPERS
-// -----------------------------------------------------------------------------
-function logSection(title, data) {
-  console.log(`\n==================== ${title} ====================`);
-  console.log(data);
-  console.log("====================================================\n");
-}
-
-// -----------------------------------------------------------------------------
-// Helper: Extract props from page text
-// -----------------------------------------------------------------------------
+// -------------------------------------------------------
+// Helper: Extract props from page text (AI)
+// -------------------------------------------------------
 async function extractPropsUsingAI(pageText) {
-  logSection("PROP EXTRACTION — INPUT TEXT", pageText);
+  console.log("=== PROP EXTRACTION — INPUT TEXT ===");
+  console.log(pageText);
+  console.log("====================================");
 
   const extraction = await client.responses.create({
     model: "gpt-4.1-mini",
@@ -37,111 +34,111 @@ Extract ALL physical objects or props mentioned in this page text.
 Return ONLY JSON:
 {
   "props": [
-    { "name": "object-name", "context": "short reason" }
+    { "name": "object-name", "context": "short how/why it appears" }
   ]
 }
-
 Text: "${pageText}"
-    `
+`
   });
 
-  const raw =
-    extraction.output_text ??
-    extraction.output?.[0]?.content?.[0]?.text;
+  const raw = extraction.output_text ??
+              extraction.output?.[0]?.content?.[0]?.text ??
+              "";
 
-  logSection("PROP EXTRACTION — RAW AI OUTPUT", raw);
-
-  if (!raw) {
-    logSection("PROP EXTRACTION — EMPTY RAW", "AI returned no text");
-    return [];
-  }
+  console.log("=== PROP EXTRACTION — RAW AI OUTPUT ===");
+  console.log(raw);
+  console.log("=======================================");
 
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
-    const obj = JSON.parse(cleaned);
-    logSection("PROP EXTRACTION — PARSED JSON", obj);
-    return obj.props || [];
+    const parsed = JSON.parse(cleaned);
+
+    console.log("=== PROP EXTRACTION — PARSED JSON ===");
+    console.log(parsed);
+    console.log("====================================");
+
+    return parsed.props || [];
   } catch (err) {
-    logSection("PROP EXTRACTION — JSON PARSE ERROR", err);
+    console.log("PROP JSON PARSE ERROR:", err);
     return [];
   }
 }
 
-// -----------------------------------------------------------------------------
+// -------------------------------------------------------
 // Helper: Extract location from page text
-// -----------------------------------------------------------------------------
+// -------------------------------------------------------
 async function extractLocationUsingAI(pageText) {
-  logSection("LOCATION EXTRACTION — INPUT TEXT", pageText);
+  console.log("=== LOCATION EXTRACTION — INPUT TEXT ===");
+  console.log(pageText);
+  console.log("========================================");
 
   const extraction = await client.responses.create({
     model: "gpt-4.1-mini",
     input: `
-Extract the primary LOCATION or SETTING in this text.
-Return ONLY:
+Extract the primary LOCATION or SETTING described or implied.
+Return ONLY JSON:
 {
   "location": "..."
 }
 Text: "${pageText}"
-    `
+`
   });
 
-  const raw =
-    extraction.output_text ??
-    extraction.output?.[0]?.content?.[0]?.text;
+  const raw = extraction.output_text ??
+              extraction.output?.[0]?.content?.[0]?.text ??
+              "";
 
-  logSection("LOCATION EXTRACTION — RAW AI OUTPUT", raw);
-
-  if (!raw) {
-    logSection("LOCATION EXTRACTION — EMPTY RAW", "AI returned no text");
-    return null;
-  }
+  console.log("=== LOCATION EXTRACTION — RAW AI OUTPUT ===");
+  console.log(raw);
+  console.log("==========================================");
 
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
-    const obj = JSON.parse(cleaned);
-    logSection("LOCATION EXTRACTION — PARSED JSON", obj);
-    return obj.location || null;
+    const parsed = JSON.parse(cleaned);
+
+    console.log("=== LOCATION EXTRACTION — PARSED JSON ===");
+    console.log(parsed);
+    console.log("=========================================");
+
+    return parsed.location || null;
   } catch (err) {
-    logSection("LOCATION EXTRACTION — JSON PARSE ERROR", err);
+    console.log("LOCATION JSON PARSE ERROR:", err);
     return null;
   }
 }
 
-// -----------------------------------------------------------------------------
+// -------------------------------------------------------
 // MAIN HANDLER
-// -----------------------------------------------------------------------------
+// -------------------------------------------------------
 module.exports = async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   const { projectId, page, pageText } = req.body;
 
-  if (!projectId || !page || !pageText) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
+  if (!projectId || !page || !pageText)
+    return res.status(400).json({ error: "Missing projectId, page, or pageText" });
 
   try {
-    // -------------------------------------------------------------------------
-    // Load project
-    // -------------------------------------------------------------------------
-    const { data: project, error: projectError } = await supabase
+    // ---------------------------------------------------
+    // 1. Load project: character model + registry
+    // ---------------------------------------------------
+    const { data: project, error: projErr } = await supabase
       .from("book_projects")
       .select("character_model_url, illustrations, props_registry")
       .eq("id", projectId)
       .single();
 
-    logSection("PROJECT LOADED", project);
-
-    if (projectError) {
-      console.error("Project fetch error:", projectError);
-      return res.status(500).json({ error: "Could not load project." });
+    if (projErr || !project) {
+      console.log("PROJECT LOAD ERROR:", projErr);
+      return res.status(500).json({ error: "Project not found." });
     }
 
-    if (!project?.character_model_url) {
-      return res.status(400).json({ error: "Character model not found." });
-    }
+    console.log("=== PROJECT LOADED ===");
+    console.log(project);
+    console.log("======================");
 
-    // Normalize registry
+    // Ensure registry exists
     const registry = project.props_registry || {
       characters: {},
       props: {},
@@ -149,53 +146,93 @@ module.exports = async function handler(req, res) {
       notes: ""
     };
 
-    logSection("REGISTRY — BEFORE UPDATE", registry);
+    console.log("=== REGISTRY — BEFORE UPDATE ===");
+    console.log(registry);
+    console.log("================================");
 
-    // -------------------------------------------------------------------------
-    // Load character model
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 2. Load character model as base64
+    // ---------------------------------------------------
     const modelResp = await fetch(project.character_model_url);
-    const arrBuf = await modelResp.arrayBuffer();
-    const base64Model = Buffer.from(arrBuf).toString("base64");
-    const modelDataUrl = `data:image/png;base64,${base64Model}`;
+    const buffer = Buffer.from(await modelResp.arrayBuffer());
+    const modelDataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
 
-    // -------------------------------------------------------------------------
-    // AI: Extract props + location
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 3. AI extract props + location
+    // ---------------------------------------------------
     const [aiProps, detectedLocation] = await Promise.all([
       extractPropsUsingAI(pageText),
       extractLocationUsingAI(pageText)
     ]);
 
-    logSection("AI PROPS (final parsed)", aiProps);
-    logSection("DETECTED LOCATION", detectedLocation);
+    console.log("=== AI PROPS (final parsed) ===");
+    console.log(aiProps);
+    console.log("==============================");
 
-    // -------------------------------------------------------------------------
-    // Build generation prompt
-    // -------------------------------------------------------------------------
-    const prompt = `
+    console.log("=== DETECTED LOCATION ===");
+    console.log(detectedLocation);
+    console.log("==========================");
+
+    // ---------------------------------------------------
+    // 4. Build enforced-tool prompt
+    // ---------------------------------------------------
+    const environmentsJson = JSON.stringify(registry.environments || {}, null, 2);
+    const propsJson = JSON.stringify(registry.props || {}, null, 2);
+
+    const enforcedPrompt = `
+You MUST generate this illustration using the image_generation tool.
+DO NOT respond with text.
+
+Return ONLY a tool call, using this exact structure:
+
+<tool>
+{
+  "prompt": "A complete description of the children's book scene to generate"
+}
+</tool>
+
+Your task:
+• Read the PAGE TEXT  
+• Use previously seen props + environments  
+• Maintain visual continuity  
+
 PAGE TEXT:
 "${pageText}"
 
 LOCATION DETECTED:
-${detectedLocation || "None — choose neutral setting"}
+${detectedLocation || "none — choose a simple, neutral background"}
 
-CURRENT REGISTRY:
-${JSON.stringify(registry, null, 2)}
+ENVIRONMENT REGISTRY:
+${environmentsJson}
+
+PROP REGISTRY:
+${propsJson}
+
+STYLE REQUIREMENTS:
+• Must use the supplied character model EXACTLY  
+• Full-body character, never cropped  
+• Soft pastel “Jett book” style  
+• No text in image  
+• 1024×1024 PNG  
+• Simple kid-friendly background  
+
+Now call the image_generation tool.
 `;
 
-    logSection("FINAL GENERATION PROMPT", prompt);
+    console.log("=== FINAL GENERATION PROMPT ===");
+    console.log(enforcedPrompt);
+    console.log("================================");
 
-    // -------------------------------------------------------------------------
-    // Generate image
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 5. GPT CALL — TOOL ENFORCEMENT
+    // ---------------------------------------------------
     const response = await client.responses.create({
       model: "gpt-4.1",
       input: [
         {
           role: "user",
           content: [
-            { type: "input_text", text: prompt },
+            { type: "input_text", text: enforcedPrompt },
             { type: "input_image", image_url: modelDataUrl }
           ]
         }
@@ -203,102 +240,111 @@ ${JSON.stringify(registry, null, 2)}
       tools: [{ type: "image_generation" }]
     });
 
-    logSection("RAW IMAGE GENERATION RESPONSE", response.output);
+    console.log("=== RAW IMAGE GENERATION RESPONSE ===");
+    console.log(JSON.stringify(response.output, null, 2));
+    console.log("====================================");
 
-    const imgCall = response.output.find(
-      o => o.type === "image_generation_call"
-    );
+    const imgCall = response.output.find(o => o.type === "image_generation_call");
 
-    logSection("IMAGE GENERATION CALL SELECTED", imgCall);
+    console.log("=== IMAGE GENERATION CALL SELECTED ===");
+    console.log(imgCall);
+    console.log("======================================");
 
-    if (!imgCall?.result) {
-      logSection("ERROR: NO IMAGE GENERATED", response);
-      return res.status(500).json({ error: "Model produced no scene." });
+    if (!imgCall || !imgCall.result) {
+      console.log("=== ERROR: NO IMAGE GENERATED ===");
+      console.log(response);
+      console.log("==================================");
+      return res.status(500).json({ error: "Model failed to generate image." });
     }
 
-    const sceneBuffer = Buffer.from(imgCall.result, "base64");
+    const imageBuffer = Buffer.from(imgCall.result, "base64");
 
-    // -------------------------------------------------------------------------
-    // Upload image
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 6. Upload to Supabase
+    // ---------------------------------------------------
     const filePath = `illustrations/${projectId}-page-${page}.png`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadErr } = await supabase.storage
       .from("book_images")
-      .upload(filePath, sceneBuffer, {
+      .upload(filePath, imageBuffer, {
         contentType: "image/png",
         upsert: true
       });
 
-    logSection("UPLOAD RESULT", uploadError || "Upload succeeded");
+    if (uploadErr) {
+      console.log("UPLOAD ERROR:", uploadErr);
+      return res.status(500).json({ error: "Upload failed." });
+    }
 
-    const { data: urlData } = supabase.storage
+    const { data: url } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // -------------------------------------------------------------------------
-    // Update continuity registry
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 7. Update registries
+    // ---------------------------------------------------
+    const updated = { ...registry };
 
-    // Location
+    if (!updated.props) updated.props = {};
+    if (!updated.environments) updated.environments = {};
+
+    // update environments
     if (detectedLocation) {
       const key = detectedLocation.toLowerCase().trim();
-      if (!registry.environments[key]) {
-        registry.environments[key] = {
-          style: `Consistent depiction of ${key}.`,
+      if (!updated.environments[key]) {
+        updated.environments[key] = {
+          style: `Consistent depiction of a ${key}`,
           first_seen_page: page
         };
       }
     }
 
-    // Props
-    aiProps.forEach((p) => {
-      const key = (p.name || "").toLowerCase().trim();
-      if (!key) return;
-
-      if (!registry.props[key]) {
-        registry.props[key] = {
-          context: p.context || "Appears in this scene",
+    // update props
+    aiProps.forEach(p => {
+      const name = (p.name || "").toLowerCase().trim();
+      if (!name) return;
+      if (!updated.props[name]) {
+        updated.props[name] = {
+          context: p.context || "",
           first_seen_page: page
         };
       }
     });
 
-    logSection("REGISTRY — AFTER UPDATE", registry);
+    console.log("=== REGISTRY — AFTER UPDATE ===");
+    console.log(updated);
+    console.log("================================");
 
-    // Write registry back
-    const { error: regError } = await supabase
+    await supabase
       .from("book_projects")
-      .update({ props_registry: registry })
+      .update({ props_registry: updated })
       .eq("id", projectId);
 
-    logSection("SUPABASE REGISTRY UPDATE RESULT", regError || "Success");
-
-    // -------------------------------------------------------------------------
-    // Save illustration metadata
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 8. Save illustration metadata
+    // ---------------------------------------------------
     const updatedIllustrations = [
       ...(project.illustrations || []),
-      { page, image_url: urlData.publicUrl }
+      { page, image_url: url.publicUrl }
     ];
 
-    const { error: illError } = await supabase
+    await supabase
       .from("book_projects")
       .update({ illustrations: updatedIllustrations })
       .eq("id", projectId);
 
-    logSection("SUPABASE ILLUSTRATION UPDATE RESULT", illError || "Success");
-
-    // -------------------------------------------------------------------------
-    // Done
-    // -------------------------------------------------------------------------
+    // ---------------------------------------------------
+    // 9. Return to frontend
+    // ---------------------------------------------------
     return res.status(200).json({
       page,
-      image_url: urlData.publicUrl
+      image_url: url.publicUrl
     });
 
   } catch (err) {
-    logSection("FATAL ERROR", err);
-    return res.status(500).json({ error: "Failed to generate illustration." });
+    console.log("=== ERROR IN GENERATION PIPELINE ===");
+    console.error(err);
+    console.log("====================================");
+    return res.status(500).json({ error: "Unexpected error in scene generation." });
   }
 };
