@@ -76,7 +76,34 @@ Rules:
     }
 
     const cleaned = extractJson(raw);
-    const story = JSON.parse(cleaned);
+	const story = JSON.parse(cleaned);
+
+	// -----------------------------------------------
+	// INSERT NEW PROPS_REGISTRY CREATION RIGHT HERE
+	// -----------------------------------------------
+
+	await supabase
+	  .from("book_projects")
+	  .update({
+	    // Creates the base continuity registry for illustrations
+	    props_registry: {
+	      characters: {
+	        main: {
+	          name: name,
+	          clothing: "Match the character model exactly — same colors, patterns, proportions.",
+	          hair: "Same hairstyle, length, and color as the character model.",
+	          accessories: "Only include accessories shown or described in the model.",
+	          proportions: "Always full-body, never cropped, identical proportions across pages."
+	        }
+	      },
+	      props: {},        // Empty — will be filled automatically during scene generation
+	      environments: {}, // Empty — can grow as locations recur
+	      notes: "Registry created after story generation. Updated dynamically during scene generation."
+	    }
+	  })
+	  .eq("id", projectId);
+
+
 
     // UPDATE existing row instead of inserting new
     const { data, error: dbError } = await supabase
