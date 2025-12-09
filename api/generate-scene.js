@@ -119,6 +119,108 @@ Text: "${pageText}"
 }
 
 // -------------------------------------------------------
+// Helper: Canonical continuity descriptions (props + envs)
+// -------------------------------------------------------
+async function buildCanonicalRegistryUpdates(pageText, registry, aiProps, detectedLocation, page) {
+  console.log("=== CANONICAL REGISTRY — INPUTS ===");
+  console.log("Current registry:", JSON.stringify(registry, null, 2));
+  console.log("AI props:", JSON.stringify(aiProps, null, 2));
+  console.log("Detected location:", detectedLocation);
+  console.log("Page:", page);
+  console.log("===================================");
+
+  const propsPayload = aiProps.map((p) => ({
+    name: p.name || "",
+    context: p.context || "",
+  }));
+
+  const currentRegistrySnippet = {
+    props: registry.props || {},
+    environments: registry.environments || {},
+    characters: registry.characters || {},
+  };
+
+  const extraction = await client.responses.create({
+    model: "gpt-4.1-mini",
+    input: `
+You are maintaining a continuity registry for a children's picture book.
+
+Your job is to create or refine concise, visual descriptions for any PROPS
+and ENVIRONMENTS that appear on THIS PAGE.
+
+You are NOT allowed to invent new main characters or ignore uploaded character models.
+Focus only on props (objects) and environments (locations / settings).
+
+PAGE TEXT:
+"${pageText}"
+
+NEW PROPS ON THIS PAGE:
+${JSON.stringify(propsPayload, null, 2)}
+
+DETECTED LOCATION FOR THIS PAGE:
+${detectedLocation || "None — infer a simple, neutral setting that matches the action."}
+
+CURRENT REGISTRY (for reference only):
+${JSON.stringify(currentRegistrySnippet, null, 2)}
+
+Return ONLY JSON in this exact format:
+{
+  "props": {
+    "slug-key": {
+      "name": "display name for the prop",
+      "description": "clear, visual description so an illustrator can keep this prop consistent",
+      "first_seen_page": 1
+    }
+  },
+  "environments": {
+    "slug-key": {
+      "name": "display name for the environment",
+      "description": "clear, visual description of the location, layout, and mood for consistency",
+      "first_seen_page": 1
+    }
+  }
+}
+
+Rules:
+- "slug-key" should be a lowercase slug version of the prop or location name (e.g., "blue hat" -> "blue-hat").
+- Only include props and environments that appear on THIS PAGE.
+- If a prop or environment already exists in CURRENT REGISTRY with a first_seen_page,
+  KEEP the existing first_seen_page if you re-include it.
+- Descriptions must be specific enough for visual continuity but still concise.
+`,
+  });
+
+  const raw =
+    extraction.output_text ??
+    extraction.output?.[0]?.content?.[0]?.text;
+
+  console.log("=== CANONICAL REGISTRY — RAW OUTPUT ===");
+  console.log(raw);
+  console.log("=======================================");
+
+  if (!raw) {
+    return { props: {}, environments: {} };
+  }
+
+  try {
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const obj = JSON.parse(cleaned);
+
+    console.log("=== CANONICAL REGISTRY — PARSED JSON ===");
+    console.log(JSON.stringify(obj, null, 2));
+    console.log("========================================");
+
+    return {
+      props: obj.props || {},
+      environments: obj.environments || {},
+    };
+  } catch (err) {
+    console.error("CANONICAL REGISTRY PARSE ERROR:", err);
+    return { props: {}, environments: {} };
+  }
+}
+
+// -------------------------------------------------------
 // Main handler (CommonJS export)
 // -------------------------------------------------------
 async function handler(req, res) {
@@ -155,7 +257,7 @@ async function handler(req, res) {
       return res.status(400).json({ error: "Character model not found." });
     }
 
-    // Ensure registry exists
+    // Ensure flat registry object exists
     const registry = project.props_registry || {
       characters: {},
       props: {},
@@ -164,16 +266,10 @@ async function handler(req, res) {
     };
 
     console.log("=== REGISTRY — BEFORE UPDATE ===");
-    console.log(registry);
+    console.log(JSON.stringify(registry, null, 2));
     console.log("================================");
 
-    // 2. Load character model as base64
-    const modelResp = await fetch(project.character_model_url);
-    const arrayBuffer = await modelResp.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString("base64");
-    const modelDataUrl = `data:image/png;base64,${base64Image}`;
-
-    // 3. Extract props + location for this page
+    // 2. Extract props + location for this page
     const [aiProps, detectedLocation] = await Promise.all([
       extractPropsUsingAI(pageText),
       extractLocationUsingAI(pageText),
@@ -186,13 +282,118 @@ async function handler(req, res) {
     console.log(detectedLocation);
     console.log("===========================");
 
-    // 4. Build the generation prompt (no Jett references)
+    // 3. Build canonical continuity descriptions and merge into registry
+    let updatedRegistry = {
+      characters: registry.characters || {},
+      props: registry.props || {},
+      environments: registry.environments || {},
+      notes: registry.notes || "",
+    };
+
+    try {
+      const canonicalUpdates = await buildCanonicalRegistryUpdates(
+        pageText,
+        updatedRegistry,
+        aiProps,
+        detectedLocation,
+        page
+      );
+
+      const newProps = canonicalUpdates.props || {};
+      const newEnvs = canonicalUpdates.environments || {};
+
+      // Merge props
+      updatedRegistry.props = updatedRegistry.props || {};
+      for (const [slug, value] of Object.entries(newProps)) {
+        const existing = updatedRegistry.props[slug] || {};
+        const firstSeen =
+          existing.first_seen_page ??
+          value.first_seen_page ??
+          page;
+
+        updatedRegistry.props[slug] = {
+          ...existing,
+          ...value,
+          first_seen_page: firstSeen,
+        };
+      }
+
+      // Merge environments
+      updatedRegistry.environments = updatedRegistry.environments || {};
+      for (const [slug, value] of Object.entries(newEnvs)) {
+        const existing = updatedRegistry.environments[slug] || {};
+        const firstSeen =
+          existing.first_seen_page ??
+          value.first_seen_page ??
+          page;
+
+        updatedRegistry.environments[slug] = {
+          ...existing,
+          ...value,
+          first_seen_page: firstSeen,
+        };
+      }
+    } catch (err) {
+      console.error("CANONICAL MERGE ERROR, falling back to simple entries:", err);
+
+      // Fallback: simple environment + props if canonical step fails
+      updatedRegistry.props = updatedRegistry.props || {};
+      updatedRegistry.environments = updatedRegistry.environments || {};
+
+      if (detectedLocation) {
+        const envKey = detectedLocation.toLowerCase().trim();
+        if (!updatedRegistry.environments[envKey]) {
+          updatedRegistry.environments[envKey] = {
+            name: detectedLocation,
+            description: `Consistent depiction of a ${detectedLocation}`,
+            first_seen_page: page,
+          };
+        }
+      }
+
+      for (const p of aiProps) {
+        const key = (p.name || "").toLowerCase().trim();
+        if (!key) continue;
+
+        if (!updatedRegistry.props[key]) {
+          updatedRegistry.props[key] = {
+            name: p.name || key,
+            description: p.context || "Appears in this scene",
+            first_seen_page: page,
+          };
+        }
+      }
+    }
+
+    console.log("=== REGISTRY — AFTER CANONICAL UPDATE ===");
+    console.log(JSON.stringify(updatedRegistry, null, 2));
+    console.log("=========================================");
+
+    // 4. Persist registry to Supabase (flat JSONB, not array)
+    const { error: registryUpdateError } = await supabase
+      .from("book_projects")
+      .update({ props_registry: updatedRegistry })
+      .eq("id", projectId);
+
+    if (registryUpdateError) {
+      console.error("REGISTRY UPDATE ERROR:", registryUpdateError);
+    } else {
+      console.log("REGISTRY UPDATE SUCCESS");
+    }
+
+    // 5. Load character model as base64 (after registry is updated)
+    const modelResp = await fetch(project.character_model_url);
+    const arrayBuffer = await modelResp.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    const modelDataUrl = `data:image/png;base64,${base64Image}`;
+
+    // 6. Build the generation prompt using UPDATED registry
     const environmentsJson = JSON.stringify(
-      registry.environments || {},
+      updatedRegistry.environments || {},
       null,
       2
     );
-    const propsJson = JSON.stringify(registry.props || {}, null, 2);
+    const propsJson = JSON.stringify(updatedRegistry.props || {}, null, 2);
 
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
@@ -208,19 +409,19 @@ Return ONLY a tool call, using this exact structure:
 
 Your task:
 • Read the PAGE TEXT  
-• Use previously seen props + environments  
-• Maintain visual continuity  
+• Use the continuity REGISTRY to keep props and environments visually consistent  
+• Maintain a simple, kid-friendly composition  
 
 PAGE TEXT:
 "${pageText}"
 
-LOCATION DETECTED:
+LOCATION DETECTED FOR THIS PAGE:
 ${detectedLocation || "None explicitly detected — choose a simple, neutral setting that fits the action."}
 
-ENVIRONMENT REGISTRY:
+ENVIRONMENT REGISTRY (canonical descriptions):
 ${environmentsJson}
 
-PROP REGISTRY:
+PROP REGISTRY (canonical descriptions):
 ${propsJson}
 
 STYLE REQUIREMENTS:
@@ -236,9 +437,10 @@ STYLE REQUIREMENTS:
 
 ILLUSTRATION RULES:
 • Character is the visual focus of the scene  
-• Props must match prior pages if already introduced  
-• Environment must be consistent with the detected or previously used location  
+• Props must match the canonical descriptions in the registry  
+• Environment must match the canonical descriptions in the registry  
 • Use soft, warm daylight tones  
+
 Now call the image_generation tool.
 `;
 
@@ -246,7 +448,7 @@ Now call the image_generation tool.
     console.log(prompt);
     console.log("================================");
 
-    // 5. Call GPT-4.1 with image_generation tool
+    // 7. Call GPT-4.1 with image_generation tool (tool-call enforced)
     const response = await client.responses.create({
       model: "gpt-4.1",
       input: [
@@ -294,7 +496,7 @@ Now call the image_generation tool.
     const base64Scene = imgCall.result;
     const sceneBuffer = Buffer.from(base64Scene, "base64");
 
-    // 6. Upload scene image to Supabase
+    // 8. Upload scene image to Supabase
     const filePath = `illustrations/${projectId}-page-${page}.png`;
 
     const { error: uploadError } = await supabase.storage
@@ -312,53 +514,6 @@ Now call the image_generation tool.
     const { data: urlData } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
-
-    // 7. Update continuity registry (props + environments) in memory
-    const updatedRegistry = { ...registry };
-
-    if (!updatedRegistry.props) updatedRegistry.props = {};
-    if (!updatedRegistry.environments) updatedRegistry.environments = {};
-
-    // Environments
-    if (detectedLocation) {
-      const envKey = detectedLocation.toLowerCase().trim();
-      if (!updatedRegistry.environments[envKey]) {
-        updatedRegistry.environments[envKey] = {
-          style: `Consistent depiction of a ${envKey}`,
-          first_seen_page: page,
-        };
-      }
-    }
-
-    // Props
-    for (const p of aiProps) {
-      const key = (p.name || "").toLowerCase().trim();
-      if (!key) continue;
-
-      if (!updatedRegistry.props[key]) {
-        updatedRegistry.props[key] = {
-          context: p.context || "Appears in this scene",
-          first_seen_page: page,
-        };
-      }
-    }
-
-    console.log("=== REGISTRY — AFTER UPDATE ===");
-    console.log(updatedRegistry);
-    console.log("================================");
-
-    // 8. Persist registry to Supabase
-    const { error: registryUpdateError } = await supabase
-      .from("book_projects")
-      .update({ props_registry: [updatedRegistry] })   // <-- FIXED HERE
-      .eq("id", projectId);
-
-    if (registryUpdateError) {
-      console.error("REGISTRY UPDATE ERROR:", registryUpdateError);
-    } else {
-      console.log("REGISTRY UPDATE SUCCESS");
-    }
-    
 
     // 9. Save illustration metadata
     const updatedIllustrations = [
