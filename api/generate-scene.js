@@ -1,15 +1,8 @@
-// api/generate-scene.js (CommonJS Version with Tool-Call Enforcement)
+// api/generate-scene.js (CommonJS)
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 
-exports.config = {
-  api: { bodyParser: { sizeLimit: "10mb" } }
-};
-
-// --------------------------------------
-// OpenAI + Supabase Clients
-// --------------------------------------
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -20,7 +13,7 @@ const supabase = createClient(
 );
 
 // -------------------------------------------------------
-// Helper: Extract props from page text (AI)
+// Helper: Extract props (objects) from page text via GPT
 // -------------------------------------------------------
 async function extractPropsUsingAI(pageText) {
   console.log("=== PROP EXTRACTION — INPUT TEXT ===");
@@ -31,41 +24,51 @@ async function extractPropsUsingAI(pageText) {
     model: "gpt-4.1-mini",
     input: `
 Extract ALL physical objects or props mentioned in this page text.
-Return ONLY JSON:
+These are things that could appear visually in an illustration.
+
+Return ONLY JSON in this exact format:
 {
   "props": [
-    { "name": "object-name", "context": "short how/why it appears" }
+    { "name": "object-name", "context": "short reason or how it appears" }
   ]
 }
+
 Text: "${pageText}"
-`
+`,
   });
 
-  const raw = extraction.output_text ??
-              extraction.output?.[0]?.content?.[0]?.text ??
-              "";
+  const raw =
+    extraction.output_text ??
+    extraction.output?.[0]?.content?.[0]?.text;
 
   console.log("=== PROP EXTRACTION — RAW AI OUTPUT ===");
   console.log(raw);
   console.log("=======================================");
 
+  if (!raw) return [];
+
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const obj = JSON.parse(cleaned);
 
     console.log("=== PROP EXTRACTION — PARSED JSON ===");
-    console.log(parsed);
+    console.log(obj);
     console.log("====================================");
 
-    return parsed.props || [];
+    const props = obj.props || [];
+    console.log("=== AI PROPS (final parsed) ===");
+    console.log(props);
+    console.log("================================");
+
+    return props;
   } catch (err) {
-    console.log("PROP JSON PARSE ERROR:", err);
+    console.error("PROP EXTRACTION PARSE ERROR:", err);
     return [];
   }
 }
 
 // -------------------------------------------------------
-// Helper: Extract location from page text
+// Helper: Extract location/setting from page text via GPT
 // -------------------------------------------------------
 async function extractLocationUsingAI(pageText) {
   console.log("=== LOCATION EXTRACTION — INPUT TEXT ===");
@@ -75,113 +78,125 @@ async function extractLocationUsingAI(pageText) {
   const extraction = await client.responses.create({
     model: "gpt-4.1-mini",
     input: `
-Extract the primary LOCATION or SETTING described or implied.
+Extract the primary LOCATION or SETTING described or implied in this page text.
+Examples: "park", "bedroom", "zoo", "kitchen", "forest", "beach", "school", "backyard", "yard", "home".
+
 Return ONLY JSON:
 {
   "location": "..."
 }
+
+If no location is directly mentioned, infer a simple, neutral setting
+based on the child's activity (e.g., "backyard", "playground", "bedroom").
+
 Text: "${pageText}"
-`
+`,
   });
 
-  const raw = extraction.output_text ??
-              extraction.output?.[0]?.content?.[0]?.text ??
-              "";
+  const raw =
+    extraction.output_text ??
+    extraction.output?.[0]?.content?.[0]?.text;
 
   console.log("=== LOCATION EXTRACTION — RAW AI OUTPUT ===");
   console.log(raw);
   console.log("==========================================");
 
+  if (!raw) return null;
+
   try {
     const cleaned = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const obj = JSON.parse(cleaned);
 
     console.log("=== LOCATION EXTRACTION — PARSED JSON ===");
-    console.log(parsed);
+    console.log(obj);
     console.log("=========================================");
 
-    return parsed.location || null;
+    return obj.location || null;
   } catch (err) {
-    console.log("LOCATION JSON PARSE ERROR:", err);
+    console.error("LOCATION EXTRACTION PARSE ERROR:", err);
     return null;
   }
 }
 
 // -------------------------------------------------------
-// MAIN HANDLER
+// Main handler (CommonJS export)
 // -------------------------------------------------------
-module.exports = async function handler(req, res) {
-  if (req.method !== "POST")
+async function handler(req, res) {
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const { projectId, page, pageText } = req.body;
 
-  if (!projectId || !page || !pageText)
-    return res.status(400).json({ error: "Missing projectId, page, or pageText" });
+  if (!projectId || !page || !pageText) {
+    return res
+      .status(400)
+      .json({ error: "Missing projectId, page, or pageText" });
+  }
 
   try {
-    // ---------------------------------------------------
-    // 1. Load project: character model + registry
-    // ---------------------------------------------------
-    const { data: project, error: projErr } = await supabase
+    // 1. Load project
+    const { data: project, error: projectError } = await supabase
       .from("book_projects")
       .select("character_model_url, illustrations, props_registry")
       .eq("id", projectId)
       .single();
 
-    if (projErr || !project) {
-      console.log("PROJECT LOAD ERROR:", projErr);
-      return res.status(500).json({ error: "Project not found." });
-    }
-
     console.log("=== PROJECT LOADED ===");
     console.log(project);
     console.log("======================");
+
+    if (projectError) {
+      console.error("Project fetch error:", projectError);
+      return res.status(500).json({ error: "Could not load project." });
+    }
+
+    if (!project || !project.character_model_url) {
+      return res.status(400).json({ error: "Character model not found." });
+    }
 
     // Ensure registry exists
     const registry = project.props_registry || {
       characters: {},
       props: {},
       environments: {},
-      notes: ""
+      notes: "",
     };
 
     console.log("=== REGISTRY — BEFORE UPDATE ===");
     console.log(registry);
     console.log("================================");
 
-    // ---------------------------------------------------
     // 2. Load character model as base64
-    // ---------------------------------------------------
     const modelResp = await fetch(project.character_model_url);
-    const buffer = Buffer.from(await modelResp.arrayBuffer());
-    const modelDataUrl = `data:image/png;base64,${buffer.toString("base64")}`;
+    const arrayBuffer = await modelResp.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    const modelDataUrl = `data:image/png;base64,${base64Image}`;
 
-    // ---------------------------------------------------
-    // 3. AI extract props + location
-    // ---------------------------------------------------
+    // 3. Extract props + location for this page
     const [aiProps, detectedLocation] = await Promise.all([
       extractPropsUsingAI(pageText),
-      extractLocationUsingAI(pageText)
+      extractLocationUsingAI(pageText),
     ]);
 
     console.log("=== AI PROPS (final parsed) ===");
     console.log(aiProps);
-    console.log("==============================");
-
+    console.log("================================");
     console.log("=== DETECTED LOCATION ===");
     console.log(detectedLocation);
-    console.log("==========================");
+    console.log("===========================");
 
-    // ---------------------------------------------------
-    // 4. Build enforced-tool prompt
-    // ---------------------------------------------------
-    const environmentsJson = JSON.stringify(registry.environments || {}, null, 2);
+    // 4. Build the generation prompt (no Jett references)
+    const environmentsJson = JSON.stringify(
+      registry.environments || {},
+      null,
+      2
+    );
     const propsJson = JSON.stringify(registry.props || {}, null, 2);
 
-    const enforcedPrompt = `
+    const prompt = `
 You MUST generate this illustration using the image_generation tool.
-DO NOT respond with text.
+DO NOT respond with normal text.
 
 Return ONLY a tool call, using this exact structure:
 
@@ -200,7 +215,7 @@ PAGE TEXT:
 "${pageText}"
 
 LOCATION DETECTED:
-${detectedLocation || "none — choose a simple, neutral background"}
+${detectedLocation || "None explicitly detected — choose a simple, neutral setting that fits the action."}
 
 ENVIRONMENT REGISTRY:
 ${environmentsJson}
@@ -209,42 +224,61 @@ PROP REGISTRY:
 ${propsJson}
 
 STYLE REQUIREMENTS:
-• Must use the supplied character model EXACTLY  
+• Soft pastel children’s-book illustration style  
+• Clean rounded outlines  
+• Gentle shading, simple shapes  
+• Warm daylight color palette (around 5000–5500K)  
+• Backgrounds simple and readable, not cluttered  
+• Character must match the provided model exactly — same proportions, colors, clothing  
 • Full-body character, never cropped  
-• Soft pastel “Jett book” style  
-• No text in image  
-• 1024×1024 PNG  
-• Simple kid-friendly background  
+• No text inside the image  
+• Output must be a 1024×1024 PNG  
 
+ILLUSTRATION RULES:
+• Character is the visual focus of the scene  
+• Props must match prior pages if already introduced  
+• Environment must be consistent with the detected or previously used location  
+• Use soft, warm daylight tones  
 Now call the image_generation tool.
 `;
 
     console.log("=== FINAL GENERATION PROMPT ===");
-    console.log(enforcedPrompt);
+    console.log(prompt);
     console.log("================================");
 
-    // ---------------------------------------------------
-    // 5. GPT CALL — TOOL ENFORCEMENT
-    // ---------------------------------------------------
+    // 5. Call GPT-4.1 with image_generation tool
     const response = await client.responses.create({
       model: "gpt-4.1",
       input: [
         {
           role: "user",
           content: [
-            { type: "input_text", text: enforcedPrompt },
-            { type: "input_image", image_url: modelDataUrl }
-          ]
-        }
+            { type: "input_text", text: prompt },
+            { type: "input_image", image_url: modelDataUrl },
+          ],
+        },
       ],
-      tools: [{ type: "image_generation" }]
+      tools: [
+        {
+          type: "image_generation",
+          model: "gpt-image-1",
+          size: "1024x1024",
+          quality: "high",
+          background: "opaque",
+          output_format: "png",
+          output_compression: 100,
+          moderation: "auto",
+        },
+      ],
     });
 
     console.log("=== RAW IMAGE GENERATION RESPONSE ===");
     console.log(JSON.stringify(response.output, null, 2));
-    console.log("====================================");
+    console.log("======================================");
 
-    const imgCall = response.output.find(o => o.type === "image_generation_call");
+    const imgCall = response.output.find(
+      (o) => o.type === "image_generation_call"
+    );
 
     console.log("=== IMAGE GENERATION CALL SELECTED ===");
     console.log(imgCall);
@@ -253,98 +287,111 @@ Now call the image_generation tool.
     if (!imgCall || !imgCall.result) {
       console.log("=== ERROR: NO IMAGE GENERATED ===");
       console.log(response);
-      console.log("==================================");
-      return res.status(500).json({ error: "Model failed to generate image." });
+      console.log("=================================");
+      return res.status(500).json({ error: "Model produced no scene." });
     }
 
-    const imageBuffer = Buffer.from(imgCall.result, "base64");
+    const base64Scene = imgCall.result;
+    const sceneBuffer = Buffer.from(base64Scene, "base64");
 
-    // ---------------------------------------------------
-    // 6. Upload to Supabase
-    // ---------------------------------------------------
+    // 6. Upload scene image to Supabase
     const filePath = `illustrations/${projectId}-page-${page}.png`;
 
-    const { error: uploadErr } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("book_images")
-      .upload(filePath, imageBuffer, {
+      .upload(filePath, sceneBuffer, {
         contentType: "image/png",
-        upsert: true
+        upsert: true,
       });
 
-    if (uploadErr) {
-      console.log("UPLOAD ERROR:", uploadErr);
-      return res.status(500).json({ error: "Upload failed." });
+    if (uploadError) {
+      console.error("UPLOAD ERROR:", uploadError);
+      return res.status(500).json({ error: "Failed to upload illustration." });
     }
 
-    const { data: url } = supabase.storage
+    const { data: urlData } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // ---------------------------------------------------
-    // 7. Update registries
-    // ---------------------------------------------------
-    const updated = { ...registry };
+    // 7. Update continuity registry (props + environments) in memory
+    const updatedRegistry = { ...registry };
 
-    if (!updated.props) updated.props = {};
-    if (!updated.environments) updated.environments = {};
+    if (!updatedRegistry.props) updatedRegistry.props = {};
+    if (!updatedRegistry.environments) updatedRegistry.environments = {};
 
-    // update environments
+    // Environments
     if (detectedLocation) {
-      const key = detectedLocation.toLowerCase().trim();
-      if (!updated.environments[key]) {
-        updated.environments[key] = {
-          style: `Consistent depiction of a ${key}`,
-          first_seen_page: page
+      const envKey = detectedLocation.toLowerCase().trim();
+      if (!updatedRegistry.environments[envKey]) {
+        updatedRegistry.environments[envKey] = {
+          style: `Consistent depiction of a ${envKey}`,
+          first_seen_page: page,
         };
       }
     }
 
-    // update props
-    aiProps.forEach(p => {
-      const name = (p.name || "").toLowerCase().trim();
-      if (!name) return;
-      if (!updated.props[name]) {
-        updated.props[name] = {
-          context: p.context || "",
-          first_seen_page: page
+    // Props
+    for (const p of aiProps) {
+      const key = (p.name || "").toLowerCase().trim();
+      if (!key) continue;
+
+      if (!updatedRegistry.props[key]) {
+        updatedRegistry.props[key] = {
+          context: p.context || "Appears in this scene",
+          first_seen_page: page,
         };
       }
-    });
+    }
 
     console.log("=== REGISTRY — AFTER UPDATE ===");
-    console.log(updated);
+    console.log(updatedRegistry);
     console.log("================================");
 
-    await supabase
+    // 8. Persist registry to Supabase
+    const { error: registryUpdateError } = await supabase
       .from("book_projects")
-      .update({ props_registry: updated })
+      .update({ props_registry: updatedRegistry })
       .eq("id", projectId);
 
-    // ---------------------------------------------------
-    // 8. Save illustration metadata
-    // ---------------------------------------------------
+    if (registryUpdateError) {
+      console.error("REGISTRY UPDATE ERROR:", registryUpdateError);
+    } else {
+      console.log("REGISTRY UPDATE SUCCESS");
+    }
+
+    // 9. Save illustration metadata
     const updatedIllustrations = [
       ...(project.illustrations || []),
-      { page, image_url: url.publicUrl }
+      { page, image_url: urlData.publicUrl },
     ];
 
-    await supabase
+    const { error: illusUpdateError } = await supabase
       .from("book_projects")
       .update({ illustrations: updatedIllustrations })
       .eq("id", projectId);
 
-    // ---------------------------------------------------
-    // 9. Return to frontend
-    // ---------------------------------------------------
+    if (illusUpdateError) {
+      console.error("ILLUSTRATIONS UPDATE ERROR:", illusUpdateError);
+    } else {
+      console.log("ILLUSTRATIONS UPDATE SUCCESS");
+    }
+
+    // 10. Done
     return res.status(200).json({
       page,
-      image_url: url.publicUrl
+      image_url: urlData.publicUrl,
+      props_registry: updatedRegistry,
     });
-
   } catch (err) {
-    console.log("=== ERROR IN GENERATION PIPELINE ===");
-    console.error(err);
-    console.log("====================================");
-    return res.status(500).json({ error: "Unexpected error in scene generation." });
+    console.error("Illustration generation error:", err);
+    return res
+      .status(500)
+      .json({ error: "Failed to generate illustration." });
   }
+}
+
+// Export handler + config in CommonJS
+module.exports = handler;
+module.exports.config = {
+  api: { bodyParser: { sizeLimit: "10mb" } },
 };
