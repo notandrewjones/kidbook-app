@@ -72,9 +72,13 @@ Child:
 
     let finalProjectId;
 
-    // UPDATE PATH
-    if (projectId && projectId !== "undefined" && projectId !== null) {
-      const { data, error } = await supabase
+    // Do we have a candidate projectId?
+    const hasProjectId =
+      projectId && projectId !== "undefined" && projectId !== null;
+
+    if (hasProjectId) {
+      // 1) Try UPDATE first
+      const { data: updateData, error: updateError } = await supabase
         .from("book_projects")
         .update({
           kid_name: name,
@@ -82,19 +86,47 @@ Child:
           story_ideas: parsed.ideas
         })
         .eq("id", projectId)
-        .select("*")
-        .single();
+        .select("*"); // no .single() so we can see if 0 rows came back
 
-      if (error) {
-        console.error("Update failed:", error);
-        return res.status(500).json({ error: "Update failed", details: error });
+      if (updateError) {
+        console.error("Update failed:", updateError);
+        return res
+          .status(500)
+          .json({ error: "Update failed", details: updateError });
       }
 
-      finalProjectId = data.id;
-    }
+      // If no rows were updated (projectId didn't match anything),
+      // fall back to INSERT a brand new project.
+      if (!updateData || updateData.length === 0) {
+        console.log(
+          "No existing project found with this projectId; inserting a new row instead."
+        );
 
-    // INSERT PATH
-    else {
+        const { data: insertData, error: insertError } = await supabase
+          .from("book_projects")
+          .insert({
+            kid_name: name,
+            kid_interests: interests,
+            story_ideas: parsed.ideas
+          })
+          .select("*")
+          .single();
+
+        if (insertError) {
+          console.error("Insert failed (after empty update):", insertError);
+          return res.status(500).json({
+            error: "Insert failed after empty update",
+            details: insertError
+          });
+        }
+
+        finalProjectId = insertData.id;
+      } else {
+        // Normal update success, use the existing project
+        finalProjectId = updateData[0].id;
+      }
+    } else {
+      // 2) No projectId given → always INSERT a new project
       const { data, error } = await supabase
         .from("book_projects")
         .insert({
@@ -117,7 +149,6 @@ Child:
       ideas: parsed.ideas,
       projectId: finalProjectId
     });
-
   } catch (error) {
     console.error("Error generating ideas:", error);
     return res.status(500).json({ error: "Failed to generate story ideas" });
