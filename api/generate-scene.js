@@ -140,6 +140,16 @@ export default async function handler(req, res) {
       .select("character_model_url, illustrations, props_registry")
       .eq("id", projectId)
       .single();
+	  
+	// 🔧 TEMPORARY DEVELOPMENT OVERRIDE — hard-coded character model
+	const hardcodedModelUrl =
+	  "https://mndeoxianjxgwdiwsowa.supabase.co/storage/v1/object/public/book_images/character_models/3432e488-4787-482e-aab0-1e5380eff258.png"; // <-- paste your PNG URL
+
+	const characterModelUrl =
+	  hardcodedModelUrl || project?.character_model_url;
+
+	console.log("USING CHARACTER IMAGE:", characterModelUrl);
+	  
 
     log("PROJECT LOADED", project);
 
