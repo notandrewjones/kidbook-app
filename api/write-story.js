@@ -100,6 +100,7 @@ Rules:
 	      environments: {}, // Empty — can grow as locations recur
 	      notes: "Registry created after story generation. Updated dynamically during scene generation."
 	    }
+	  
 	  })
 	  .eq("id", projectId);
 

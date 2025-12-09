@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
+const DEV_MODE = process.env.DEV_MODE === "true";
+const DEV_MODEL_URL = process.env.DEV_CHARACTER_MODEL_URL;
+
+
 export const config = {
   api: { bodyParser: { sizeLimit: "10mb" } }
 };
@@ -15,82 +19,102 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  if (req.method !== "POST")
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  const { projectId } = req.body;
-  if (!projectId)
+  const { projectId, kidName } = req.body;
+
+  if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
+  }
 
+  // -------------------------------------------------------------
+  // 🔧 DEV MODE SHORT-CIRCUIT
+  // -------------------------------------------------------------
+  if (DEV_MODE) {
+    console.log("🔧 DEV MODE ENABLED — Skipping character generation.");
+
+    // Update database so the story pipeline works exactly the same
+    await supabase
+      .from("book_projects")
+      .update({ character_model_url: DEV_MODEL_URL })
+      .eq("id", projectId);
+
+    return res.status(200).json({
+      characterModelUrl: DEV_MODEL_URL,
+      devMode: true
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Normal production flow below
+  // -------------------------------------------------------------
   try {
-    // Get child photo URL
-    const { data: project } = await supabase
+    // Fetch project to obtain the uploaded child photo
+    const { data: project, error: projectError } = await supabase
       .from("book_projects")
       .select("photo_url")
       .eq("id", projectId)
       .single();
 
-    if (!project?.photo_url)
+    if (projectError || !project?.photo_url) {
       return res.status(400).json({ error: "Child photo not found." });
+    }
 
-    // Convert image to base64
-    const fetchResp = await fetch(project.photo_url);
-    const arrayBuffer = await fetchResp.arrayBuffer();
-    const base64Photo = Buffer.from(arrayBuffer).toString("base64");
-    const dataUrl = `data:image/png;base64,${base64Photo}`;
+    // Fetch child photo → buffer
+    const imgResp = await fetch(project.photo_url);
+    const arrayBuffer = await imgResp.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
 
-    // Prompt for GPT-4.1
+    // Build prompt
     const prompt = `
-Create a full-body cartoon character model sheet in Jett-Book style.
+Create a full-body cartoon character model sheet of the child shown in the attached image.
 
-Requirements:
-• Head-to-toe visible
-• 15% top/bottom margin
-• Soft pastel shading
-• Clean outlines
-• Transparent background
-• 1024x1536 PNG
+STYLE REQUIREMENTS (Jett Book Style):
+• Soft, rounded cartoon proportions
+• Slightly oversized head, friendly bright eyes
+• Simple pastel-adjacent palette, gentle gradients
+• Clean, medium-weight outlines
+• Warm neutral white balance (5000–5500K)
+• Soft ambient lighting
+• NO BACKGROUND — transparent PNG
+• Character must be fully visible, head-to-toe with 10–15% margins
+• Neutral standing pose
 
-Use the attached image as the reference for the child's appearance.
+OUTPUT:
+• A full-body character model sheet
+• Transparent PNG
 `;
 
-    // -----------------------------------------
-    // 🔥 NEW CORRECT GPT-4.1 IMAGE GENERATION
-    // -----------------------------------------
+    // GPT-4.1 Image Generation Tool Call
     const response = await client.responses.create({
       model: "gpt-4.1",
-
       input: [
         {
           role: "user",
           content: [
             { type: "input_text", text: prompt },
-            { type: "input_image", image_url: dataUrl }
+            {
+              type: "input_image",
+              image_url: `data:image/png;base64,${imageBuffer.toString("base64")}`
+            }
           ]
         }
       ],
-
-      tools: [
-        { type: "image_generation" }   // ← THE KEY FIX
-      ]
+      tools: [{ type: "image_generation" }]
     });
 
-    // -----------------------------------------
-    // 🔥 Extract image data (NEW FORMAT)
-    // -----------------------------------------
-    const imageCall = response.output.find(
-      out => out.type === "image_generation_call"
-    );
+    const imageCall = response.output.find(o => o.type === "image_generation_call");
 
-    if (!imageCall) {
-      console.error("NO IMAGE CALL:", response);
-      return res.status(500).json({ error: "Model didn't generate image." });
+    if (!imageCall?.result) {
+      console.error("NO IMAGE GENERATED:", response);
+      return res.status(500).json({ error: "Model did not generate a character image." });
     }
 
-    const base64Image = imageCall.result;
-    const pngBuffer = Buffer.from(base64Image, "base64");
+    const pngBuffer = Buffer.from(imageCall.result, "base64");
 
-    // Upload to Supabase
+    // Upload to Supabase storage
     const filePath = `character_models/${projectId}.png`;
 
     const { error: uploadError } = await supabase.storage
@@ -101,24 +125,26 @@ Use the attached image as the reference for the child's appearance.
       });
 
     if (uploadError) {
-      console.error(uploadError);
       return res.status(500).json({ error: "Upload failed." });
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: publicUrl } = supabase.storage
       .from("book_images")
       .getPublicUrl(filePath);
 
-    // Save URL to DB
+    // Update DB
     await supabase
       .from("book_projects")
-      .update({ character_model_url: urlData.publicUrl })
+      .update({ character_model_url: publicUrl.publicUrl })
       .eq("id", projectId);
 
-    return res.status(200).json({ characterModelUrl: urlData.publicUrl });
+    return res.status(200).json({
+      characterModelUrl: publicUrl.publicUrl,
+    });
 
   } catch (err) {
     console.error("Character model generation error:", err);
     return res.status(500).json({ error: "Failed to generate character model." });
   }
 }
+
