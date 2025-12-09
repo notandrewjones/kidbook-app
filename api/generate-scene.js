@@ -232,6 +232,8 @@ ILLUSTRATION RULES:
       ],
       tools: [{ type: "image_generation" }]
     });
+	
+	console.log("RAW RESPONSE OUTPUT:", JSON.stringify(response.output, null, 2));
 
     const imgCall = response.output.find(
       (o) => o.type === "image_generation_call"
