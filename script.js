@@ -1,3 +1,5 @@
+// script.js
+
 // Simple loader for full-area actions (ideas, story, etc.)
 function showLoader(message) {
   const resultsDiv = document.getElementById("results");
@@ -8,6 +10,176 @@ function showLoader(message) {
     </div>
   `;
 }
+
+/* ---------------------------------------------------
+   DASHBOARD + PROJECT STATE HELPERS
+--------------------------------------------------- */
+
+function projectStatusText(p) {
+  if (!p.story_ideas || !p.story_ideas.length) {
+    return "No story ideas yet";
+  }
+
+  if (p.story_ideas && !p.selected_idea) {
+    return "Ideas ready — pick one";
+  }
+
+  if (p.selected_idea && (!p.story_json || !p.story_json.length)) {
+    return "Idea selected — story not written yet";
+  }
+
+  if (p.story_json && p.story_json.length && (!p.illustrations || !p.illustrations.length)) {
+    return "Story ready — no illustrations yet";
+  }
+
+  if (p.story_json && p.story_json.length && p.illustrations && p.illustrations.length) {
+    return `Story + ${p.illustrations.length} illustration(s)`;
+  }
+
+  return "In progress";
+}
+
+function startNewBookFlow() {
+  localStorage.removeItem("projectId");
+  localStorage.removeItem("selectedStoryIdea");
+  localStorage.removeItem("lastStoryPages");
+
+  const nameInput = document.getElementById("kid-name");
+  const interestsInput = document.getElementById("kid-interests");
+  if (nameInput) nameInput.value = "";
+  if (interestsInput) interestsInput.value = "";
+
+  const resultsDiv = document.getElementById("results");
+  resultsDiv.innerHTML = `
+    <p>Enter your child's name and interests, then click <strong>"Generate Story Ideas"</strong> to start a new book.</p>
+  `;
+}
+
+function renderDashboard(projects) {
+  const resultsDiv = document.getElementById("results");
+
+  resultsDiv.innerHTML = `
+    <h2>My Books</h2>
+    <button id="new-book-btn" class="primary-btn" style="margin-bottom: 1rem;">
+      Start New Book
+    </button>
+    <div id="projects-container" class="projects-grid"></div>
+  `;
+
+  const container = document.getElementById("projects-container");
+
+  if (!projects || !projects.length) {
+    container.innerHTML = `<p>You don't have any books yet. Start a new one using the form above.</p>`;
+  } else {
+    projects.forEach((project) => {
+      const title =
+        (project.selected_idea && project.selected_idea.title) ||
+        (project.kid_name ? `Book for ${project.kid_name}` : "Untitled Book");
+
+      const status = projectStatusText(project);
+
+      const card = document.createElement("div");
+      card.className = "project-card";
+      card.innerHTML = `
+        <h3>${title}</h3>
+        <p class="project-meta">${project.kid_name || "Unknown child"}</p>
+        <p class="project-status">${status}</p>
+      `;
+
+      card.onclick = () => {
+        openExistingProject(project);
+      };
+
+      container.appendChild(card);
+    });
+  }
+
+  const newBookBtn = document.getElementById("new-book-btn");
+  if (newBookBtn) {
+    newBookBtn.onclick = startNewBookFlow;
+  }
+}
+
+async function loadDashboard() {
+  const resultsDiv = document.getElementById("results");
+  showLoader("Loading your books...");
+
+  try {
+    const res = await fetch("/api/projects-list");
+    const data = await res.json();
+
+    if (data.error) {
+      console.error(data.error);
+      resultsDiv.innerHTML =
+        "Couldn't load your books. You can still start a new one using the form.";
+      return;
+    }
+
+    renderDashboard(data.projects || []);
+  } catch (err) {
+    console.error("Dashboard load error:", err);
+    resultsDiv.innerHTML =
+      "Couldn't load your books. You can still start a new one using the form.";
+  }
+}
+
+// Open an existing project and jump to the correct step
+function openExistingProject(project) {
+  const nameInput = document.getElementById("kid-name");
+  const interestsInput = document.getElementById("kid-interests");
+  if (nameInput) nameInput.value = project.kid_name || "";
+  if (interestsInput) interestsInput.value = project.kid_interests || "";
+
+  localStorage.setItem("projectId", project.id);
+
+  // STATE 1: no ideas yet
+  if (!project.story_ideas || !project.story_ideas.length) {
+    const resultsDiv = document.getElementById("results");
+    resultsDiv.innerHTML = `
+      <p>This book doesn't have story ideas yet. Update the child's info above and click <strong>"Generate Story Ideas"</strong> to continue.</p>
+    `;
+    return;
+  }
+
+  // STATE 2: ideas but no selected idea
+  if (project.story_ideas && !project.selected_idea) {
+    renderIdeas(project.story_ideas);
+    return;
+  }
+
+  // STATE 3 / 4: selected idea + story (with or without illustrations)
+  if (project.story_json && project.story_json.length) {
+    const title =
+      (project.selected_idea && project.selected_idea.title) ||
+      (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
+
+    renderStory({
+      title,
+      pages: project.story_json
+    });
+
+    // If illustrations already exist, drop thumbnails into their spots
+    if (project.illustrations && project.illustrations.length) {
+      project.illustrations.forEach((illus) => {
+        if (illus.page && illus.image_url) {
+          showPageThumbnail(illus.page, illus.image_url);
+        }
+      });
+    }
+
+    return;
+  }
+
+  // Fallback: ideas and selected idea but no story_json yet
+  if (project.selected_idea && (!project.story_json || !project.story_json.length)) {
+    // In this case, we could auto-kickoff story writing, but for now:
+    renderIdeas(project.story_ideas);
+  }
+}
+
+/* ---------------------------------------------------
+   STORY IDEAS FLOW
+--------------------------------------------------- */
 
 // Fetch story ideas from backend
 async function fetchIdeas() {
@@ -39,7 +211,6 @@ async function fetchIdeas() {
 
     localStorage.setItem("projectId", data.projectId);
     renderIdeas(data.ideas);
-
   } catch (err) {
     console.error(err);
     resultsDiv.innerHTML = "Something went wrong.";
@@ -112,47 +283,37 @@ function renderIdeas(ideas) {
   document.getElementById("regenerate").onclick = fetchIdeas;
 }
 
+/* ---------------------------------------------------
+   STORY RENDERING + ILLUSTRATIONS
+--------------------------------------------------- */
+
 // Render the story pages + character upload + illustration controls
-function renderStory(storyResponse) {
+function renderStory(story) {
   const resultsDiv = document.getElementById("results");
 
-  console.log("=== RENDER STORY INPUT ===", storyResponse);
+  // Save pages so we can generate illustrations later
+  localStorage.setItem("lastStoryPages", JSON.stringify(story.pages));
 
-  // Extract fields safely
-  const pages = storyResponse.story_json || [];
-  const selectedIdea = storyResponse.selected_idea || {};
-  const title = selectedIdea.title || "Your Story";
-
-  if (!Array.isArray(pages) || pages.length === 0) {
-    resultsDiv.innerHTML = "<p>No story pages were returned.</p>";
-    return;
-  }
-
-  // Save pages for illustration workflow
-  localStorage.setItem("lastStoryPages", JSON.stringify(pages));
-
-  // Build pages HTML
-  const pagesHtml = pages
+  const pagesHtml = story.pages
     .map(
       (p) => `
-      <div class="story-page-block" id="page-block-${p.page}">
-        <div class="page-text">
-          <h3>Page ${p.page}</h3>
-          <p>${p.text.replace(/\n/g, "<br>")}</p>
-        </div>
-        <div class="page-illustration">
-          <div class="illustration-wrapper" id="illustration-wrapper-${p.page}">
-            <!-- Spinner or thumbnail goes here -->
-          </div>
+    <div class="story-page-block" id="page-block-${p.page}">
+      <div class="page-text">
+        <h3>Page ${p.page}</h3>
+        <p>${p.text}</p>
+      </div>
+      <div class="page-illustration">
+        <div class="illustration-wrapper" id="illustration-wrapper-${p.page}">
+          <!-- Spinner or thumbnail will go here -->
         </div>
       </div>
-    `
+    </div>
+  `
     )
     .join("");
 
-  // Render layout
   resultsDiv.innerHTML = `
-    <h2>${title}</h2>
+    <h2>${story.title}</h2>
 
     <div class="story-layout">
       ${pagesHtml}
@@ -269,7 +430,11 @@ async function generateIllustrations() {
   status.textContent = "Illustrations complete!";
 }
 
-// Upload child photo (existing functionality)
+/* ---------------------------------------------------
+   PHOTO UPLOAD + CHARACTER MODEL
+--------------------------------------------------- */
+
+// Upload child photo
 async function uploadPhoto() {
   const projectId = localStorage.getItem("projectId");
   const fileInput = document.getElementById("child-photo");
@@ -310,7 +475,7 @@ async function uploadPhoto() {
   }
 }
 
-// Generate character model (existing functionality)
+// Generate character model
 async function generateCharacterModel() {
   const projectId = localStorage.getItem("projectId");
   const characterStatus = document.getElementById("character-status");
@@ -350,7 +515,9 @@ async function generateCharacterModel() {
   }
 }
 
-// Modal: open/close and regenerate
+/* ---------------------------------------------------
+   IMAGE MODAL + REVISIONS
+--------------------------------------------------- */
 
 function openImageModal(pageNum, imageUrl) {
   const modal = document.getElementById("image-modal");
@@ -434,7 +601,9 @@ async function handleRegenerateIllustration() {
   }
 }
 
-// FORM + GLOBAL EVENT LISTENERS
+/* ---------------------------------------------------
+   GLOBAL EVENT LISTENERS
+--------------------------------------------------- */
 
 // Handle form submit
 document.getElementById("kid-form").addEventListener("submit", (e) => {
@@ -487,4 +656,9 @@ document.addEventListener("click", (e) => {
       closeImageModal();
     }
   }
+});
+
+// On load: show dashboard of saved books
+document.addEventListener("DOMContentLoaded", () => {
+  loadDashboard();
 });
