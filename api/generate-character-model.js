@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 
     // Build prompt
     const prompt = `
-Create a full-body cartoon character model sheet of the child shown in the attached image.
+Create a full-body cartoon character model sheet of the child shown in the attached image. Please use a neutral, happy face when generating this model.
 
 STYLE REQUIREMENTS (Jett Book Style):
 • Soft, rounded cartoon proportions
