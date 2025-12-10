@@ -581,8 +581,10 @@ function openImageModal(pageNum, imageUrl) {
 
 function closeImageModal() {
   const modal = document.getElementById("image-modal");
-  if (modal) modal.classList.add("hidden");
+  if (!modal) return;
+  modal.classList.add("hidden");
 }
+
 
 async function handleRegenerateIllustration() {
   const projectId = localStorage.getItem("projectId");
@@ -594,9 +596,30 @@ async function handleRegenerateIllustration() {
   const pageNum = Number(regenBtn.dataset.page || "0");
   if (!pageNum) return;
 
-  const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
-  const pageData = pages.find((p) => p.page === pageNum);
-  if (!pageData) return;
+  // Load existing illustrations to check revision count
+  let existing = [];
+  try {
+    const res = await fetch("/api/load-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId })
+    });
+    const data = await res.json();
+    existing = data?.project?.illustrations || [];
+  } catch (err) {
+    console.error("Error loading project for regeneration:", err);
+  }
+
+  // Find the illustration entry
+  const illustration = existing.find(i => i.page === pageNum);
+
+  const revisions = illustration?.revisions || 0;
+
+  // Reject if more than 2 regenerations
+  if (revisions >= 2) {
+    alert("You've reached the regeneration limit for this page (max 2).");
+    return;
+  }
 
   const wrapper = document.getElementById(`illustration-wrapper-${pageNum}`);
   if (wrapper) {
@@ -608,7 +631,11 @@ async function handleRegenerateIllustration() {
     `;
   }
 
+  // Add revision notes
   const revisionText = notes.value.trim();
+  const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
+  const pageData = pages.find(p => p.page === pageNum);
+
   const pageTextWithNotes = revisionText
     ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
     : pageData.text;
@@ -620,19 +647,24 @@ async function handleRegenerateIllustration() {
       body: JSON.stringify({
         projectId,
         page: pageNum,
-        pageText: pageTextWithNotes
+        pageText: pageTextWithNotes,
+        isRegeneration: true
       })
     });
 
     const data = await res.json();
 
     if (data && data.image_url) {
+      // Update thumbnail
       showPageThumbnail(pageNum, data.image_url);
 
+      // Update modal image
       const modalImg = document.getElementById("modal-image");
-      if (modalImg) {
-        modalImg.src = data.image_url;
-      }
+      if (modalImg) modalImg.src = data.image_url;
+
+      // Update regeneration count in local storage preview
+      illustration.revisions = revisions + 1;
+
     } else {
       if (wrapper) {
         wrapper.innerHTML = "<p>Failed to regenerate illustration.</p>";
@@ -645,6 +677,7 @@ async function handleRegenerateIllustration() {
     }
   }
 }
+
 
 /* ---------------------------------------------------
    GLOBAL EVENT LISTENERS
@@ -686,6 +719,13 @@ document.addEventListener("click", (e) => {
       openImageModal(pageNum, target.src);
     }
   }
+  
+  
+  //Regeneration modal
+  if (target.id === "regen-btn") {
+    handleRegenerateIllustration();
+  }
+  
 
   if (target.id === "close-modal") {
     closeImageModal();
@@ -695,12 +735,10 @@ document.addEventListener("click", (e) => {
     handleRegenerateIllustration();
   }
 
-  if (target.id === "image-modal") {
-    // Click outside inner content closes modal
-    if (target.classList.contains("modal")) {
-      closeImageModal();
-    }
+  if (target.id === "image-modal" && target.classList.contains("modal")) {
+    closeImageModal();
   }
+  
 });
 
 // On load: show dashboard of saved books
