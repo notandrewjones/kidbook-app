@@ -404,7 +404,7 @@ async function generateIllustrations() {
   // ⭐️ Load existing illustrations from backend
   let projectData;
   try {
-    const res = await fetch(`/api/load-project?projectId=${projectId}`);
+	const res = await fetch(`/api/load-project?projectId=${projectId}`);
     projectData = await res.json();
   } catch (err) {
     console.error("Failed to load project during illustration:", err);

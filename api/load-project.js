@@ -1,4 +1,4 @@
-// api/projects-load.js (CommonJS)
+// api/load-project.js (CommonJS)
 
 const { createClient } = require("@supabase/supabase-js");
 
@@ -13,7 +13,6 @@ async function handler(req, res) {
   }
 
   const { projectId } = req.body || {};
-
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
   }
@@ -21,8 +20,7 @@ async function handler(req, res) {
   try {
     const { data, error } = await supabase
       .from("book_projects")
-      .select(
-        `
+      .select(`
         id,
         kid_name,
         kid_interests,
@@ -33,8 +31,7 @@ async function handler(req, res) {
         character_model_url,
         context_registry,
         props_registry
-      `
-      )
+      `)
       .eq("id", projectId)
       .single();
 
@@ -47,7 +44,18 @@ async function handler(req, res) {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    return res.status(200).json({ project: data });
+    // Normalize to prevent UI crashes
+    return res.status(200).json({
+      project: {
+        ...data,
+        story_ideas: data.story_ideas || [],
+        story_json: data.story_json || [],
+        illustrations: data.illustrations || [],
+        props_registry: data.props_registry || [],
+        context_registry: data.context_registry || {}
+      }
+    });
+
   } catch (err) {
     console.error("PROJECT LOAD FATAL:", err);
     return res.status(500).json({ error: "Failed to load project" });
@@ -55,3 +63,7 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
+
+module.exports.config = {
+  api: { bodyParser: { sizeLimit: "10mb" } }
+};
