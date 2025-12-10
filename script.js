@@ -158,7 +158,18 @@ function openExistingProject(project) {
       pages: project.story_json
     });
 
-    // If illustrations already exist, drop thumbnails into their spots
+    // ⭐ AUTO-LOAD EXISTING CHARACTER MODEL
+    if (project.character_model_url) {
+      const preview = document.getElementById("character-preview");
+      if (preview) {
+        preview.innerHTML = `
+          <img src="${project.character_model_url}"
+               style="width:250px;border-radius:14px;margin-top:10px;">
+        `;
+      }
+    }
+
+    // ⭐ AUTO-LOAD ANY EXISTING ILLUSTRATIONS
     if (project.illustrations && project.illustrations.length) {
       project.illustrations.forEach((illus) => {
         if (illus.page && illus.image_url) {
@@ -169,6 +180,8 @@ function openExistingProject(project) {
 
     return;
   }
+  
+  
 
   // Fallback: ideas and selected idea but no story_json yet
   if (project.selected_idea && (!project.story_json || !project.story_json.length)) {
