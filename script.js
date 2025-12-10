@@ -401,7 +401,35 @@ async function generateIllustrations() {
 
   status.textContent = "Generating illustrations...";
 
+  // ⭐️ Load existing illustrations from backend
+  let projectData;
+  try {
+    const res = await fetch(`/api/load-project?projectId=${projectId}`);
+    projectData = await res.json();
+  } catch (err) {
+    console.error("Failed to load project during illustration:", err);
+    status.textContent = "Error loading existing illustrations.";
+    return;
+  }
+
+  const existingIllustrations = projectData.illustrations || [];
+
+  // Convert to quick-lookup map:
+  const existingByPage = {};
+  existingIllustrations.forEach((i) => {
+    existingByPage[i.page] = i.image_url;
+  });
+
+  // Loop through pages
   for (const p of pages) {
+    // ⭐️ If illustration already exists, SKIP
+    if (existingByPage[p.page]) {
+      console.log(`Page ${p.page}: already illustrated, skipping.`);
+      showPageThumbnail(p.page, existingByPage[p.page]);
+      continue;
+    }
+
+    // Otherwise → generate it
     showPageSpinner(p.page);
 
     try {
@@ -423,25 +451,20 @@ async function generateIllustrations() {
         const wrapper = document.getElementById(
           `illustration-wrapper-${p.page}`
         );
-        if (wrapper) {
-          wrapper.innerHTML =
-            "<p>Failed to generate illustration for this page.</p>";
-        }
+        if (wrapper)
+          wrapper.innerHTML = "<p>Failed to generate illustration for this page.</p>";
       }
     } catch (err) {
-      console.error("Illustration error:", err);
-      const wrapper = document.getElementById(
-        `illustration-wrapper-${p.page}`
-      );
-      if (wrapper) {
-        wrapper.innerHTML =
-          "<p>Something went wrong generating this illustration.</p>";
-      }
+      console.error(`Illustration error (page ${p.page}):`, err);
+      const wrapper = document.getElementById(`illustration-wrapper-${p.page}`);
+      if (wrapper)
+        wrapper.innerHTML = "<p>Something went wrong generating this illustration.</p>";
     }
   }
 
   status.textContent = "Illustrations complete!";
 }
+
 
 /* ---------------------------------------------------
    PHOTO UPLOAD + CHARACTER MODEL
