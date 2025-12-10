@@ -1,8 +1,8 @@
 // script.js
 
-// ---------------------------------------------------
-// GLOBAL HELPERS
-// ---------------------------------------------------
+/* ---------------------------------------------------
+   BASIC UI HELPERS
+--------------------------------------------------- */
 
 function showLoader(message) {
   const resultsDiv = document.getElementById("results");
@@ -15,7 +15,7 @@ function showLoader(message) {
 }
 
 /* ---------------------------------------------------
-   DASHBOARD HELPERS
+   DASHBOARD + PROJECT STATE HELPERS
 --------------------------------------------------- */
 
 function projectStatusText(p) {
@@ -25,7 +25,7 @@ function projectStatusText(p) {
     return "Idea selected — story not written yet";
   if (p.story_json && p.story_json.length && (!p.illustrations || !p.illustrations.length))
     return "Story ready — no illustrations yet";
-  if (p.story_json && p.story_json.length && p.illustrations?.length)
+  if (p.story_json && p.story_json.length && p.illustrations && p.illustrations.length)
     return `Story + ${p.illustrations.length} illustration(s)`;
   return "In progress";
 }
@@ -34,14 +34,13 @@ function startNewBookFlow() {
   localStorage.removeItem("projectId");
   localStorage.removeItem("selectedStoryIdea");
   localStorage.removeItem("lastStoryPages");
+  localStorage.removeItem("projectIllustrations");
 
-  const nameInput = document.getElementById("kid-name");
-  const interestsInput = document.getElementById("kid-interests");
-  if (nameInput) nameInput.value = "";
-  if (interestsInput) interestsInput.value = "";
+  document.getElementById("kid-name").value = "";
+  document.getElementById("kid-interests").value = "";
 
   document.getElementById("results").innerHTML = `
-    <p>Enter your child's name and interests, then click <strong>"Generate Story Ideas"</strong> to begin.</p>
+    <p>Enter your child's name and interests, then click <strong>"Generate Story Ideas"</strong> to start a new book.</p>
   `;
 }
 
@@ -50,79 +49,93 @@ function renderDashboard(projects) {
 
   resultsDiv.innerHTML = `
     <h2>My Books</h2>
-    <button id="new-book-btn" class="primary-btn" style="margin-bottom: 1rem;">
-      Start New Book
-    </button>
+    <button id="new-book-btn" class="primary-btn" style="margin-bottom:1rem;">Start New Book</button>
     <div id="projects-container" class="projects-grid"></div>
   `;
 
   const container = document.getElementById("projects-container");
 
   if (!projects || !projects.length) {
-    container.innerHTML = `<p>You don't have any books yet.</p>`;
-  } else {
-    projects.forEach((p) => {
-      const title =
-        p.selected_idea?.title || (p.kid_name ? `Book for ${p.kid_name}` : "Untitled Book");
-
-      container.innerHTML += `
-        <div class="project-card" data-id="${p.id}">
-          <h3>${title}</h3>
-          <p class="project-meta">${p.kid_name}</p>
-          <p class="project-status">${projectStatusText(p)}</p>
-        </div>
-      `;
-    });
+    container.innerHTML = `<p>You don't have any books yet. Start a new one using the form above.</p>`;
+    return;
   }
+
+  projects.forEach((p) => {
+    const card = document.createElement("div");
+    const title =
+      (p.selected_idea && p.selected_idea.title) ||
+      (p.kid_name ? `Book for ${p.kid_name}` : "Untitled Book");
+
+    card.className = "project-card";
+    card.innerHTML = `
+      <h3>${title}</h3>
+      <p class="project-meta">${p.kid_name || "Unknown child"}</p>
+      <p class="project-status">${projectStatusText(p)}</p>
+    `;
+    card.onclick = () => openExistingProject(p);
+    container.appendChild(card);
+  });
 
   document.getElementById("new-book-btn").onclick = startNewBookFlow;
 }
 
 async function loadDashboard() {
-  const resultsDiv = document.getElementById("results");
   showLoader("Loading your books...");
-
   try {
     const res = await fetch("/api/projects-list");
     const data = await res.json();
+    if (data.error) {
+      document.getElementById("results").innerHTML =
+        "Couldn't load your books. Start a new one above.";
+      return;
+    }
     renderDashboard(data.projects || []);
   } catch (err) {
-    resultsDiv.innerHTML = "Couldn't load books. Try again later.";
+    console.error("Dashboard load error:", err);
+    document.getElementById("results").innerHTML =
+      "Couldn't load your books. Start a new one above.";
   }
 }
 
-async function openExistingProject(project) {
-  const nameInput = document.getElementById("kid-name");
-  const interestsInput = document.getElementById("kid-interests");
-
-  if (nameInput) nameInput.value = project.kid_name || "";
-  if (interestsInput) interestsInput.value = project.kid_interests || "";
+function openExistingProject(project) {
+  document.getElementById("kid-name").value = project.kid_name || "";
+  document.getElementById("kid-interests").value = project.kid_interests || "";
 
   localStorage.setItem("projectId", project.id);
 
-  if (!project.story_ideas?.length) {
+  // No ideas yet → go to idea step
+  if (!project.story_ideas || !project.story_ideas.length) {
     document.getElementById("results").innerHTML = `
-      <p>This book has no ideas yet. Enter child info above and click "Generate Ideas".</p>
+      <p>This book doesn't have story ideas yet. Enter info above and click <strong>"Generate Story Ideas"</strong>.</p>
     `;
     return;
   }
 
+  // Ideas exist but none selected
   if (project.story_ideas && !project.selected_idea) {
     renderIdeas(project.story_ideas);
     return;
   }
 
-  if (project.story_json?.length) {
-    const title = project.selected_idea?.title || `Book for ${project.kid_name}`;
-    renderStory({ title, pages: project.story_json });
+  // Story exists → load full UI
+  if (project.story_json && project.story_json.length) {
+    renderStory({
+      title:
+        (project.selected_idea && project.selected_idea.title) ||
+        `Book for ${project.kid_name}`,
+      pages: project.story_json
+    });
 
+    // Load saved character model
     if (project.character_model_url) {
       document.getElementById("character-preview").innerHTML = `
         <img src="${project.character_model_url}" style="width:250px;border-radius:14px;margin-top:10px;">
       `;
     }
 
-    if (project.illustrations?.length) {
+    // Load illustrations
+    if (project.illustrations && project.illustrations.length) {
+      localStorage.setItem("projectIllustrations", JSON.stringify(project.illustrations));
       project.illustrations.forEach((illus) => {
         showPageThumbnail(illus.page, illus.image_url);
       });
@@ -131,7 +144,7 @@ async function openExistingProject(project) {
     return;
   }
 
-  // Fallback
+  // Story not written yet → return to idea selection
   renderIdeas(project.story_ideas);
 }
 
@@ -146,21 +159,28 @@ async function fetchIdeas() {
   showLoader("Generating story ideas...");
 
   try {
-    const existingProjectId = localStorage.getItem("projectId");
-
     const res = await fetch("/api/story-ideas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, interests, projectId: existingProjectId })
+      body: JSON.stringify({
+        name,
+        interests,
+        projectId: localStorage.getItem("projectId") || null
+      })
     });
 
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (data.error) {
+      document.getElementById("results").innerHTML =
+        "Something went wrong generating ideas.";
+      return;
+    }
 
     localStorage.setItem("projectId", data.projectId);
     renderIdeas(data.ideas);
   } catch (err) {
-    document.getElementById("results").innerHTML = "Failed to generate ideas.";
+    console.error(err);
+    document.getElementById("results").innerHTML = "Something went wrong.";
   }
 }
 
@@ -181,25 +201,32 @@ function renderIdeas(ideas) {
     card.innerHTML = `<h3>${idea.title}</h3><p>${idea.description}</p>`;
 
     card.onclick = async () => {
-      showLoader("Writing the story...");
+      showLoader("Writing your story...");
 
-      const name = document.getElementById("kid-name").value;
-      const interests = document.getElementById("kid-interests").value;
-      const projectId = localStorage.getItem("projectId");
+      try {
+        const res = await fetch("/api/write-story", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: document.getElementById("kid-name").value,
+            interests: document.getElementById("kid-interests").value,
+            selectedIdea: idea,
+            projectId: localStorage.getItem("projectId")
+          })
+        });
 
-      const res = await fetch("/api/write-story", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, interests, selectedIdea: idea, projectId })
-      });
+        const story = await res.json();
 
-      const story = await res.json();
-      if (story.error) {
-        document.getElementById("results").innerHTML = "Story generation failed.";
-        return;
+        if (story.error) {
+          document.getElementById("results").innerHTML =
+            "Something went wrong writing the story.";
+          return;
+        }
+
+        renderStory(story);
+      } catch (err) {
+        console.error(err);
       }
-
-      renderStory(story);
     };
 
     container.appendChild(card);
@@ -209,30 +236,33 @@ function renderIdeas(ideas) {
 }
 
 /* ---------------------------------------------------
-   STORY + ILLUSTRATION RENDERING
+   STORY + ILLUSTRATION UI
 --------------------------------------------------- */
 
 function renderStory(story) {
+  const resultsDiv = document.getElementById("results");
+
   localStorage.setItem("lastStoryPages", JSON.stringify(story.pages));
 
   const pagesHtml = story.pages
     .map(
       (p) => `
-      <div class="story-page-block" id="page-block-${p.page}">
+      <div class="story-page-block">
         <div class="page-text">
           <h3>Page ${p.page}</h3>
           <p>${p.text}</p>
         </div>
         <div class="page-illustration">
-          <div class="illustration-wrapper" id="illustration-wrapper-${p.page}">
-          </div>
+          <div class="illustration-wrapper" id="illustration-wrapper-${p.page}"></div>
         </div>
-      </div>`
+      </div>
+    `
     )
     .join("");
 
-  document.getElementById("results").innerHTML = `
+  resultsDiv.innerHTML = `
     <h2>${story.title}</h2>
+
     <div class="story-layout">${pagesHtml}</div>
 
     <div class="story-actions">
@@ -256,19 +286,31 @@ function renderStory(story) {
   `;
 }
 
-/* ---------------------------------------------------
-   PAGE ILLUSTRATION UI
---------------------------------------------------- */
+/* --- Thumbnail helpers with cache-busting --- */
 
-function showPageSpinner(page) {
-  document.getElementById(`illustration-wrapper-${page}`).innerHTML = `
-    <div class="page-loader"><div class="spinner"></div><p>Generating...</p></div>
+function showPageThumbnail(pageNum, imageUrl) {
+  const wrapper = document.getElementById(`illustration-wrapper-${pageNum}`);
+  if (!wrapper) return;
+
+  const freshUrl = `${imageUrl}?v=${Date.now()}`;
+
+  wrapper.innerHTML = `
+    <img src="${freshUrl}" 
+         class="illustration-thumb" 
+         data-page="${pageNum}"
+         alt="Illustration for page ${pageNum}" />
   `;
 }
 
-function showPageThumbnail(page, url) {
-  document.getElementById(`illustration-wrapper-${page}`).innerHTML = `
-    <img src="${url}" class="illustration-thumb" data-page="${page}">
+function showPageSpinner(pageNum) {
+  const wrapper = document.getElementById(`illustration-wrapper-${pageNum}`);
+  if (!wrapper) return;
+
+  wrapper.innerHTML = `
+    <div class="page-loader">
+      <div class="spinner"></div>
+      <p>Generating illustration...</p>
+    </div>
   `;
 }
 
@@ -286,6 +328,11 @@ async function generateIllustrations() {
   }
 
   const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
+  if (!pages.length) {
+    status.textContent = "No story pages found.";
+    return;
+  }
+
   status.textContent = "Loading existing illustrations...";
 
   let existing = [];
@@ -295,51 +342,138 @@ async function generateIllustrations() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId })
     });
-    existing = (await res.json()).project.illustrations || [];
-  } catch {
-    console.warn("Could not load previous illustrations");
+    existing = (await res.json()).project?.illustrations || [];
+  } catch (err) {
+    console.error(err);
   }
 
-  const donePages = new Set(existing.map((x) => x.page));
+  const completed = new Set(existing.map((e) => e.page));
 
   status.textContent = "Generating remaining illustrations...";
 
-  for (const pageObj of pages) {
-    const page = pageObj.page;
-
-    if (donePages.has(page)) {
-      showPageThumbnail(page, existing.find((x) => x.page === page).image_url);
+  for (const p of pages) {
+    if (completed.has(p.page)) {
+      const found = existing.find((e) => e.page === p.page);
+      if (found) showPageThumbnail(found.page, found.image_url);
       continue;
     }
 
-    showPageSpinner(page);
+    showPageSpinner(p.page);
 
-    const res = await fetch("/api/generate-scene", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        page,
-        pageText: pageObj.text
-      })
-    });
+    try {
+      const res = await fetch("/api/generate-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          page: p.page,
+          pageText: p.text
+        })
+      });
 
-    const data = await res.json();
-    if (data.image_url) showPageThumbnail(page, data.image_url);
+      const data = await res.json();
+      if (data.image_url) {
+        showPageThumbnail(p.page, data.image_url);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   status.textContent = "Illustrations complete!";
 }
 
 /* ---------------------------------------------------
-   IMAGE MODAL + REVISION LOGIC
+   CHARACTER MODEL
 --------------------------------------------------- */
 
-function openImageModal(page, url) {
+async function uploadPhoto() {
+  const projectId = localStorage.getItem("projectId");
+  const fileInput = document.getElementById("child-photo");
+  const uploadStatus = document.getElementById("upload-status");
+
+  if (!fileInput || !fileInput.files.length) {
+    uploadStatus.innerText = "Please choose a photo.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("photo", fileInput.files[0]);
+  formData.append("projectId", projectId);
+
+  uploadStatus.innerText = "Uploading...";
+
+  try {
+    const res = await fetch("/api/upload-child-photo", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+    if (data.photoUrl) {
+      uploadStatus.innerText = "Uploaded!";
+      document.getElementById("character-preview").innerHTML = `
+        <img src="${data.photoUrl}" style="width:200px;border-radius:10px;margin-top:10px;">
+      `;
+    } else {
+      uploadStatus.innerText = "Upload failed.";
+    }
+  } catch (err) {
+    console.error(err);
+    uploadStatus.innerText = "Upload failed.";
+  }
+}
+
+async function generateCharacterModel() {
+  const projectId = localStorage.getItem("projectId");
+  const characterStatus = document.getElementById("character-status");
+
+  if (!projectId) {
+    characterStatus.innerText = "No project found.";
+    return;
+  }
+
+  characterStatus.innerText = "Generating...";
+
+  try {
+    const res = await fetch("/api/generate-character-model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kidName: document.getElementById("kid-name").value
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.characterModelUrl) {
+      characterStatus.innerText = "Done!";
+      document.getElementById("character-preview").innerHTML = `
+        <img src="${data.characterModelUrl}" 
+             style="width:250px;border-radius:14px;margin-top:10px;">
+      `;
+    } else {
+      characterStatus.innerText = "Failed.";
+    }
+  } catch (err) {
+    console.error(err);
+    characterStatus.innerText = "Failed.";
+  }
+}
+
+/* ---------------------------------------------------
+   MODAL + REGENERATION
+--------------------------------------------------- */
+
+function openImageModal(pageNum, imageUrl) {
   const modal = document.getElementById("image-modal");
-  document.getElementById("modal-image").src = url;
+  const img = document.getElementById("modal-image");
+  const regenBtn = document.getElementById("regen-btn");
+
+  img.src = `${imageUrl}?v=${Date.now()}`; // fresh
+  regenBtn.dataset.page = pageNum;
   document.getElementById("revision-notes").value = "";
-  document.getElementById("regen-btn").dataset.page = page;
 
   modal.classList.remove("hidden");
 }
@@ -350,90 +484,93 @@ function closeImageModal() {
 
 async function handleRegenerateIllustration() {
   const projectId = localStorage.getItem("projectId");
-  const page = Number(document.getElementById("regen-btn").dataset.page);
+  const pageNum = Number(document.getElementById("regen-btn").dataset.page);
+  const revisionNotes = document.getElementById("revision-notes").value.trim();
 
-  // Prevent unlimited regenerations
-  let existing = [];
-  try {
-    const res = await fetch("/api/load-project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId })
-    });
-    existing = (await res.json()).project.illustrations || [];
-  } catch {}
-
-  const record = existing.find((i) => i.page === page);
-  const revisions = record?.revisions || 0;
+  // Get existing revisions
+  const res = await fetch("/api/load-project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId })
+  });
+  const project = (await res.json()).project;
+  const illus = project.illustrations || [];
+  const current = illus.find((i) => i.page === pageNum);
+  const revisions = current?.revisions || 0;
 
   if (revisions >= 2) {
-    alert("You've reached the maximum of 2 regenerations.");
+    alert("Maximum regeneration limit reached for this page.");
     return;
   }
 
-  const revisionText = document.getElementById("revision-notes").value.trim();
-  const storyPages = JSON.parse(localStorage.getItem("lastStoryPages"));
-  const pageData = storyPages.find((p) => p.page === page);
+  const pages = JSON.parse(localStorage.getItem("lastStoryPages"));
+  const pageData = pages.find((p) => p.page === pageNum);
 
-  const combinedText = revisionText
-    ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
+  const combinedText = revisionNotes
+    ? `${pageData.text}\n\nArtist revision notes: ${revisionNotes}`
     : pageData.text;
 
-  showPageSpinner(page);
+  showPageSpinner(pageNum);
 
-  const res = await fetch("/api/generate-scene", {
+  const regenRes = await fetch("/api/generate-scene", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       projectId,
-      page,
+      page: pageNum,
       pageText: combinedText,
       isRegeneration: true
     })
   });
 
-  const data = await res.json();
+  const data = await regenRes.json();
 
-  if (data.image_url) {
-    showPageThumbnail(page, data.image_url);
-    document.getElementById("modal-image").src = data.image_url;
+  if (!data.image_url) {
+    alert("Regeneration failed.");
+    return;
   }
+
+  // Update thumbnail
+  showPageThumbnail(pageNum, data.image_url);
+
+  // Update modal image
+  document.getElementById("modal-image").src = `${data.image_url}?v=${Date.now()}`;
 }
 
 /* ---------------------------------------------------
-   GLOBAL CLICK DELEGATION (FIXED)
+   GLOBAL CLICK DELEGATION
 --------------------------------------------------- */
 
 document.addEventListener("click", (e) => {
   const t = e.target;
 
-  if (t.id === "upload-btn") return uploadPhoto();
-  if (t.id === "generate-character-btn") return generateCharacterModel();
-  if (t.id === "generate-illustrations-btn") return generateIllustrations();
-
-  if (t.classList.contains("project-card")) {
-    const id = t.dataset.id;
-    fetch("/api/load-project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: id })
-    })
-      .then((res) => res.json())
-      .then((data) => openExistingProject(data.project));
-  }
+  if (t.id === "upload-btn") uploadPhoto();
+  if (t.id === "generate-character-btn") generateCharacterModel();
+  if (t.id === "generate-illustrations-btn") generateIllustrations();
 
   if (t.classList.contains("illustration-thumb")) {
-    return openImageModal(Number(t.dataset.page), t.src);
+    const pageNum = Number(t.dataset.page);
+    openImageModal(pageNum, t.src);
   }
 
-  if (t.id === "regen-btn") return handleRegenerateIllustration();
-  if (t.id === "close-modal") return closeImageModal();
+  if (t.id === "close-modal") closeImageModal();
+  if (t.id === "regen-btn") handleRegenerateIllustration();
 
-  if (t.id === "image-modal") return closeImageModal();
+  if (t.id === "image-modal" && t.classList.contains("modal")) {
+    closeImageModal();
+  }
 });
 
 /* ---------------------------------------------------
-   INIT
+   FORM + LOADING DASHBOARD
 --------------------------------------------------- */
 
+document.getElementById("kid-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  fetchIdeas();
+});
+
+document.getElementById("reset-session").addEventListener("click", startNewBookFlow);
+
+// Load dashboard on startup
 document.addEventListener("DOMContentLoaded", loadDashboard);
