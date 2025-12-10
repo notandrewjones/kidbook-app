@@ -399,37 +399,39 @@ async function generateIllustrations() {
     return;
   }
 
-  status.textContent = "Generating illustrations...";
+  status.textContent = "Checking existing illustrations...";
 
-  // ⭐️ Load existing illustrations from backend
-  let projectData;
+  // Load existing illustrations from backend
+  let existing = [];
   try {
-	const res = await fetch(`/api/load-project?projectId=${projectId}`);
-    projectData = await res.json();
+    const res = await fetch("/api/load-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId })
+    });
+    const data = await res.json();
+    existing = data?.project?.illustrations || [];
   } catch (err) {
-    console.error("Failed to load project during illustration:", err);
-    status.textContent = "Error loading existing illustrations.";
-    return;
+    console.error("Error loading previous illustrations:", err);
   }
 
-  const existingIllustrations = projectData.illustrations || [];
+  // Build a quick lookup table for pages already completed
+  const completedPages = new Set(existing.map((i) => i.page));
 
-  // Convert to quick-lookup map:
-  const existingByPage = {};
-  existingIllustrations.forEach((i) => {
-    existingByPage[i.page] = i.image_url;
-  });
+  status.textContent = "Generating remaining illustrations...";
 
-  // Loop through pages
+  // Loop through pages, but skip ones already completed
   for (const p of pages) {
-    // ⭐️ If illustration already exists, SKIP
-    if (existingByPage[p.page]) {
-      console.log(`Page ${p.page}: already illustrated, skipping.`);
-      showPageThumbnail(p.page, existingByPage[p.page]);
-      continue;
+    if (completedPages.has(p.page)) {
+      // Already done — show the thumbnail again
+      const existingIllustration = existing.find((i) => i.page === p.page);
+      if (existingIllustration?.image_url) {
+        showPageThumbnail(p.page, existingIllustration.image_url);
+      }
+      continue; // <-- Skip regeneration
     }
 
-    // Otherwise → generate it
+    // Not completed — generate now
     showPageSpinner(p.page);
 
     try {
@@ -451,19 +453,26 @@ async function generateIllustrations() {
         const wrapper = document.getElementById(
           `illustration-wrapper-${p.page}`
         );
-        if (wrapper)
-          wrapper.innerHTML = "<p>Failed to generate illustration for this page.</p>";
+        if (wrapper) {
+          wrapper.innerHTML =
+            "<p>Failed to generate illustration for this page.</p>";
+        }
       }
     } catch (err) {
-      console.error(`Illustration error (page ${p.page}):`, err);
-      const wrapper = document.getElementById(`illustration-wrapper-${p.page}`);
-      if (wrapper)
-        wrapper.innerHTML = "<p>Something went wrong generating this illustration.</p>";
+      console.error("Illustration error:", err);
+      const wrapper = document.getElementById(
+        `illustration-wrapper-${p.page}`
+      );
+      if (wrapper) {
+        wrapper.innerHTML =
+          "<p>Something went wrong generating this illustration.</p>";
+      }
     }
   }
 
   status.textContent = "Illustrations complete!";
 }
+
 
 
 /* ---------------------------------------------------
