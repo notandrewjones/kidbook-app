@@ -14,6 +14,7 @@
 
     <h1 class="title">Kids Book Creator</h1>
 
+    <!-- CHILD INPUT FORM -->
     <form id="kid-form" class="input-card">
       <label>Child's Name</label>
       <input id="kid-name" type="text" placeholder="Name" required />
@@ -24,16 +25,28 @@
       <button type="submit" class="primary-btn">Generate Story Ideas</button>
     </form>
 
+    <!-- RESET / NEW BOOK BUTTON -->
     <button id="reset-session" class="secondary-btn">Start New Book</button>
 
+    <!-- MAIN CONTENT AREA -->
     <div id="results" class="results"></div>
   </div>
 
-  <!-- 🔍 Illustration Modal -->
+  <!-- ======================================================
+       ILLUSTRATION MODAL
+       ====================================================== -->
   <div id="image-modal" class="modal hidden">
+    <!-- Clicking outside modal-inner closes the modal -->
     <div class="modal-inner" onclick="event.stopPropagation()">
-      <img id="modal-image" src="" alt="Illustration preview" />
-      <textarea id="revision-notes" placeholder="Add notes for regeneration (optional)..."></textarea>
+
+      <img id="modal-image" src="" alt="Illustration preview" class="modal-image" />
+
+      <textarea
+        id="revision-notes"
+        placeholder="Add notes for regeneration (optional)..."
+        class="modal-textarea"
+      ></textarea>
+
       <div class="modal-actions">
         <button id="regen-btn" class="primary-btn">Regenerate</button>
         <button id="close-modal" class="secondary-btn">Close</button>
