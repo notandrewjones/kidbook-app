@@ -119,6 +119,66 @@ Text: "${pageText}"
 }
 
 // -------------------------------------------------------
+// Helper: Infer implicit scene state from full story
+// -------------------------------------------------------
+async function inferSceneState(allPages, currentPageNumber) {
+  if (!Array.isArray(allPages) || allPages.length === 0) {
+    return { assumed_actions: [], assumed_positions: [], notes: "" };
+  }
+
+  const pagesText = allPages
+    .map(p => `Page ${p.page}: ${p.text}`)
+    .join("\n");
+
+  const prompt = `
+You are analyzing narrative continuity for a children's picture book.
+
+Your task:
+Determine what MUST be true on the CURRENT PAGE
+for the story to make logical sense, even if not explicitly stated.
+
+Return ONLY JSON in this exact format:
+
+{
+  "assumed_actions": [],
+  "assumed_positions": [],
+  "notes": ""
+}
+
+Rules:
+• Use future pages to infer intent
+• Do NOT invent new actions
+• Only include assumptions REQUIRED for continuity
+• Be conservative and specific
+
+CURRENT PAGE: ${currentPageNumber}
+
+STORY:
+${pagesText}
+`;
+
+  const response = await client.responses.create({
+    model: "gpt-4.1-mini",
+    input: prompt,
+  });
+
+  const raw =
+    response.output_text ??
+    response.output?.[0]?.content?.[0]?.text;
+
+  if (!raw) {
+    return { assumed_actions: [], assumed_positions: [], notes: "" };
+  }
+
+  try {
+    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch {
+    return { assumed_actions: [], assumed_positions: [], notes: "" };
+  }
+}
+
+
+// -------------------------------------------------------
 // Main handler (CommonJS export)
 // -------------------------------------------------------
 async function handler(req, res) {
@@ -126,7 +186,8 @@ async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { projectId, page, pageText, isRegeneration } = req.body || {};
+  const { projectId, page, pageText, isRegeneration, allPages } = req.body || {};
+
 
   if (!projectId || !page || !pageText) {
     return res
@@ -240,6 +301,16 @@ const protagonist =
     console.log("=== DETECTED LOCATION ===");
     console.log(detectedLocation);
     console.log("===========================");
+	
+	// -------------------------------------------------------
+// Infer implicit scene state for continuity
+// -------------------------------------------------------
+const sceneState = await inferSceneState(allPages, page);
+
+console.log("=== SCENE STATE INFERENCE ===");
+console.log(sceneState);
+console.log("=============================");
+
 
     // 4. Build the generation prompt with context + registry
     const environmentsJson = JSON.stringify(
@@ -303,6 +374,15 @@ ${environmentsJson}
 
 PROP REGISTRY (for prop continuity across pages):
 ${propsJson}
+
+IMPLICIT SCENE STATE (required for narrative continuity):
+${JSON.stringify(sceneState, null, 2)}
+
+IMPORTANT:
+• Treat assumed actions and positions as TRUE for this illustration
+• Characters should be positioned accordingly
+• Do NOT contradict explicit page text
+
 
 CHARACTER VISUAL RULES:
 ${characterVisualRules}
