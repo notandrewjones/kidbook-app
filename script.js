@@ -215,15 +215,23 @@ function renderIdeas(ideas) {
           })
         });
 
-        const story = await res.json();
+        const data = await res.json();
 
-        if (story.error) {
-          document.getElementById("results").innerHTML =
-            "Something went wrong writing the story.";
-          return;
-        }
+		if (data.error) {
+			console.error(data.error);
+			document.getElementById("results").innerHTML =
+				"Something went wrong writing the story.";
+			return;
+			}
 
-        renderStory(story);
+		// 🔑 Normalize API response into renderStory format
+		renderStory({
+			title:
+				data.selected_idea?.title ||
+				`Book for ${document.getElementById("kid-name").value}`,
+				pages: data.story_json
+		});
+
       } catch (err) {
         console.error(err);
       }
