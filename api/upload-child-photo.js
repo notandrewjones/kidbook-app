@@ -79,8 +79,8 @@ export default async function handler(req, res) {
   .from("book_images")
   .getPublicUrl(filePath);
 
-const photoUrl = publicUrlData.publicUrl;
-console.log("Returning public image URL:", photoUrl);
+	const photoUrl = publicUrlData.publicUrl;
+	console.log("Returning public image URL:", photoUrl);
 
 
     // Save into book_projects
