@@ -289,6 +289,109 @@ function renderStoryboard(project) {
   const illus = Array.isArray(project.illustrations) ? project.illustrations : [];
   const illusMap = new Map(illus.map(i => [Number(i.page), i]));
 
+  // -------------------------------
+  // Header actions
+  // -------------------------------
+  const topActions = `
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <button id="open-upload-modal" class="btn btn-secondary">Upload Photo</button>
+      <button id="generate-character-btn" class="btn btn-primary">Generate Character Model</button>
+      <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
+    </div>
+    <div id="character-status" class="status-line"></div>
+    <div id="illustration-status" class="status-line"></div>
+  `;
+
+  // -------------------------------
+  // Filter pages FIRST
+  // -------------------------------
+  const filtered = pages.filter(p => {
+    const i = illusMap.get(Number(p.page));
+    const has = !!i?.image_url;
+    if (CURRENT_FILTER === "missing") return !has;
+    if (CURRENT_FILTER === "ready") return has;
+    if (CURRENT_FILTER === "errors") return false;
+    return true;
+  });
+
+  // -------------------------------
+  // Build cards SECOND
+  // -------------------------------
+  const cards = filtered.map(p => {
+    const i = illusMap.get(Number(p.page));
+    const url = i?.image_url || "";
+    const rev = typeof i?.revisions === "number" ? i.revisions : 0;
+    const badge = url ? `Ready • r${rev}` : "Missing";
+
+    return `
+      <div class="story-card" data-page="${p.page}" data-image="${url}">
+        <div class="thumb">
+          <span class="badge">Page ${p.page} • ${badge}</span>
+          ${
+            url
+              ? `<img src="${url}" alt="Page ${p.page}">`
+              : `<div class="spinner"></div>`
+          }
+        </div>
+        <div class="card-body">
+          <div class="card-title">Page ${p.page}</div>
+          <p class="card-sub">${escapeHtml(p.text)}</p>
+          <div class="card-meta">
+            <span>${url ? "Preview / Regenerate" : "Generate"}</span>
+            <span>${url ? "✓" : "+"}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // -------------------------------
+  // Decide layout LAST
+  // -------------------------------
+  const containerClass = CURRENT_VIEW === "list" ? "list" : "grid";
+
+  results.innerHTML = `
+    ${topActions}
+    <div class="${containerClass}">
+      ${cards}
+    </div>
+  `;
+
+  // -------------------------------
+  // Wire events
+  // -------------------------------
+  results.querySelectorAll("[data-page]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const pageNum = Number(el.getAttribute("data-page"));
+      const url = el.getAttribute("data-image");
+
+      if (url) {
+        openImageModal(pageNum, url);
+      } else {
+        const pageObj = pages.find(x => Number(x.page) === pageNum);
+        if (!pageObj) return;
+
+        await generateSingleIllustration(pageNum, pageObj.text);
+        const pid = localStorage.getItem("projectId");
+        if (pid) await openProjectById(pid);
+      }
+    });
+  });
+
+  $("open-upload-modal")?.addEventListener("click", openUploadModal);
+  $("generate-character-btn")?.addEventListener("click", generateCharacterModel);
+  $("generate-illustrations-btn")?.addEventListener("click", generateIllustrations);
+
+  initUploadModal();
+}
+
+  const results = $("results");
+  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json || []));
+
+  const pages = project.story_json || [];
+  const illus = Array.isArray(project.illustrations) ? project.illustrations : [];
+  const illusMap = new Map(illus.map(i => [Number(i.page), i]));
+
   // Header actions (character + scenes)
   const characterPreview = project.character_model_url ? `
   <div class="character-preview">
