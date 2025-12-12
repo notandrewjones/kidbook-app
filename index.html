@@ -3,47 +3,194 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kids Book Creator</title>
 
   <link rel="stylesheet" href="styles.css" />
-
-  <title>Kids Book Creator</title>
 </head>
 
 <body>
-  <div class="app-container">
+  <!-- App Shell -->
+  <div class="app-shell">
 
-    <h1 class="title">Kids Book Creator</h1>
+    <!-- Top Nav -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand">
+          <div class="brand-mark">KB</div>
+          <div class="brand-text">
+            <div class="brand-name">Kids Book Creator</div>
+            <div class="brand-sub">Story → Character → Scenes</div>
+          </div>
+        </div>
 
-    <form id="kid-form" class="input-card">
-      <label>Child's Name</label>
-      <input id="kid-name" type="text" placeholder="Name" required />
+        <div class="search-wrap">
+          <input id="global-search" class="search-input" placeholder="Search projects (placeholder)..." />
+          <span class="kbd-hint">⌘K</span>
+        </div>
+      </div>
 
-      <label>Child's Interests</label>
-      <input id="kid-interests" type="text" placeholder="Interests" />
+      <div class="topbar-right">
+        <button id="theme-toggle" class="icon-btn" title="Toggle theme (placeholder)">
+          <span class="icon">☾</span>
+        </button>
 
-      <button type="submit" class="primary-btn">Generate Story Ideas</button>
-    </form>
+        <!-- Account placeholder -->
+        <div class="account">
+          <button id="account-btn" class="account-btn">
+            <span class="avatar">A</span>
+            <span class="account-meta">
+              <span class="account-name">Account</span>
+              <span class="account-sub">Login / Orders</span>
+            </span>
+            <span class="chev">▾</span>
+          </button>
 
-    <button id="reset-session" class="secondary-btn">Start New Book</button>
+          <div id="account-menu" class="account-menu hidden">
+            <button class="menu-item" id="login-btn">Log in (placeholder)</button>
+            <button class="menu-item" id="logout-btn">Log out (placeholder)</button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="orders-btn">Orders (placeholder)</button>
+          </div>
+        </div>
+      </div>
+    </header>
 
-    <div id="results" class="results"></div>
-  </div>
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Left Panel / Controls -->
+      <aside class="panel">
+        <div class="panel-card">
+          <div class="panel-title">Create a new book</div>
 
-  <!-- 🔍 Illustration Modal -->
-  <div id="image-modal" class="modal hidden">
-    <!-- ⬇️ NO onclick HERE ANYMORE -->
-    <div class="modal-inner">
-      <img id="modal-image" src="" alt="Illustration preview" class="modal-image" />
-      <textarea
-        id="revision-notes"
-        placeholder="Add notes for regeneration (optional)..."
-        class="modal-textarea"
-      ></textarea>
-      <div class="modal-actions">
-        <button id="regen-btn" class="primary-btn">Regenerate</button>
-        <button id="close-modal" class="secondary-btn">Close</button>
+          <form id="kid-form" class="form">
+            <label class="label">Child’s Name</label>
+            <input id="kid-name" class="input" type="text" placeholder="e.g., Hannah" required />
+
+            <label class="label">Child’s Interests</label>
+            <input id="kid-interests" class="input" type="text" placeholder="e.g., space, puppies, soccer" />
+
+            <button type="submit" class="btn btn-primary">
+              <span>Generate Story Ideas</span>
+              <span class="btn-suffix">↵</span>
+            </button>
+          </form>
+
+          <div class="panel-actions">
+            <button id="reset-session" class="btn btn-ghost">Start New Book</button>
+            <button id="go-dashboard" class="btn btn-secondary">My Books</button>
+          </div>
+        </div>
+
+        <div class="panel-card subtle">
+          <div class="panel-title">Tips</div>
+          <ul class="tips">
+            <li>Keep interests short (3–6 words).</li>
+            <li>Regenerate scenes with “Artist revision notes”.</li>
+            <li>Use storyboard grid to spot inconsistencies fast.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- Workspace -->
+      <section class="workspace">
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h2 id="workspace-title">Workspace</h2>
+            <p id="workspace-subtitle">Pick a project or generate story ideas to begin.</p>
+          </div>
+
+          <!-- View / Filter Controls -->
+          <div class="workspace-controls">
+            <div class="segmented">
+              <button class="seg-btn active" data-view="grid" id="view-grid">Grid</button>
+              <button class="seg-btn" data-view="list" id="view-list">List</button>
+            </div>
+
+            <select id="page-filter" class="select">
+              <option value="all">All pages</option>
+              <option value="missing">Missing</option>
+              <option value="ready">Ready</option>
+              <option value="errors">Errors</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Results mount -->
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <!-- Illustration Preview + Regenerate Modal -->
+    <div id="image-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-dialog" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <div class="modal-title">Illustration Preview</div>
+            <div id="modal-subtitle" class="modal-subtitle">Page</div>
+          </div>
+          <button id="close-modal" class="icon-btn" title="Close">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-image-wrap">
+            <img id="modal-image" src="" alt="Illustration preview" />
+          </div>
+
+          <div class="modal-side">
+            <label class="label">Revision notes</label>
+            <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add a red kite..."></textarea>
+
+            <button id="regen-btn" class="btn btn-primary">
+              <span>Regenerate</span>
+              <span class="pill">max 2</span>
+            </button>
+
+            <div class="modal-help">
+              Add notes after “Artist revision notes:” is automatically appended.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+
+    <!-- Custom Upload Modal -->
+    <div id="upload-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-dialog modal-dialog-sm" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <div class="modal-title">Upload a photo</div>
+            <div class="modal-subtitle">We’ll use this to generate the character model.</div>
+          </div>
+          <button id="close-upload-modal" class="icon-btn" title="Close">✕</button>
+        </div>
+
+        <div class="modal-body modal-body-col">
+          <div id="dropzone" class="dropzone" tabindex="0">
+            <div class="dropzone-inner">
+              <div class="drop-icon">⬆︎</div>
+              <div class="drop-title">Drag & drop your image here</div>
+              <div class="drop-sub">or click to choose a file</div>
+              <div class="drop-hint">PNG / JPG • up to ~10MB</div>
+            </div>
+          </div>
+
+          <input id="child-photo" type="file" accept="image/*" class="hidden" />
+
+          <div class="upload-preview-row">
+            <div id="upload-preview" class="upload-preview hidden"></div>
+            <div class="upload-actions">
+              <button id="choose-file-btn" class="btn btn-secondary">Choose file</button>
+              <button id="upload-btn" class="btn btn-primary">Upload</button>
+            </div>
+          </div>
+
+          <div id="upload-status" class="status-line"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="script.js"></script>

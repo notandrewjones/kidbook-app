@@ -1,335 +1,628 @@
-// script.js
+// script.js (UI overhaul + storyboard grid + custom upload modal)
 
-/* ---------------------------------------------------
-   BASIC UI HELPERS
---------------------------------------------------- */
+let CURRENT_VIEW = "grid";
+let CURRENT_FILTER = "all";
+
+// -----------------------------------------------------
+// Small utilities
+// -----------------------------------------------------
+function $(id) { return document.getElementById(id); }
+
+function setWorkspaceTitle(title, subtitle) {
+  const t = $("workspace-title");
+  const s = $("workspace-subtitle");
+  if (t) t.textContent = title || "Workspace";
+  if (s) s.textContent = subtitle || "";
+}
 
 function showLoader(message) {
-  const resultsDiv = document.getElementById("results");
-  resultsDiv.innerHTML = `
-    <div class="loader-container">
+  const results = $("results");
+  results.innerHTML = `
+    <div class="loader">
       <div class="spinner"></div>
-      <p>${message}</p>
+      <div>${message || "Loading..."}</div>
     </div>
   `;
 }
 
-/* ---------------------------------------------------
-   DASHBOARD + PROJECT STATE HELPERS
---------------------------------------------------- */
+// -----------------------------------------------------
+// Account menu placeholder
+// -----------------------------------------------------
+function initAccountMenu() {
+  const btn = $("account-btn");
+  const menu = $("account-menu");
+  if (!btn || !menu) return;
 
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("hidden");
+  });
+
+  document.addEventListener("click", () => {
+    menu.classList.add("hidden");
+  });
+
+  // placeholder actions
+  $("login-btn")?.addEventListener("click", () => alert("Login UI later"));
+  $("logout-btn")?.addEventListener("click", () => alert("Logout later"));
+  $("orders-btn")?.addEventListener("click", () => alert("Orders UI later"));
+}
+
+// -----------------------------------------------------
+// Dashboard
+// -----------------------------------------------------
 function projectStatusText(p) {
   if (!p.story_ideas || !p.story_ideas.length) return "No story ideas yet";
   if (p.story_ideas && !p.selected_idea) return "Ideas ready — pick one";
-  if (p.selected_idea && (!p.story_json || !p.story_json.length))
-    return "Idea selected — story not written yet";
-  if (p.story_json && p.story_json.length && (!p.illustrations || !p.illustrations.length))
-    return "Story ready — no illustrations yet";
-  if (p.story_json && p.story_json.length && p.illustrations && p.illustrations.length)
-    return `Story + ${p.illustrations.length} illustration(s)`;
+  if (p.selected_idea && (!p.story_json || !p.story_json.length)) return "Idea selected — story not written yet";
+  if (p.story_json?.length && (!p.illustrations || !p.illustrations.length)) return "Story ready — no illustrations yet";
+  if (p.story_json?.length && p.illustrations?.length) return `Story + ${p.illustrations.length} illustration(s)`;
   return "In progress";
 }
 
-function startNewBookFlow() {
-  localStorage.removeItem("projectId");
-  localStorage.removeItem("selectedStoryIdea");
-  localStorage.removeItem("lastStoryPages");
-  localStorage.removeItem("projectIllustrations");
+async function loadDashboard() {
+  setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
+  showLoader("Loading your books...");
 
-  document.getElementById("kid-name").value = "";
-  document.getElementById("kid-interests").value = "";
-
-  document.getElementById("results").innerHTML = `
-    <p>Enter your child's name and interests, then click <strong>"Generate Story Ideas"</strong> to start a new book.</p>
-  `;
+  try {
+    const res = await fetch("/api/projects-list");
+    const data = await res.json();
+    renderDashboard(data.projects || []);
+  } catch (e) {
+    console.error(e);
+    $("results").innerHTML = `<div class="loader">Couldn’t load projects.</div>`;
+  }
 }
 
 function renderDashboard(projects) {
-  const resultsDiv = document.getElementById("results");
+  const results = $("results");
 
-  resultsDiv.innerHTML = `
-    <h2>My Books</h2>
-    <button id="new-book-btn" class="primary-btn" style="margin-bottom:1rem;">Start New Book</button>
-    <div id="projects-container" class="projects-grid"></div>
-  `;
-
-  const container = document.getElementById("projects-container");
-
-  if (!projects || !projects.length) {
-    container.innerHTML = `<p>You don't have any books yet. Start a new one using the form above.</p>`;
+  if (!projects.length) {
+    results.innerHTML = `
+      <div class="loader">
+        <div>No projects yet.</div>
+      </div>
+    `;
     return;
   }
 
-  projects.forEach((p) => {
-    const card = document.createElement("div");
+  const cards = projects.map(p => {
     const title =
       (p.selected_idea && p.selected_idea.title) ||
       (p.kid_name ? `Book for ${p.kid_name}` : "Untitled Book");
 
-    card.className = "project-card";
-    card.innerHTML = `
-      <h3>${title}</h3>
-      <p class="project-meta">${p.kid_name || "Unknown child"}</p>
-      <p class="project-status">${projectStatusText(p)}</p>
+    const status = projectStatusText(p);
+
+    return `
+      <div class="story-card" data-open-project="${p.id}">
+        <div class="thumb">
+          <span class="badge">${status}</span>
+          ${p.illustrations?.[0]?.image_url ? `<img src="${p.illustrations[0].image_url}" alt="thumb">` : ""}
+        </div>
+        <div class="card-body">
+          <div class="card-title">${escapeHtml(title)}</div>
+          <p class="card-sub">${escapeHtml(p.kid_name || "Unknown child")}</p>
+          <div class="card-meta">
+            <span>${escapeHtml(p.id.slice(0,8))}</span>
+            <span>Open</span>
+          </div>
+        </div>
+      </div>
     `;
-    card.onclick = () => openExistingProject(p);
-    container.appendChild(card);
+  }).join("");
+
+  results.innerHTML = `<div class="grid">${cards}</div>`;
+
+  results.querySelectorAll("[data-open-project]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const id = el.getAttribute("data-open-project");
+      await openProjectById(id);
+    });
   });
-
-  document.getElementById("new-book-btn").onclick = startNewBookFlow;
 }
 
-async function loadDashboard() {
-  showLoader("Loading your books...");
-  try {
-    const res = await fetch("/api/projects-list");
-    const data = await res.json();
-    if (data.error) {
-      document.getElementById("results").innerHTML =
-        "Couldn't load your books. Start a new one above.";
-      return;
-    }
-    renderDashboard(data.projects || []);
-  } catch (err) {
-    console.error("Dashboard load error:", err);
-    document.getElementById("results").innerHTML =
-      "Couldn't load your books. Start a new one above.";
-  }
-}
+// -----------------------------------------------------
+// Project open + story / ideas
+// -----------------------------------------------------
+async function openProjectById(projectId) {
+  localStorage.setItem("projectId", projectId);
+  showLoader("Loading project...");
 
-function openExistingProject(project) {
-  document.getElementById("kid-name").value = project.kid_name || "";
-  document.getElementById("kid-interests").value = project.kid_interests || "";
+  const res = await fetch("/api/load-project", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ projectId })
+  });
+  const data = await res.json();
 
-  localStorage.setItem("projectId", project.id);
-
-  // No ideas yet → go to idea step
-  if (!project.story_ideas || !project.story_ideas.length) {
-    document.getElementById("results").innerHTML = `
-      <p>This book doesn't have story ideas yet. Enter info above and click <strong>"Generate Story Ideas"</strong>.</p>
-    `;
+  const project = data?.project;
+  if (!project) {
+    $("results").innerHTML = `<div class="loader">Couldn’t load that project.</div>`;
     return;
   }
 
-  // Ideas exist but none selected
-  if (project.story_ideas && !project.selected_idea) {
+  // populate inputs
+  $("kid-name").value = project.kid_name || "";
+  $("kid-interests").value = project.kid_interests || "";
+
+  // state routing
+  if (!project.story_ideas?.length) {
+    setWorkspaceTitle("Project", "Generate story ideas to begin.");
+    $("results").innerHTML = `<div class="loader">This book has no ideas yet. Use the form to generate them.</div>`;
+    return;
+  }
+
+  if (project.story_ideas?.length && !project.selected_idea) {
+    setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
     renderIdeas(project.story_ideas);
     return;
   }
 
-  // Story exists → load full UI
-  if (project.story_json && project.story_json.length) {
-    renderStory({
-      title:
-        (project.selected_idea && project.selected_idea.title) ||
-        `Book for ${project.kid_name}`,
-      pages: project.story_json
-    });
-
-    // Load saved character model
-    if (project.character_model_url) {
-      document.getElementById("character-preview").innerHTML = `
-        <img src="${project.character_model_url}" style="width:250px;border-radius:14px;margin-top:10px;">
-      `;
-    }
-
-    // Load illustrations
-    if (project.illustrations && project.illustrations.length) {
-      localStorage.setItem("projectIllustrations", JSON.stringify(project.illustrations));
-      project.illustrations.forEach((illus) => {
-        showPageThumbnail(illus.page, illus.image_url);
-      });
-    }
-
+  if (project.story_json?.length) {
+    const title =
+      (project.selected_idea && project.selected_idea.title) ||
+      (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
+    setWorkspaceTitle(title, "Storyboard view");
+    renderStoryboard(project);
     return;
   }
 
-  // Story not written yet → return to idea selection
+  // fallback
   renderIdeas(project.story_ideas);
 }
 
-/* ---------------------------------------------------
-   STORY IDEA GENERATION
---------------------------------------------------- */
-
 async function fetchIdeas() {
-  const name = document.getElementById("kid-name").value;
-  const interests = document.getElementById("kid-interests").value;
+  const name = $("kid-name").value.trim();
+  const interests = $("kid-interests").value.trim();
+  if (!name) return;
 
   showLoader("Generating story ideas...");
 
-  try {
-    const res = await fetch("/api/story-ideas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        interests,
-        projectId: localStorage.getItem("projectId") || null
-      })
-    });
+  const existingProjectId = localStorage.getItem("projectId");
+  const res = await fetch("/api/story-ideas", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ name, interests, projectId: existingProjectId || null })
+  });
 
-    const data = await res.json();
-    if (data.error) {
-      document.getElementById("results").innerHTML =
-        "Something went wrong generating ideas.";
-      return;
-    }
-
-    localStorage.setItem("projectId", data.projectId);
-    renderIdeas(data.ideas);
-  } catch (err) {
-    console.error(err);
-    document.getElementById("results").innerHTML = "Something went wrong.";
+  const data = await res.json();
+  if (data.error) {
+    $("results").innerHTML = `<div class="loader">Failed to generate ideas.</div>`;
+    return;
   }
+
+  localStorage.setItem("projectId", data.projectId);
+  setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
+  renderIdeas(data.ideas);
 }
 
 function renderIdeas(ideas) {
-  const resultsDiv = document.getElementById("results");
+  const results = $("results");
 
-  resultsDiv.innerHTML = `
-    <h2>Select a Story Idea</h2>
-    <div id="ideas-container"></div>
-    <button id="regenerate" class="secondary-btn">Generate New Ideas</button>
+  const cards = ideas.map((idea, idx) => `
+    <div class="story-card" data-idea-index="${idx}">
+      <div class="thumb">
+        <span class="badge">Idea</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">${escapeHtml(idea.title)}</div>
+        <p class="card-sub">${escapeHtml(idea.description)}</p>
+        <div class="card-meta">
+          <span>#${idx + 1}</span>
+          <span>Write story</span>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  results.innerHTML = `
+    <div class="grid">${cards}</div>
+    <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="regen-ideas" class="btn btn-secondary">Generate New Ideas</button>
+    </div>
   `;
 
-  const container = document.getElementById("ideas-container");
-
-  ideas.forEach((idea) => {
-    const card = document.createElement("div");
-    card.className = "idea-card";
-    card.innerHTML = `<h3>${idea.title}</h3><p>${idea.description}</p>`;
-
-    card.onclick = async () => {
-      showLoader("Writing your story...");
-
-      try {
-        const res = await fetch("/api/write-story", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: document.getElementById("kid-name").value,
-            interests: document.getElementById("kid-interests").value,
-            selectedIdea: idea,
-            projectId: localStorage.getItem("projectId")
-          })
-        });
-
-        const data = await res.json();
-
-		if (data.error) {
-			console.error(data.error);
-			document.getElementById("results").innerHTML =
-				"Something went wrong writing the story.";
-			return;
-			}
-
-		// 🔑 Normalize API response into renderStory format
-		renderStory({
-			title:
-				data.selected_idea?.title ||
-				`Book for ${document.getElementById("kid-name").value}`,
-				pages: data.story_json
-		});
-
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    container.appendChild(card);
+  results.querySelectorAll("[data-idea-index]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const idx = Number(el.getAttribute("data-idea-index"));
+      await writeStoryFromIdeaIndex(idx);
+    });
   });
 
-  document.getElementById("regenerate").onclick = fetchIdeas;
+  $("regen-ideas")?.addEventListener("click", fetchIdeas);
 }
 
-/* ---------------------------------------------------
-   STORY + ILLUSTRATION UI
---------------------------------------------------- */
+async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return;
 
-function renderStory(story) {
-  const resultsDiv = document.getElementById("results");
+  showLoader("Writing the story...");
 
-  localStorage.setItem("lastStoryPages", JSON.stringify(story.pages));
+  const res = await fetch("/api/write-story", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ projectId, selectedIdeaIndex })
+  });
 
-  const pagesHtml = story.pages
-    .map(
-      (p) => `
-      <div class="story-page-block">
-        <div class="page-text">
-          <h3>Page ${p.page}</h3>
-          <p>${p.text}</p>
-        </div>
-        <div class="page-illustration">
-          <div class="illustration-wrapper" id="illustration-wrapper-${p.page}"></div>
-        </div>
-      </div>
-    `
-    )
-    .join("");
+  const data = await res.json();
+  if (data.error) {
+    console.error(data);
+    $("results").innerHTML = `<div class="loader">Failed to write story.</div>`;
+    return;
+  }
 
-  resultsDiv.innerHTML = `
-    <h2>${story.title}</h2>
+  // Normalize into a “project-like” object for storyboard
+  const project = {
+    id: data.projectId,
+    kid_name: $("kid-name").value.trim(),
+    kid_interests: $("kid-interests").value.trim(),
+    selected_idea: data.selected_idea || null,
+    story_json: data.story_json || [],
+    illustrations: [],
+    context_registry: data.context_registry || {}
+  };
 
-    <div class="story-layout">${pagesHtml}</div>
+  setWorkspaceTitle(project.selected_idea?.title || "Your Book", "Storyboard view");
+  renderStoryboard(project);
+}
 
-    <div class="story-actions">
-      <div class="character-section">
-        <h3>Upload & Generate Character Model</h3>
-        <input type="file" id="child-photo" accept="image/*">
-        <button id="upload-btn" class="primary-btn">Upload Photo</button>
-        <div id="upload-status"></div>
+// -----------------------------------------------------
+// Storyboard rendering
+// -----------------------------------------------------
+function renderStoryboard(project) {
+  const results = $("results");
+  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json || []));
 
-        <button id="generate-character-btn" class="primary-btn">Generate Character Model</button>
-        <div id="character-status"></div>
-        <div id="character-preview"></div>
-      </div>
+  const pages = project.story_json || [];
+  const illus = Array.isArray(project.illustrations) ? project.illustrations : [];
+  const illusMap = new Map(illus.map(i => [Number(i.page), i]));
 
-      <div class="illustration-controls">
-        <h3>Scene Illustrations</h3>
-        <button id="generate-illustrations-btn" class="primary-btn">Generate Illustrations</button>
-        <div id="illustration-status"></div>
-      </div>
+  // Header actions (character + scenes)
+  const topActions = `
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <button id="open-upload-modal" class="btn btn-secondary">Upload Photo</button>
+      <button id="generate-character-btn" class="btn btn-primary">Generate Character Model</button>
+      <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
     </div>
+    <div id="character-status" class="status-line"></div>
+    <div id="illustration-status" class="status-line"></div>
   `;
+
+  // Grid or list depending on CURRENT_VIEW
+  const containerClass = CURRENT_VIEW === "list" ? "list" : "grid";
+
+  const filtered = pages.filter(p => {
+    const i = illusMap.get(Number(p.page));
+    const has = !!i?.image_url;
+    if (CURRENT_FILTER === "missing") return !has;
+    if (CURRENT_FILTER === "ready") return has;
+    if (CURRENT_FILTER === "errors") return false; // (hook later)
+    return true;
+  });
+
+  const cards = filtered.map(p => {
+    const i = illusMap.get(Number(p.page));
+    const url = i?.image_url || "";
+    const rev = typeof i?.revisions === "number" ? i.revisions : 0;
+    const badge = url ? `Ready • r${rev}` : "Missing";
+
+    return `
+      <div class="story-card" data-page="${p.page}" data-image="${url}">
+        <div class="thumb">
+          <span class="badge">Page ${p.page} • ${badge}</span>
+          ${url ? `<img src="${url}" alt="Page ${p.page}">` : `<div class="spinner"></div>`}
+        </div>
+        <div class="card-body">
+          <div class="card-title">Page ${p.page}</div>
+          <p class="card-sub">${escapeHtml(p.text)}</p>
+          <div class="card-meta">
+            <span>${url ? "Preview / Regenerate" : "Generate"}</span>
+            <span>${url ? "✓" : "+"}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  results.innerHTML = `
+    ${topActions}
+    <div class="${containerClass}">${cards}</div>
+  `;
+
+  // Card click behavior: preview if exists, else generate
+  results.querySelectorAll("[data-page]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const pageNum = Number(el.getAttribute("data-page"));
+      const url = el.getAttribute("data-image");
+
+      if (url) {
+        openImageModal(pageNum, url);
+      } else {
+        // generate single page on demand
+        const pageObj = pages.find(x => Number(x.page) === pageNum);
+        if (!pageObj) return;
+        await generateSingleIllustration(pageNum, pageObj.text);
+        // reload project view for updated urls
+        const pid = localStorage.getItem("projectId");
+        if (pid) await openProjectById(pid);
+      }
+    });
+  });
+
+  // Button wiring
+  $("open-upload-modal")?.addEventListener("click", openUploadModal);
+  $("generate-character-btn")?.addEventListener("click", generateCharacterModel);
+  $("generate-illustrations-btn")?.addEventListener("click", generateIllustrations);
+
+  initUploadModal(); // safe to call multiple times
 }
 
-/* --- Thumbnail helpers with cache-busting --- */
+// -----------------------------------------------------
+// Modal: illustration preview + regenerate
+// -----------------------------------------------------
+function openImageModal(pageNum, imageUrl) {
+  const modal = $("image-modal");
+  const img = $("modal-image");
+  const notes = $("revision-notes");
+  const regen = $("regen-btn");
+  const subtitle = $("modal-subtitle");
 
-function showPageThumbnail(pageNum, imageUrl) {
-  const wrapper = document.getElementById(`illustration-wrapper-${pageNum}`);
-  if (!wrapper) return;
+  if (!modal || !img || !notes || !regen) return;
 
-  const freshUrl = `${imageUrl}?v=${Date.now()}`;
+  img.src = imageUrl;
+  notes.value = "";
+  regen.dataset.page = String(pageNum);
+  subtitle.textContent = `Page ${pageNum}`;
 
-  wrapper.innerHTML = `
-    <img src="${freshUrl}" 
-         class="illustration-thumb" 
-         data-page="${pageNum}"
-         alt="Illustration for page ${pageNum}" />
-  `;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
 }
 
-function showPageSpinner(pageNum) {
-  const wrapper = document.getElementById(`illustration-wrapper-${pageNum}`);
-  if (!wrapper) return;
-
-  wrapper.innerHTML = `
-    <div class="page-loader">
-      <div class="spinner"></div>
-      <p>Generating illustration...</p>
-    </div>
-  `;
+function closeImageModal() {
+  const modal = $("image-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
 }
 
-/* ---------------------------------------------------
-   ILLUSTRATION GENERATION
---------------------------------------------------- */
+async function handleRegenerateIllustration() {
+  const projectId = localStorage.getItem("projectId");
+  const regenBtn = $("regen-btn");
+  const notes = $("revision-notes");
+  if (!projectId || !regenBtn) return;
+
+  const pageNum = Number(regenBtn.dataset.page || "0");
+  if (!pageNum) return;
+
+  const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
+  const pageData = pages.find(p => Number(p.page) === pageNum);
+  if (!pageData) return;
+
+  const revisionText = (notes?.value || "").trim();
+  const pageTextWithNotes = revisionText
+    ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
+    : pageData.text;
+
+  await generateSingleIllustration(pageNum, pageTextWithNotes, true);
+
+  // Refresh modal image
+  const pid = localStorage.getItem("projectId");
+  if (pid) {
+    const res = await fetch("/api/load-project", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ projectId: pid })
+    });
+    const data = await res.json();
+    const updated = data?.project?.illustrations?.find(i => Number(i.page) === pageNum);
+    if (updated?.image_url) $("modal-image").src = updated.image_url;
+  }
+}
+
+function initImageModalEvents() {
+  // close
+  $("close-modal")?.addEventListener("click", closeImageModal);
+
+  // backdrop click
+  $("image-modal")?.addEventListener("click", (e) => {
+    if (e.target?.classList?.contains("modal-backdrop")) closeImageModal();
+  });
+
+  // regen
+  $("regen-btn")?.addEventListener("click", handleRegenerateIllustration);
+
+  // escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeImageModal();
+      closeUploadModal();
+    }
+  });
+}
+
+// -----------------------------------------------------
+// Custom Upload Modal (pretty UI + hidden input)
+// -----------------------------------------------------
+function openUploadModal() {
+  const modal = $("upload-modal");
+  if (!modal) return;
+
+  $("upload-status").textContent = "";
+  $("upload-preview").classList.add("hidden");
+  $("upload-preview").innerHTML = "";
+
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeUploadModal() {
+  const modal = $("upload-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function initUploadModal() {
+  const modal = $("upload-modal");
+  const closeBtn = $("close-upload-modal");
+  const dropzone = $("dropzone");
+  const fileInput = $("child-photo");
+  const chooseBtn = $("choose-file-btn");
+
+  if (!modal || !dropzone || !fileInput) return;
+
+  // only bind once
+  if (modal.dataset.bound === "true") return;
+  modal.dataset.bound = "true";
+
+  closeBtn?.addEventListener("click", closeUploadModal);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target?.classList?.contains("modal-backdrop")) closeUploadModal();
+  });
+
+  chooseBtn?.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  // drag states
+  ["dragenter","dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave","drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      fileInput.files = files;
+      showUploadPreview(files[0]);
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files?.[0];
+    if (f) showUploadPreview(f);
+  });
+
+  $("upload-btn")?.addEventListener("click", uploadPhoto);
+}
+
+function showUploadPreview(file) {
+  const box = $("upload-preview");
+  if (!box) return;
+
+  const url = URL.createObjectURL(file);
+  box.innerHTML = `<img src="${url}" alt="preview">`;
+  box.classList.remove("hidden");
+}
+
+// -----------------------------------------------------
+// API: Upload + Character model + Illustrations
+// -----------------------------------------------------
+async function uploadPhoto() {
+  const projectId = localStorage.getItem("projectId");
+  const fileInput = $("child-photo");
+  const status = $("upload-status");
+
+  if (!projectId) {
+    status.textContent = "Create or open a project first.";
+    return;
+  }
+  if (!fileInput?.files?.length) {
+    status.textContent = "Choose a photo first.";
+    return;
+  }
+
+  status.textContent = "Uploading...";
+
+  const formData = new FormData();
+  formData.append("photo", fileInput.files[0]);
+  formData.append("projectId", projectId);
+
+  try {
+    const res = await fetch("/api/upload-child-photo", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.photoUrl) {
+      status.textContent = "Uploaded! You can now generate the character model.";
+      // keep modal open so flow feels nice
+    } else {
+      status.textContent = "Upload failed.";
+    }
+  } catch (e) {
+    console.error(e);
+    status.textContent = "Upload failed.";
+  }
+}
+
+async function generateCharacterModel() {
+  const projectId = localStorage.getItem("projectId");
+  const status = $("character-status");
+  if (!projectId) {
+    status.textContent = "No project found.";
+    return;
+  }
+
+  const kidName = $("kid-name").value.trim();
+
+  status.textContent = "Generating character model...";
+
+  try {
+    const res = await fetch("/api/generate-character-model", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ projectId, kidName })
+    });
+    const data = await res.json();
+
+    if (data.characterModelUrl) {
+      status.textContent = "Character model generated!";
+      closeUploadModal();
+    } else {
+      status.textContent = "Failed to generate character model.";
+    }
+  } catch (e) {
+    console.error(e);
+    status.textContent = "Failed to generate character model.";
+  }
+}
+
+async function generateSingleIllustration(pageNum, pageText, isRegeneration=false) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return;
+
+  const status = $("illustration-status");
+  if (status) status.textContent = isRegeneration ? `Regenerating page ${pageNum}...` : `Generating page ${pageNum}...`;
+
+  const res = await fetch("/api/generate-scene", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ projectId, page: pageNum, pageText, isRegeneration })
+  });
+
+  const data = await res.json();
+  if (data.error) {
+    console.error(data);
+    if (status) status.textContent = `Failed on page ${pageNum}.`;
+    return;
+  }
+
+  if (status) status.textContent = `Done: page ${pageNum}`;
+}
 
 async function generateIllustrations() {
   const projectId = localStorage.getItem("projectId");
-  const status = document.getElementById("illustration-status");
-
+  const status = $("illustration-status");
   if (!projectId) {
     status.textContent = "No project found.";
     return;
@@ -341,244 +634,80 @@ async function generateIllustrations() {
     return;
   }
 
-  status.textContent = "Loading existing illustrations...";
-
-  let existing = [];
-  try {
-    const res = await fetch("/api/load-project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId })
-    });
-    existing = (await res.json()).project?.illustrations || [];
-  } catch (err) {
-    console.error(err);
-  }
-
-  const completed = new Set(existing.map((e) => e.page));
-
-  status.textContent = "Generating remaining illustrations...";
+  status.textContent = "Generating illustrations...";
 
   for (const p of pages) {
-    if (completed.has(p.page)) {
-      const found = existing.find((e) => e.page === p.page);
-      if (found) showPageThumbnail(found.page, found.image_url);
-      continue;
-    }
-
-    showPageSpinner(p.page);
-
-    try {
-      const res = await fetch("/api/generate-scene", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          page: p.page,
-          pageText: p.text
-        })
-      });
-
-      const data = await res.json();
-      if (data.image_url) {
-        showPageThumbnail(p.page, data.image_url);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    await generateSingleIllustration(p.page, p.text, false);
   }
 
-  status.textContent = "Illustrations complete!";
+  status.textContent = "Illustrations complete! Reloading...";
+  await openProjectById(projectId);
 }
 
-/* ---------------------------------------------------
-   CHARACTER MODEL
---------------------------------------------------- */
-
-async function uploadPhoto() {
-  const projectId = localStorage.getItem("projectId");
-  const fileInput = document.getElementById("child-photo");
-  const uploadStatus = document.getElementById("upload-status");
-
-  if (!fileInput || !fileInput.files.length) {
-    uploadStatus.innerText = "Please choose a photo.";
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("photo", fileInput.files[0]);
-  formData.append("projectId", projectId);
-
-  uploadStatus.innerText = "Uploading...";
-
-  try {
-    const res = await fetch("/api/upload-child-photo", {
-      method: "POST",
-      body: formData
-    });
-
-    const data = await res.json();
-    if (data.photoUrl) {
-      uploadStatus.innerText = "Uploaded!";
-      document.getElementById("character-preview").innerHTML = `
-        <img src="${data.photoUrl}" style="width:200px;border-radius:10px;margin-top:10px;">
-      `;
-    } else {
-      uploadStatus.innerText = "Upload failed.";
-    }
-  } catch (err) {
-    console.error(err);
-    uploadStatus.innerText = "Upload failed.";
-  }
-}
-
-async function generateCharacterModel() {
-  const projectId = localStorage.getItem("projectId");
-  const characterStatus = document.getElementById("character-status");
-
-  if (!projectId) {
-    characterStatus.innerText = "No project found.";
-    return;
-  }
-
-  characterStatus.innerText = "Generating...";
-
-  try {
-    const res = await fetch("/api/generate-character-model", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        kidName: document.getElementById("kid-name").value
-      })
-    });
-
-    const data = await res.json();
-
-    if (data.characterModelUrl) {
-      characterStatus.innerText = "Done!";
-      document.getElementById("character-preview").innerHTML = `
-        <img src="${data.characterModelUrl}" 
-             style="width:250px;border-radius:14px;margin-top:10px;">
-      `;
-    } else {
-      characterStatus.innerText = "Failed.";
-    }
-  } catch (err) {
-    console.error(err);
-    characterStatus.innerText = "Failed.";
-  }
-}
-
-/* ---------------------------------------------------
-   MODAL + REGENERATION
---------------------------------------------------- */
-
-function openImageModal(pageNum, imageUrl) {
-  const modal = document.getElementById("image-modal");
-  const img = document.getElementById("modal-image");
-  const regenBtn = document.getElementById("regen-btn");
-
-  img.src = `${imageUrl}?v=${Date.now()}`; // fresh
-  regenBtn.dataset.page = pageNum;
-  document.getElementById("revision-notes").value = "";
-
-  modal.classList.remove("hidden");
-}
-
-function closeImageModal() {
-  document.getElementById("image-modal").classList.add("hidden");
-}
-
-async function handleRegenerateIllustration() {
-  const projectId = localStorage.getItem("projectId");
-  const pageNum = Number(document.getElementById("regen-btn").dataset.page);
-  const revisionNotes = document.getElementById("revision-notes").value.trim();
-
-  // Get existing revisions
-  const res = await fetch("/api/load-project", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId })
-  });
-  const project = (await res.json()).project;
-  const illus = project.illustrations || [];
-  const current = illus.find((i) => i.page === pageNum);
-  const revisions = current?.revisions || 0;
-
-  if (revisions >= 2) {
-    alert("Maximum regeneration limit reached for this page.");
-    return;
-  }
-
-  const pages = JSON.parse(localStorage.getItem("lastStoryPages"));
-  const pageData = pages.find((p) => p.page === pageNum);
-
-  const combinedText = revisionNotes
-    ? `${pageData.text}\n\nArtist revision notes: ${revisionNotes}`
-    : pageData.text;
-
-  showPageSpinner(pageNum);
-
-  const regenRes = await fetch("/api/generate-scene", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      projectId,
-      page: pageNum,
-      pageText: combinedText,
-      isRegeneration: true
-    })
+// -----------------------------------------------------
+// View controls
+// -----------------------------------------------------
+function initViewControls() {
+  $("view-grid")?.addEventListener("click", () => {
+    CURRENT_VIEW = "grid";
+    $("view-grid").classList.add("active");
+    $("view-list").classList.remove("active");
+    const pid = localStorage.getItem("projectId");
+    if (pid) openProjectById(pid);
   });
 
-  const data = await regenRes.json();
+  $("view-list")?.addEventListener("click", () => {
+    CURRENT_VIEW = "list"; // (you can implement list styles later; grid still works)
+    $("view-list").classList.add("active");
+    $("view-grid").classList.remove("active");
+    const pid = localStorage.getItem("projectId");
+    if (pid) openProjectById(pid);
+  });
 
-  if (!data.image_url) {
-    alert("Regeneration failed.");
-    return;
-  }
-
-  // Update thumbnail
-  showPageThumbnail(pageNum, data.image_url);
-
-  // Update modal image
-  document.getElementById("modal-image").src = `${data.image_url}?v=${Date.now()}`;
+  $("page-filter")?.addEventListener("change", (e) => {
+    CURRENT_FILTER = e.target.value;
+    const pid = localStorage.getItem("projectId");
+    if (pid) openProjectById(pid);
+  });
 }
 
-/* ---------------------------------------------------
-   GLOBAL CLICK DELEGATION
---------------------------------------------------- */
+// -----------------------------------------------------
+// Helpers
+// -----------------------------------------------------
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
 
-document.addEventListener("click", (e) => {
-  const t = e.target;
+// -----------------------------------------------------
+// Boot
+// -----------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  initAccountMenu();
+  initImageModalEvents();
+  initViewControls();
 
-  if (t.id === "upload-btn") uploadPhoto();
-  if (t.id === "generate-character-btn") generateCharacterModel();
-  if (t.id === "generate-illustrations-btn") generateIllustrations();
+  $("kid-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    fetchIdeas();
+  });
 
-  if (t.classList.contains("illustration-thumb")) {
-    const pageNum = Number(t.dataset.page);
-    openImageModal(pageNum, t.src);
-  }
+  $("reset-session")?.addEventListener("click", () => {
+    localStorage.removeItem("projectId");
+    localStorage.removeItem("lastStoryPages");
+    $("kid-name").value = "";
+    $("kid-interests").value = "";
+    setWorkspaceTitle("Workspace", "Start a new book or open an existing one.");
+    $("results").innerHTML = `<div class="loader">Session cleared. Generate ideas to begin.</div>`;
+  });
 
-  if (t.id === "close-modal") closeImageModal();
-  if (t.id === "regen-btn") handleRegenerateIllustration();
+  $("go-dashboard")?.addEventListener("click", loadDashboard);
 
-  if (t.id === "image-modal" && t.classList.contains("modal")) {
-    closeImageModal();
-  }
+  // Start on dashboard by default
+  loadDashboard();
 });
-
-/* ---------------------------------------------------
-   FORM + LOADING DASHBOARD
---------------------------------------------------- */
-
-document.getElementById("kid-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  fetchIdeas();
-});
-
-document.getElementById("reset-session").addEventListener("click", startNewBookFlow);
-
-// Load dashboard on startup
-document.addEventListener("DOMContentLoaded", loadDashboard);
