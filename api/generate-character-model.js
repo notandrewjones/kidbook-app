@@ -32,20 +32,82 @@ export default async function handler(req, res) {
   // -------------------------------------------------------------
   // 🔧 DEV MODE SHORT-CIRCUIT
   // -------------------------------------------------------------
-  if (DEV_MODE) {
-    console.log("🔧 DEV MODE ENABLED — Skipping character generation.");
+  // -------------------------------------------------------------
+// 🔧 DEV MODE — Placeholder character + LOCK protagonist
+// -------------------------------------------------------------
+if (DEV_MODE) {
+  console.log("🔧 DEV MODE ENABLED — Using placeholder character model.");
 
-    // Update database so the story pipeline works exactly the same
-    await supabase
-      .from("book_projects")
-      .update({ character_model_url: DEV_MODEL_URL })
-      .eq("id", projectId);
+  // Load registries
+  const { data: projectWithRegistry } = await supabase
+    .from("book_projects")
+    .select("props_registry, context_registry")
+    .eq("id", projectId)
+    .single();
 
-    return res.status(200).json({
-      characterModelUrl: DEV_MODEL_URL,
-      devMode: true
-    });
+  let registry =
+    Array.isArray(projectWithRegistry?.props_registry) &&
+    projectWithRegistry.props_registry.length
+      ? projectWithRegistry.props_registry[0]
+      : projectWithRegistry?.props_registry || {
+          characters: {},
+          props: {},
+          environments: {},
+          notes: "",
+        };
+
+  const childName =
+    projectWithRegistry?.context_registry?.child?.name?.toLowerCase?.();
+
+  // Find protagonist
+  const protagonistKey = Object.keys(registry.characters || {}).find(
+    key => {
+      const c = registry.characters[key];
+      if (!c) return false;
+
+      if (c.role === "protagonist") return true;
+      if (
+        childName &&
+        c.name &&
+        c.name.toLowerCase() === childName
+      ) {
+        return true;
+      }
+      return false;
+    }
+  );
+
+  // Lock protagonist
+  if (protagonistKey) {
+    registry.characters[protagonistKey] = {
+      ...registry.characters[protagonistKey],
+      visual_source: "user",
+      visual: null,
+      locked_at: new Date().toISOString(),
+      dev_placeholder: true,
+    };
+
+    console.log("🔒 DEV MODE: Protagonist locked:", protagonistKey);
+  } else {
+    console.warn("⚠️ DEV MODE: No protagonist found to lock");
   }
+
+  // Persist everything
+  await supabase
+    .from("book_projects")
+    .update({
+      character_model_url: DEV_MODEL_URL,
+      props_registry: [registry],
+    })
+    .eq("id", projectId);
+
+  return res.status(200).json({
+    characterModelUrl: DEV_MODEL_URL,
+    devMode: true,
+    locked: true,
+  });
+}
+
 
   // -------------------------------------------------------------
   // Normal production flow below
@@ -133,14 +195,75 @@ OUTPUT:
       .getPublicUrl(filePath);
 
     // Update DB
-    await supabase
-      .from("book_projects")
-      .update({ character_model_url: publicUrl.publicUrl })
-      .eq("id", projectId);
+    // -------------------------------------------------------------
+// 🔒 LOCK PROTAGONIST VISUAL IN props_registry
+// -------------------------------------------------------------
 
-    return res.status(200).json({
-      characterModelUrl: publicUrl.publicUrl,
-    });
+// Load existing registries
+const { data: projectWithRegistry } = await supabase
+  .from("book_projects")
+  .select("props_registry, context_registry")
+  .eq("id", projectId)
+  .single();
+
+let registry =
+  Array.isArray(projectWithRegistry?.props_registry) &&
+  projectWithRegistry.props_registry.length
+    ? projectWithRegistry.props_registry[0]
+    : projectWithRegistry?.props_registry || {
+        characters: {},
+        props: {},
+        environments: {},
+        notes: "",
+      };
+
+// Identify child name from context
+const childName =
+  projectWithRegistry?.context_registry?.child?.name?.toLowerCase?.();
+
+// Find protagonist character
+const protagonistKey = Object.keys(registry.characters || {}).find(
+  key => {
+    const c = registry.characters[key];
+    if (!c) return false;
+
+    if (c.role === "protagonist") return true;
+    if (
+      childName &&
+      c.name &&
+      c.name.toLowerCase() === childName
+    ) {
+      return true;
+    }
+    return false;
+  }
+);
+
+// Lock protagonist visual
+if (protagonistKey) {
+  registry.characters[protagonistKey] = {
+    ...registry.characters[protagonistKey],
+    visual_source: "user",
+    visual: null, // visual now comes from uploaded model
+    locked_at: new Date().toISOString(),
+  };
+
+  console.log("🔒 Protagonist visual locked:", protagonistKey);
+} else {
+  console.warn("⚠️ No protagonist found to lock in props_registry");
+}
+
+// -------------------------------------------------------------
+// 💾 Persist character model + updated registry
+// -------------------------------------------------------------
+await supabase
+  .from("book_projects")
+  .update({
+    character_model_url: publicUrl.publicUrl,
+    props_registry: [registry],
+  })
+  .eq("id", projectId);
+
 
   } catch (err) {
     console.error("Character model generation error:", err);
