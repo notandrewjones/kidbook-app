@@ -54,10 +54,11 @@ Return ONLY JSON in this exact format:
 }
 
 Rules:
-• Preserve names, relationships, and facts
-• Do NOT invent entities
-• If a detail is implied clearly, include it
-• This data is for narrative + visual consistency
+• Preserve names, relationships, and factual traits
+• Do NOT invent new entities
+• Do NOT describe visual appearance here
+• Visual details belong elsewhere
+• This data is narrative truth ONLY
 
 STORY TEXT:
 ${fullText}
@@ -78,16 +79,12 @@ ${fullText}
 /**
  * Extract visual character profiles
  */
-async function extractCharacterVisuals(storyPages, contextRegistry) {
-  const fullText = storyPages.map(p => p.text).join("\n");
-  const contextJson = JSON.stringify(contextRegistry, null, 2);
+async function extractCharacterVisuals(storyPages, contextRegistry, kidName) {
+  const storyText = storyPages.map(p => p.text).join("\n");
 
   const prompt = `
-From the following story, identify ALL recurring characters
-(children, pets, named animals, or implied companions).
-
-For EACH character, generate a stable visual profile
-to be used consistently across all illustrations.
+You are defining VISUAL CONSISTENCY for illustrated characters
+in a children's picture book.
 
 Return ONLY JSON in this exact format:
 
@@ -95,14 +92,13 @@ Return ONLY JSON in this exact format:
   "characters": {
     "character_key": {
       "name": "",
-      "role": "",
-      "first_seen_page": 1,
-      "visual": {
+      "role": "protagonist | pet | side_character",
+      "visual_source": "pending | auto",
+      "visual": null | {
         "species": "",
         "breed": "",
         "size": "",
         "colors": "",
-        "coat_or_clothing": "",
         "distinctive_features": ""
       }
     }
@@ -110,17 +106,20 @@ Return ONLY JSON in this exact format:
 }
 
 Rules:
-• Use existing names when available
-• If breed or details are NOT specified, choose a reasonable default
-• Defaults must remain consistent across pages
-• Do NOT invent extra characters
-• Visuals should be child-friendly and illustration-ready
+• If the character matches the CHILD (name: "${kidName}"):
+  - role MUST be "protagonist"
+  - visual_source MUST be "pending"
+  - visual MUST be null
+• Pets and non-protagonist characters MUST receive visual descriptions
+• Do NOT invent new characters
+• Be consistent and reusable
+• This data will be reused across all illustrations
 
 STORY TEXT:
-${fullText}
+${storyText}
 
 WORLD CONTEXT:
-${contextJson}
+${JSON.stringify(contextRegistry, null, 2)}
 `;
 
   const response = await client.responses.create({
@@ -132,8 +131,11 @@ ${contextJson}
     response.output_text ??
     response.output?.[0]?.content?.[0]?.text;
 
+  if (!raw) throw new Error("Character visual extraction returned no output");
+
   return JSON.parse(cleanJsonOutput(raw));
 }
+
 
 /* -------------------------------------------------
    Main Handler
@@ -232,15 +234,48 @@ Return ONLY JSON:
       contextRegistry
     );
 
-    /* ---------------------------------------------
-       5. Build props_registry
-    --------------------------------------------- */
-    const propsRegistry = {
-      characters: visualCharacters.characters || {},
-      props: {},
-      environments: {},
-      notes: "",
-    };
+   /* ---------------------------------------------
+   5. Merge into props_registry SAFELY
+--------------------------------------------- */
+
+// Load existing props_registry if it exists
+const { data: existingProject } = await supabase
+  .from("book_projects")
+  .select("props_registry")
+  .eq("id", projectId)
+  .single();
+
+let propsRegistry =
+  existingProject?.props_registry?.[0] || {
+    notes: "",
+    characters: {},
+    props: {},
+    environments: {},
+  };
+
+// Merge characters WITHOUT overwriting locked/user visuals
+for (const [key, character] of Object.entries(
+  visualCharacters.characters || {}
+)) {
+  const existing = propsRegistry.characters[key];
+
+  // HARD PROTECTION: never overwrite user or locked visuals
+  if (
+    existing &&
+    (existing.visual_source === "user" ||
+     existing.visual_source === "locked")
+  ) {
+    continue;
+  }
+
+  propsRegistry.characters[key] = {
+    ...existing,
+    ...character,
+    first_seen_page:
+      existing?.first_seen_page ?? character.first_seen_page ?? 1,
+  };
+}
+
 
     /* ---------------------------------------------
        6. Persist everything

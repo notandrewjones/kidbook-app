@@ -175,7 +175,23 @@ async function handler(req, res) {
       };
     }
 
+	const characterRegistry = registry.characters || {};
     const contextRegistry = project.context_registry || {};
+	
+	// Identify protagonist (child)
+const protagonistName =
+  contextRegistry?.child?.name?.toLowerCase?.() || null;
+
+const protagonistKey = Object.keys(characterRegistry).find(
+  key =>
+    characterRegistry[key]?.role === "protagonist" ||
+    characterRegistry[key]?.name?.toLowerCase?.() === protagonistName
+);
+
+const protagonist =
+  protagonistKey ? characterRegistry[protagonistKey] : null;
+
+	
     const existingIllustrations = Array.isArray(project.illustrations)
       ? project.illustrations
       : [];
@@ -233,6 +249,26 @@ async function handler(req, res) {
     );
     const propsJson = JSON.stringify(registry.props || {}, null, 2);
     const contextJson = JSON.stringify(contextRegistry || {}, null, 2);
+	
+	const characterVisualRules = Object.entries(characterRegistry)
+  .map(([key, char]) => {
+    if (char.role === "protagonist") {
+      if (char.visual_source === "user") {
+        return `• ${char.name} (protagonist): MUST match the uploaded character model exactly. Do NOT change appearance.`;
+      }
+
+      return `• ${char.name} (protagonist): Visual appearance is intentionally unspecified. Keep depiction neutral and child-generic.`;
+    }
+
+    return `• ${char.name} (${char.role}): Must be visually consistent across all pages.
+      Species: ${char.visual?.species || "unknown"}
+      Breed: ${char.visual?.breed || "unspecified"}
+      Size: ${char.visual?.size || "unspecified"}
+      Colors: ${char.visual?.colors || "unspecified"}
+      Distinctive features: ${char.visual?.distinctive_features || "none"}`;
+  })
+  .join("\n");
+
 
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
@@ -267,6 +303,16 @@ ${environmentsJson}
 
 PROP REGISTRY (for prop continuity across pages):
 ${propsJson}
+
+CHARACTER VISUAL RULES:
+${characterVisualRules}
+
+STRICT CHARACTER RULES:
+• Do NOT invent new characters
+• Do NOT change a character’s appearance once defined
+• The protagonist’s appearance must NEVER be inferred or redesigned
+• Pets must remain visually identical across all pages
+
 
 CONTEXT CONTINUITY RULES:
 • If the context registry defines a specific pet, person, place, or item
@@ -396,16 +442,20 @@ Now call the image_generation tool.
 
     // Props
     for (const p of aiProps) {
-      const key = (p.name || "").toLowerCase().trim();
-      if (!key) continue;
+  const key = (p.name || "").toLowerCase().trim();
+  if (!key) continue;
 
-      if (!updatedRegistry.props[key]) {
-        updatedRegistry.props[key] = {
-          context: p.context || "Appears in this scene",
-          first_seen_page: page,
-        };
-      }
-    }
+  // Never treat characters as props
+  if (characterRegistry[key]) continue;
+
+  if (!updatedRegistry.props[key]) {
+    updatedRegistry.props[key] = {
+      context: p.context || "Appears in this scene",
+      first_seen_page: page,
+    };
+  }
+}
+
 
     console.log("=== REGISTRY — AFTER UPDATE ===");
     console.log(updatedRegistry);
