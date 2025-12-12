@@ -34,7 +34,7 @@ function cleanJsonOutput(text) {
 }
 
 /**
- * Extract canonical world context from full story
+ * Extract canonical narrative context
  */
 async function extractContextFromStory(storyPages) {
   const fullText = storyPages.map(p => p.text).join("\n");
@@ -54,38 +54,85 @@ Return ONLY JSON in this exact format:
 }
 
 Rules:
-• Preserve specific names, breeds, relationships, and traits
-• Do NOT invent new entities
-• If something is implied clearly, include it
-• This data will be used for illustration consistency
+• Preserve names, relationships, and facts
+• Do NOT invent entities
+• If a detail is implied clearly, include it
+• This data is for narrative + visual consistency
 
 STORY TEXT:
 ${fullText}
 `;
-
-  console.log("=== CONTEXT EXTRACTION PROMPT ===");
-  console.log(prompt);
-  console.log("=================================");
 
   const response = await client.responses.create({
     model: "gpt-4.1",
     input: prompt,
   });
 
-  let raw =
+  const raw =
     response.output_text ??
     response.output?.[0]?.content?.[0]?.text;
 
-  console.log("=== RAW CONTEXT EXTRACTION OUTPUT ===");
-  console.log(raw);
-  console.log("====================================");
+  return JSON.parse(cleanJsonOutput(raw));
+}
 
-  if (!raw) {
-    throw new Error("Context extraction returned no output.");
+/**
+ * Extract visual character profiles
+ */
+async function extractCharacterVisuals(storyPages, contextRegistry) {
+  const fullText = storyPages.map(p => p.text).join("\n");
+  const contextJson = JSON.stringify(contextRegistry, null, 2);
+
+  const prompt = `
+From the following story, identify ALL recurring characters
+(children, pets, named animals, or implied companions).
+
+For EACH character, generate a stable visual profile
+to be used consistently across all illustrations.
+
+Return ONLY JSON in this exact format:
+
+{
+  "characters": {
+    "character_key": {
+      "name": "",
+      "role": "",
+      "first_seen_page": 1,
+      "visual": {
+        "species": "",
+        "breed": "",
+        "size": "",
+        "colors": "",
+        "coat_or_clothing": "",
+        "distinctive_features": ""
+      }
+    }
   }
+}
 
-  const cleaned = cleanJsonOutput(raw);
-  return JSON.parse(cleaned);
+Rules:
+• Use existing names when available
+• If breed or details are NOT specified, choose a reasonable default
+• Defaults must remain consistent across pages
+• Do NOT invent extra characters
+• Visuals should be child-friendly and illustration-ready
+
+STORY TEXT:
+${fullText}
+
+WORLD CONTEXT:
+${contextJson}
+`;
+
+  const response = await client.responses.create({
+    model: "gpt-4.1",
+    input: prompt,
+  });
+
+  const raw =
+    response.output_text ??
+    response.output?.[0]?.content?.[0]?.text;
+
+  return JSON.parse(cleanJsonOutput(raw));
 }
 
 /* -------------------------------------------------
@@ -97,15 +144,7 @@ async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const {
-    projectId,
-    selectedIdeaIndex,
-    selectedIdea,
-  } = req.body;
-
-  console.log("=== WRITE-STORY REQUEST BODY ===");
-  console.log(req.body);
-  console.log("=================================");
+  const { projectId, selectedIdeaIndex, selectedIdea } = req.body;
 
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
@@ -122,14 +161,13 @@ async function handler(req, res) {
       .single();
 
     if (projectError) {
-      console.error("WRITE-STORY: project fetch error:", projectError);
       return res.status(500).json({ error: "Could not load project." });
     }
 
     const { kid_name, kid_interests, story_ideas } = project;
 
     /* ---------------------------------------------
-       2. Resolve selected idea
+       2. Resolve idea
     --------------------------------------------- */
     let ideaToUse = selectedIdea;
 
@@ -149,19 +187,15 @@ async function handler(req, res) {
       return res.status(400).json({ error: "No story idea selected." });
     }
 
-    console.log("=== IDEA SELECTED ===");
-    console.log(ideaToUse);
-    console.log("=====================");
-
     /* ---------------------------------------------
        3. Generate story
     --------------------------------------------- */
-    const prompt = `
+    const storyPrompt = `
 You are a children's author writing a short, rhyming picture book
 for a child aged 4–7.
 
 CHILD:
-- Name: ${kid_name || "the child"}
+- Name: ${kid_name}
 - Interests: ${kid_interests || "not specified"}
 
 STORY IDEA:
@@ -179,37 +213,37 @@ Return ONLY JSON:
 
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
-      input: prompt,
+      input: storyPrompt,
     });
 
-    let raw =
+    const raw =
       response.output_text ??
       response.output?.[0]?.content?.[0]?.text;
-
-    if (!raw) {
-      throw new Error("Story generation returned no text.");
-    }
 
     const parsed = JSON.parse(cleanJsonOutput(raw));
     const storyPages = parsed.story;
 
-    if (!Array.isArray(storyPages) || !storyPages.length) {
-      throw new Error("Story has no pages.");
-    }
-
     /* ---------------------------------------------
-       4. Extract context AFTER story exists
+       4. Extract context + visuals
     --------------------------------------------- */
-    console.log("=== EXTRACTING CONTEXT FROM STORY ===");
-
     const contextRegistry = await extractContextFromStory(storyPages);
-
-    console.log("=== CONTEXT REGISTRY (FINAL) ===");
-    console.log(contextRegistry);
-    console.log("================================");
+    const visualCharacters = await extractCharacterVisuals(
+      storyPages,
+      contextRegistry
+    );
 
     /* ---------------------------------------------
-       5. Persist everything
+       5. Build props_registry
+    --------------------------------------------- */
+    const propsRegistry = {
+      characters: visualCharacters.characters || {},
+      props: {},
+      environments: {},
+      notes: "",
+    };
+
+    /* ---------------------------------------------
+       6. Persist everything
     --------------------------------------------- */
     const { data: updated, error: updateError } = await supabase
       .from("book_projects")
@@ -217,24 +251,24 @@ Return ONLY JSON:
         selected_idea: ideaToUse,
         story_json: storyPages,
         context_registry: contextRegistry,
+        props_registry: [propsRegistry],
       })
       .eq("id", projectId)
-      .select("id, selected_idea, story_json, context_registry")
+      .select("*")
       .single();
 
     if (updateError) {
-      console.error("WRITE-STORY UPDATE ERROR:", updateError);
       return res.status(500).json({ error: "Failed to save story." });
     }
 
     /* ---------------------------------------------
-       6. Respond cleanly (NO UI HANG)
+       7. Respond cleanly
     --------------------------------------------- */
     return res.status(200).json({
       projectId: updated.id,
-      selected_idea: updated.selected_idea,
       story_json: updated.story_json,
       context_registry: updated.context_registry,
+      props_registry: updated.props_registry,
     });
 
   } catch (err) {
