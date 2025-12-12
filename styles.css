@@ -666,3 +666,14 @@ body{
   border:1px solid var(--stroke);
   background: rgba(255,255,255,0.04);
 }
+
+.thumb-placeholder{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100%;
+  font-size:13px;
+  color: var(--muted);
+  border: 1px dashed var(--stroke);
+  border-radius: 12px;
+}

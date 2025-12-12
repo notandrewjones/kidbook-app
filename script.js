@@ -178,6 +178,13 @@ async function openProjectById(projectId) {
     renderStoryboard(project);
     return;
   }
+  
+  // Hide left sidebar once story exists
+const sidebar = document.querySelector(".panel");
+if (sidebar) {
+  sidebar.style.display = project.story_json?.length ? "none" : "";
+}
+
 
   // fallback
   renderIdeas(project.story_ideas);
@@ -328,10 +335,11 @@ function renderStoryboard(project) {
         <div class="thumb">
           <span class="badge">Page ${p.page} • ${badge}</span>
           ${
-            url
-              ? `<img src="${url}" alt="Page ${p.page}">`
-              : `<div class="spinner"></div>`
-          }
+  url
+    ? `<img src="${url}" alt="Page ${p.page}">`
+    : `<div class="thumb-placeholder">Click to generate</div>`
+}
+
         </div>
         <div class="card-body">
           <div class="card-title">Page ${p.page}</div>
@@ -538,10 +546,13 @@ function initUploadModal() {
     }
   });
 
-  fileInput.addEventListener("change", () => {
-    const f = fileInput.files?.[0];
-    if (f) showUploadPreview(f);
-  });
+  fileInput.addEventListener("change", async () => {
+  const f = fileInput.files?.[0];
+  if (!f) return;
+  showUploadPreview(f);
+  await uploadPhoto(); // auto-upload
+});
+
 
   $("upload-btn")?.addEventListener("click", uploadPhoto);
 }
@@ -714,82 +725,41 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
   }
 }
 
-async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
+async function generateIllustrations() {
   const projectId = localStorage.getItem("projectId");
   if (!projectId) {
-    showToast("No project loaded", "Open or create a project first.", "error");
+    showToast("No project loaded", "Open a project first", "error");
     return;
   }
 
-  const status = $("illustration-status");
-  const actionLabel = isRegeneration ? "Regenerating" : "Generating";
+  showToast("Generating illustrations", "Missing pages only", "success");
 
-  // 🔔 Toast: start
-  showToast(
-    `${actionLabel} illustration`,
-    `Page ${pageNum}`,
-    "success"
+  // Reload project to get latest illustrations
+  const res = await fetch("/api/load-project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId })
+  });
+
+  const data = await res.json();
+  const project = data?.project;
+  if (!project?.story_json) return;
+
+  const pages = project.story_json;
+  const existing = new Set(
+    (project.illustrations || []).map(i => Number(i.page))
   );
 
-  if (status) {
-    status.textContent = `${actionLabel} page ${pageNum}...`;
-  }
-
-  try {
-    const res = await fetch("/api/generate-scene", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        page: pageNum,
-        pageText,
-        isRegeneration
-      })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok || data?.error) {
-      console.error("Illustration error:", data);
-
-      showToast(
-        "Illustration failed",
-        `Page ${pageNum}`,
-        "error"
-      );
-
-      if (status) {
-        status.textContent = `Failed on page ${pageNum}.`;
-      }
-
-      return;
-    }
-
-    // ✅ Success toast
-    showToast(
-      isRegeneration ? "Illustration regenerated" : "Illustration generated",
-      `Page ${pageNum}`,
-      "success"
-    );
-
-    if (status) {
-      status.textContent = `Done: page ${pageNum}`;
-    }
-
-  } catch (err) {
-    console.error("Illustration request failed:", err);
-
-    showToast(
-      "Network error",
-      `Could not generate page ${pageNum}`,
-      "error"
-    );
-
-    if (status) {
-      status.textContent = `Failed on page ${pageNum}.`;
+  for (const p of pages) {
+    if (!existing.has(Number(p.page))) {
+      await generateSingleIllustration(p.page, p.text);
     }
   }
+
+  showToast("Illustrations complete", "All missing pages generated", "success");
+  await openProjectById(projectId);
 }
+
 
 
 // -----------------------------------------------------
