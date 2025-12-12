@@ -48,6 +48,18 @@ function initAccountMenu() {
   $("orders-btn")?.addEventListener("click", () => alert("Orders UI later"));
 }
 
+function showToast(title, message="", type="success"){
+  const box = document.createElement("div");
+  box.className = `toast ${type}`;
+  box.innerHTML = `
+    <div class="toast-title">${title}</div>
+    ${message ? `<div class="toast-msg">${message}</div>` : ""}
+  `;
+  $("toast-container")?.appendChild(box);
+  setTimeout(() => box.remove(), 3200);
+}
+
+
 // -----------------------------------------------------
 // Dashboard
 // -----------------------------------------------------
@@ -278,18 +290,69 @@ function renderStoryboard(project) {
   const illusMap = new Map(illus.map(i => [Number(i.page), i]));
 
   // Header actions (character + scenes)
-  const topActions = `
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
-      <button id="open-upload-modal" class="btn btn-secondary">Upload Photo</button>
-      <button id="generate-character-btn" class="btn btn-primary">Generate Character Model</button>
-      <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
+  const characterPreview = project.character_model_url ? `
+  <div class="character-preview">
+    <img src="${project.character_model_url}" alt="Character model">
+    <div>
+      <strong>Character Model</strong>
+      <div class="status-line">Locked</div>
     </div>
-    <div id="character-status" class="status-line"></div>
-    <div id="illustration-status" class="status-line"></div>
-  `;
+  </div>
+` : `
+  <div class="character-preview">
+    <div class="status-line">No character model yet</div>
+  </div>
+`;
+
+const topActions = `
+  ${characterPreview}
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+    <button id="open-upload-modal" class="btn btn-secondary">Upload Photo</button>
+    <button id="generate-character-btn" class="btn btn-primary">Generate Character Model</button>
+    <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
+  </div>
+  <div id="character-status" class="status-line"></div>
+  <div id="illustration-status" class="status-line"></div>
+`;
+
 
   // Grid or list depending on CURRENT_VIEW
-  const containerClass = CURRENT_VIEW === "list" ? "list" : "grid";
+  let content = "";
+
+if (CURRENT_VIEW === "list") {
+  content = filtered.map(p => {
+    const i = illusMap.get(Number(p.page));
+    const url = i?.image_url;
+    return `
+      <div class="list-row">
+        <div class="list-thumb">
+          ${url ? `<img src="${url}">` : ""}
+        </div>
+        <div class="list-info">
+          <strong>Page ${p.page}</strong>
+          <span>${escapeHtml(p.text)}</span>
+        </div>
+        <div class="list-actions">
+          ${
+            url
+              ? `<button class="btn" onclick="openImageModal(${p.page}, '${url}')">Preview</button>`
+              : `<button class="btn btn-primary" onclick="generateSingleIllustration(${p.page}, \`${escapeHtml(p.text)}\`)">Generate</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join("");
+} else {
+  content = cards; // your existing grid cards
+}
+
+results.innerHTML = `
+  ${topActions}
+  <div class="${CURRENT_VIEW === "list" ? "list" : "grid"}">
+    ${content}
+  </div>
+`;
+
 
   const filtered = pages.filter(p => {
     const i = illusMap.get(Number(p.page));
@@ -568,81 +631,200 @@ async function uploadPhoto() {
 async function generateCharacterModel() {
   const projectId = localStorage.getItem("projectId");
   const status = $("character-status");
+
   if (!projectId) {
-    status.textContent = "No project found.";
+    showToast("No project loaded", "Open a project first", "error");
     return;
   }
 
   const kidName = $("kid-name").value.trim();
+  status.textContent = "Generating character model…";
 
-  status.textContent = "Generating character model...";
+  showToast("Generating character", "This may take ~20 seconds", "success");
 
   try {
     const res = await fetch("/api/generate-character-model", {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId, kidName })
     });
+
     const data = await res.json();
 
-    if (data.characterModelUrl) {
-      status.textContent = "Character model generated!";
-      closeUploadModal();
-    } else {
-      status.textContent = "Failed to generate character model.";
+    if (!data.characterModelUrl) {
+      throw new Error("No model URL returned");
     }
-  } catch (e) {
-    console.error(e);
+
+    status.textContent = "Character model ready!";
+    showToast("Character model generated", "Applied to all scenes", "success");
+
+    // 🔑 IMPORTANT: reload project so character_model_url is in memory
+    await openProjectById(projectId);
+
+    closeUploadModal();
+
+  } catch (err) {
+    console.error(err);
     status.textContent = "Failed to generate character model.";
+    showToast("Character generation failed", "See console", "error");
   }
 }
 
-async function generateSingleIllustration(pageNum, pageText, isRegeneration=false) {
+
+async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
   const projectId = localStorage.getItem("projectId");
-  if (!projectId) return;
-
-  const status = $("illustration-status");
-  if (status) status.textContent = isRegeneration ? `Regenerating page ${pageNum}...` : `Generating page ${pageNum}...`;
-
-  const res = await fetch("/api/generate-scene", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ projectId, page: pageNum, pageText, isRegeneration })
-  });
-
-  const data = await res.json();
-  if (data.error) {
-    console.error(data);
-    if (status) status.textContent = `Failed on page ${pageNum}.`;
-    return;
-  }
-
-  if (status) status.textContent = `Done: page ${pageNum}`;
-}
-
-async function generateIllustrations() {
-  const projectId = localStorage.getItem("projectId");
-  const status = $("illustration-status");
   if (!projectId) {
-    status.textContent = "No project found.";
+    showToast("No project loaded", "Open or create a project first.", "error");
     return;
   }
 
-  const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
-  if (!pages.length) {
-    status.textContent = "No story pages found.";
-    return;
+  const status = $("illustration-status");
+  const actionLabel = isRegeneration ? "Regenerating" : "Generating";
+
+  // 🔔 Toast: start
+  showToast(
+    `${actionLabel} illustration`,
+    `Page ${pageNum}`,
+    "success"
+  );
+
+  if (status) {
+    status.textContent = `${actionLabel} page ${pageNum}...`;
   }
 
-  status.textContent = "Generating illustrations...";
+  try {
+    const res = await fetch("/api/generate-scene", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        page: pageNum,
+        pageText,
+        isRegeneration
+      })
+    });
 
-  for (const p of pages) {
-    await generateSingleIllustration(p.page, p.text, false);
+    const data = await res.json();
+
+    if (!res.ok || data?.error) {
+      console.error("Illustration error:", data);
+
+      showToast(
+        "Illustration failed",
+        `Page ${pageNum}`,
+        "error"
+      );
+
+      if (status) {
+        status.textContent = `Failed on page ${pageNum}.`;
+      }
+
+      return;
+    }
+
+    // ✅ Success toast
+    showToast(
+      isRegeneration ? "Illustration regenerated" : "Illustration generated",
+      `Page ${pageNum}`,
+      "success"
+    );
+
+    if (status) {
+      status.textContent = `Done: page ${pageNum}`;
+    }
+
+  } catch (err) {
+    console.error("Illustration request failed:", err);
+
+    showToast(
+      "Network error",
+      `Could not generate page ${pageNum}`,
+      "error"
+    );
+
+    if (status) {
+      status.textContent = `Failed on page ${pageNum}.`;
+    }
   }
-
-  status.textContent = "Illustrations complete! Reloading...";
-  await openProjectById(projectId);
 }
+
+async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) {
+    showToast("No project loaded", "Open or create a project first.", "error");
+    return;
+  }
+
+  const status = $("illustration-status");
+  const actionLabel = isRegeneration ? "Regenerating" : "Generating";
+
+  // 🔔 Toast: start
+  showToast(
+    `${actionLabel} illustration`,
+    `Page ${pageNum}`,
+    "success"
+  );
+
+  if (status) {
+    status.textContent = `${actionLabel} page ${pageNum}...`;
+  }
+
+  try {
+    const res = await fetch("/api/generate-scene", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        page: pageNum,
+        pageText,
+        isRegeneration
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data?.error) {
+      console.error("Illustration error:", data);
+
+      showToast(
+        "Illustration failed",
+        `Page ${pageNum}`,
+        "error"
+      );
+
+      if (status) {
+        status.textContent = `Failed on page ${pageNum}.`;
+      }
+
+      return;
+    }
+
+    // ✅ Success toast
+    showToast(
+      isRegeneration ? "Illustration regenerated" : "Illustration generated",
+      `Page ${pageNum}`,
+      "success"
+    );
+
+    if (status) {
+      status.textContent = `Done: page ${pageNum}`;
+    }
+
+  } catch (err) {
+    console.error("Illustration request failed:", err);
+
+    showToast(
+      "Network error",
+      `Could not generate page ${pageNum}`,
+      "error"
+    );
+
+    if (status) {
+      status.textContent = `Failed on page ${pageNum}.`;
+    }
+  }
+}
+
 
 // -----------------------------------------------------
 // View controls
