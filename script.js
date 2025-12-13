@@ -203,11 +203,15 @@ async function fetchIdeas() {
 
   showLoader("Generating story ideas...");
 
-  const existingProjectId = localStorage.getItem("projectId");
+  // FIX: Always create a NEW project when generating fresh ideas
+  // Clear stale project data to prevent cross-contamination
+  localStorage.removeItem("projectId");
+  localStorage.removeItem("lastStoryPages");
+
   const res = await fetch("/api/story-ideas", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, interests, projectId: existingProjectId || null })
+    body: JSON.stringify({ name, interests, projectId: null })  // <-- Always null = new project
   });
 
   const data = await res.json();
