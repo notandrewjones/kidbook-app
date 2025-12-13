@@ -3,6 +3,8 @@
 let CURRENT_VIEW = "grid";
 let CURRENT_FILTER = "all";
 let CURRENT_PHASE = "dashboard";
+let GENERATING_PAGES = new Set(); // Track pages currently being generated
+let CACHED_PROJECT = null; // Cache the current project for view switching
 
 function setPhase(phase) {
   CURRENT_PHASE = phase;
@@ -29,93 +31,6 @@ function showLoader(message) {
       <div>${message || "Loading..."}</div>
     </div>
   `;
-}
-
-// -----------------------------------------------------
-// Tile Loading Spinner (shows on individual cards)
-// -----------------------------------------------------
-function showTileSpinner(pageNum, message = "Generating...") {
-  const card = document.querySelector(`[data-page="${pageNum}"]`);
-  if (!card) return;
-
-  const thumb = card.querySelector(".thumb");
-  if (!thumb) return;
-
-  // Remove any existing spinner
-  hideTileSpinner(pageNum);
-
-  // Create spinner overlay
-  const overlay = document.createElement("div");
-  overlay.className = "thumb-loading";
-  overlay.innerHTML = `
-    <div class="tile-spinner"></div>
-    <div class="tile-spinner-text">${message}</div>
-  `;
-
-  thumb.appendChild(overlay);
-
-  // Disable click on this card while loading
-  card.style.pointerEvents = "none";
-}
-
-function hideTileSpinner(pageNum) {
-  const card = document.querySelector(`[data-page="${pageNum}"]`);
-  if (!card) return;
-
-  const thumb = card.querySelector(".thumb");
-  if (!thumb) return;
-
-  const existing = thumb.querySelector(".thumb-loading");
-  if (existing) existing.remove();
-
-  // Re-enable click
-  card.style.pointerEvents = "";
-}
-
-function updateTileWithImage(pageNum, imageUrl, revisions = 0) {
-  const card = document.querySelector(`[data-page="${pageNum}"]`);
-  if (!card) return;
-
-  const thumb = card.querySelector(".thumb");
-  if (!thumb) return;
-
-  // Remove spinner if present
-  hideTileSpinner(pageNum);
-
-  // Update the data attribute
-  card.setAttribute("data-image", imageUrl);
-
-  // Update badge
-  const badge = thumb.querySelector(".badge");
-  if (badge) {
-    badge.textContent = `Page ${pageNum} • Ready • r${revisions}`;
-  }
-
-  // Replace placeholder with image (or update existing image)
-  const placeholder = thumb.querySelector(".thumb-placeholder");
-  const existingImg = thumb.querySelector("img");
-
-  if (placeholder) {
-    placeholder.remove();
-  }
-
-  if (existingImg) {
-    existingImg.src = imageUrl;
-  } else {
-    const img = document.createElement("img");
-    img.src = imageUrl;
-    img.alt = `Page ${pageNum}`;
-    thumb.appendChild(img);
-  }
-
-  // Update card meta
-  const meta = card.querySelector(".card-meta");
-  if (meta) {
-    meta.innerHTML = `
-      <span>Preview / Regenerate</span>
-      <span>✓</span>
-    `;
-  }
 }
 
 // -----------------------------------------------------
@@ -168,6 +83,7 @@ async function loadDashboard() {
   setPhase("dashboard");
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
   showLoader("Loading your books...");
+  CACHED_PROJECT = null; // Clear cache when going to dashboard
 
   try {
     const res = await fetch("/api/projects-list");
@@ -249,6 +165,9 @@ async function openProjectById(projectId) {
     $("results").innerHTML = `<div class="loader">Couldn't load that project.</div>`;
     return;
   }
+
+  // Cache the project for view switching
+  CACHED_PROJECT = project;
 
   // populate inputs
   $("kid-name").value = project.kid_name || "";
@@ -375,6 +294,7 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
     context_registry: data.context_registry || {}
   };
 
+  CACHED_PROJECT = project;
   setWorkspaceTitle(project.selected_idea?.title || "Your Book", "Storyboard view");
   setPhase("storyboard");
   renderStoryboard(project);
@@ -394,13 +314,14 @@ function renderStoryboard(project) {
   const illusMap = new Map(illus.map(i => [Number(i.page), i]));
 
   // -------------------------------
-  // Header actions (removed status line)
+  // Header actions
   // -------------------------------
   const topActions = `
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
       <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
     </div>
     <div id="character-status" class="status-line"></div>
+    <div id="illustration-status" class="status-line"></div>
   `;
 
   // -------------------------------
@@ -422,23 +343,38 @@ function renderStoryboard(project) {
     const i = illusMap.get(Number(p.page));
     const url = i?.image_url || "";
     const rev = typeof i?.revisions === "number" ? i.revisions : 0;
-    const badge = url ? `Ready • r${rev}` : "Missing";
+    const isGenerating = GENERATING_PAGES.has(Number(p.page));
+    
+    let badge, thumbContent;
+    
+    if (isGenerating) {
+      badge = `Generating...`;
+      thumbContent = `
+        <div class="generating-overlay">
+          <div class="spinner"></div>
+          <div>Generating...</div>
+        </div>
+        ${url ? `<img src="${url}" alt="Page ${p.page}" style="opacity: 0.5;">` : ''}
+      `;
+    } else {
+      badge = url ? `Ready • r${rev}` : "Missing";
+      thumbContent = url
+        ? `<img src="${url}" alt="Page ${p.page}">`
+        : `<div class="thumb-placeholder">Click to generate</div>`;
+    }
 
     return `
-      <div class="story-card" data-page="${p.page}" data-image="${url}">
+      <div class="story-card ${isGenerating ? 'generating' : ''}" data-page="${p.page}" data-image="${url}">
         <div class="thumb">
-          <span class="badge">Page ${p.page} • ${badge}</span>
-          ${url
-            ? `<img src="${url}" alt="Page ${p.page}">`
-            : `<div class="thumb-placeholder">Click to generate</div>`
-          }
+          <span class="badge">${`Page ${p.page} • ${badge}`}</span>
+          ${thumbContent}
         </div>
         <div class="card-body">
           <div class="card-title">Page ${p.page}</div>
           <p class="card-sub">${escapeHtml(p.text)}</p>
           <div class="card-meta">
-            <span>${url ? "Preview / Regenerate" : "Generate"}</span>
-            <span>${url ? "✓" : "+"}</span>
+            <span>${isGenerating ? 'Generating...' : (url ? "Preview / Regenerate" : "Generate")}</span>
+            <span>${isGenerating ? '⏳' : (url ? "✓" : "+")}</span>
           </div>
         </div>
       </div>
@@ -463,6 +399,13 @@ function renderStoryboard(project) {
   results.querySelectorAll("[data-page]").forEach(el => {
     el.addEventListener("click", async () => {
       const pageNum = Number(el.getAttribute("data-page"));
+      
+      // Don't allow interaction while generating
+      if (GENERATING_PAGES.has(pageNum)) {
+        showToast("Please wait", "This page is currently being generated", "warn");
+        return;
+      }
+      
       const url = el.getAttribute("data-image");
 
       if (url) {
@@ -472,6 +415,8 @@ function renderStoryboard(project) {
         if (!pageObj) return;
 
         await generateSingleIllustration(pageNum, pageObj.text);
+        const pid = localStorage.getItem("projectId");
+        if (pid) await openProjectById(pid);
       }
     });
   });
@@ -479,6 +424,14 @@ function renderStoryboard(project) {
   $("generate-illustrations-btn")?.addEventListener("click", generateIllustrations);
 
   initUploadModal();
+}
+
+// -----------------------------------------------------
+// Re-render storyboard without fetching (for view switching)
+// -----------------------------------------------------
+function reRenderStoryboard() {
+  if (!CACHED_PROJECT || CURRENT_PHASE !== "storyboard") return;
+  renderStoryboard(CACHED_PROJECT);
 }
 
 // -----------------------------------------------------
@@ -676,14 +629,20 @@ async function handleRegenerateIllustration() {
     ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
     : pageData.text;
 
-  // Close modal before regenerating
-  closeImageModal();
-
   await generateSingleIllustration(pageNum, pageTextWithNotes, true);
 
-  // Refresh the project to show updated image
+  // Refresh modal image
   const pid = localStorage.getItem("projectId");
-  if (pid) await openProjectById(pid);
+  if (pid) {
+    const res = await fetch("/api/load-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: pid })
+    });
+    const data = await res.json();
+    const updated = data?.project?.illustrations?.find(i => Number(i.page) === pageNum);
+    if (updated?.image_url) $("modal-image").src = updated.image_url;
+  }
 }
 
 function initImageModalEvents() {
@@ -869,23 +828,31 @@ async function generateCharacterModel() {
   }
 }
 
-async function generateSingleIllustration(pageNum, pageText, isRegeneration = false, skipRefresh = false) {
+async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
   const projectId = localStorage.getItem("projectId");
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first.", "error");
     return;
   }
 
+  const status = $("illustration-status");
   const actionLabel = isRegeneration ? "Regenerating" : "Generating";
 
-  // Show spinner on the tile
-  showTileSpinner(pageNum, `${actionLabel}...`);
+  // Mark this page as generating
+  GENERATING_PAGES.add(pageNum);
+  
+  // Re-render to show the spinner
+  reRenderStoryboard();
 
   showToast(
     `${actionLabel} illustration`,
     `Page ${pageNum}`,
     "success"
   );
+
+  if (status) {
+    status.textContent = `${actionLabel} page ${pageNum}...`;
+  }
 
   try {
     const res = await fetch("/api/generate-scene", {
@@ -901,6 +868,9 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
 
     const data = await res.json();
 
+    // Remove from generating set
+    GENERATING_PAGES.delete(pageNum);
+
     if (!res.ok || data?.error) {
       console.error("Illustration error:", data);
 
@@ -910,10 +880,25 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
         "error"
       );
 
-      // Hide spinner on error
-      hideTileSpinner(pageNum);
+      if (status) {
+        status.textContent = `Failed on page ${pageNum}.`;
+      }
 
+      // Re-render to remove spinner
+      reRenderStoryboard();
       return;
+    }
+
+    // Update the cached project with the new illustration
+    if (CACHED_PROJECT) {
+      const existingIllus = CACHED_PROJECT.illustrations || [];
+      const filteredIllus = existingIllus.filter(i => Number(i.page) !== pageNum);
+      filteredIllus.push({
+        page: pageNum,
+        image_url: data.image_url,
+        revisions: data.revisions || 0
+      });
+      CACHED_PROJECT.illustrations = filteredIllus;
     }
 
     showToast(
@@ -922,11 +907,18 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       "success"
     );
 
-    // Update the tile immediately with the new image
-    updateTileWithImage(pageNum, data.image_url, data.revisions || 0);
+    if (status) {
+      status.textContent = `Done: page ${pageNum}`;
+    }
+
+    // Re-render to show the new image
+    reRenderStoryboard();
 
   } catch (err) {
     console.error("Illustration request failed:", err);
+
+    // Remove from generating set
+    GENERATING_PAGES.delete(pageNum);
 
     showToast(
       "Network error",
@@ -934,8 +926,12 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       "error"
     );
 
-    // Hide spinner on error
-    hideTileSpinner(pageNum);
+    if (status) {
+      status.textContent = `Failed on page ${pageNum}.`;
+    }
+
+    // Re-render to remove spinner
+    reRenderStoryboard();
   }
 }
 
@@ -958,27 +954,22 @@ async function generateIllustrations() {
   const project = data?.project;
   if (!project?.story_json) return;
 
+  // Update cache
+  CACHED_PROJECT = project;
+
   const pages = project.story_json;
   const existing = new Set(
     (project.illustrations || []).map(i => Number(i.page))
   );
 
-  // Show spinners on all pages that will be generated
   for (const p of pages) {
     if (!existing.has(Number(p.page))) {
-      showTileSpinner(p.page, "Queued...");
-    }
-  }
-
-  for (const p of pages) {
-    if (!existing.has(Number(p.page))) {
-      // Update spinner text to show it's now generating
-      showTileSpinner(p.page, "Generating...");
       await generateSingleIllustration(p.page, p.text);
     }
   }
 
   showToast("Illustrations complete", "All missing pages generated", "success");
+  await openProjectById(projectId);
 }
 
 // -----------------------------------------------------
@@ -989,22 +980,22 @@ function initViewControls() {
     CURRENT_VIEW = "grid";
     $("view-grid").classList.add("active");
     $("view-list").classList.remove("active");
-    const pid = localStorage.getItem("projectId");
-    if (pid) openProjectById(pid);
+    // Re-render without full reload to preserve spinner state
+    reRenderStoryboard();
   });
 
   $("view-list")?.addEventListener("click", () => {
     CURRENT_VIEW = "list";
     $("view-list").classList.add("active");
     $("view-grid").classList.remove("active");
-    const pid = localStorage.getItem("projectId");
-    if (pid) openProjectById(pid);
+    // Re-render without full reload to preserve spinner state
+    reRenderStoryboard();
   });
 
   $("page-filter")?.addEventListener("change", (e) => {
     CURRENT_FILTER = e.target.value;
-    const pid = localStorage.getItem("projectId");
-    if (pid) openProjectById(pid);
+    // Re-render without full reload to preserve spinner state
+    reRenderStoryboard();
   });
 }
 
@@ -1039,6 +1030,8 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.removeItem("lastStoryPages");
     $("kid-name").value = "";
     $("kid-interests").value = "";
+    CACHED_PROJECT = null;
+    GENERATING_PAGES.clear();
     setWorkspaceTitle("Workspace", "Start a new book or open an existing one.");
     $("results").innerHTML = `<div class="loader">Session cleared. Generate ideas to begin.</div>`;
   });

@@ -807,3 +807,30 @@ body[data-phase="storyboard"] #results {
   color: var(--muted);
   font-weight: 500;
 }
+
+/* Additional styles for generating state */
+
+.story-card.generating {
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.generating-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(11, 15, 25, 0.75);
+  color: var(--text);
+  z-index: 5;
+  border-radius: inherit;
+}
+
+.generating-overlay .spinner {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
