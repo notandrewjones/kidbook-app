@@ -45,12 +45,18 @@ async function handler(req, res) {
     }
 
     // Normalize to prevent UI crashes
+    // Ensure each illustration has revision_history array
+    const normalizedIllustrations = (data.illustrations || []).map(illus => ({
+      ...illus,
+      revision_history: illus.revision_history || []
+    }));
+
     return res.status(200).json({
       project: {
         ...data,
         story_ideas: data.story_ideas || [],
         story_json: data.story_json || [],
-        illustrations: data.illustrations || [],
+        illustrations: normalizedIllustrations,
         props_registry: data.props_registry || [],
         context_registry: data.context_registry || {}
       }

@@ -5,6 +5,7 @@ import { state } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';
 import { reRenderCurrentView } from '../ui/render.js';
 import { openProjectById, recordCompletedIllustration } from './projects.js';
+import { closeImageModal } from '../ui/modals.js';
 
 // Queue system
 const MAX_CONCURRENT = 2;
@@ -72,6 +73,7 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
       image_url: data.image_url,
       revisions: data.revisions || 0,
       last_updated: Date.now(),
+      revision_history: data.revision_history || [],
     };
 
     // Record for cross-navigation persistence
@@ -216,10 +218,12 @@ export async function handleRegenerateIllustration() {
     ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
     : pageData.text;
 
+  // Close modal immediately so user sees the tile updating
+  closeImageModal();
+  
   generateSingleIllustration(pageNum, pageTextWithNotes, true);
 
-  // Close modal and let the queue system handle it
-  // The UI will update via reRenderCurrentView
+  // The UI will update via reRenderCurrentView from the queue system
 }
 
 // Get queue status for UI
