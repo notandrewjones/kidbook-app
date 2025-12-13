@@ -72,6 +72,52 @@ function hideTileSpinner(pageNum) {
   card.style.pointerEvents = "";
 }
 
+function updateTileWithImage(pageNum, imageUrl, revisions = 0) {
+  const card = document.querySelector(`[data-page="${pageNum}"]`);
+  if (!card) return;
+
+  const thumb = card.querySelector(".thumb");
+  if (!thumb) return;
+
+  // Remove spinner if present
+  hideTileSpinner(pageNum);
+
+  // Update the data attribute
+  card.setAttribute("data-image", imageUrl);
+
+  // Update badge
+  const badge = thumb.querySelector(".badge");
+  if (badge) {
+    badge.textContent = `Page ${pageNum} • Ready • r${revisions}`;
+  }
+
+  // Replace placeholder with image (or update existing image)
+  const placeholder = thumb.querySelector(".thumb-placeholder");
+  const existingImg = thumb.querySelector("img");
+
+  if (placeholder) {
+    placeholder.remove();
+  }
+
+  if (existingImg) {
+    existingImg.src = imageUrl;
+  } else {
+    const img = document.createElement("img");
+    img.src = imageUrl;
+    img.alt = `Page ${pageNum}`;
+    thumb.appendChild(img);
+  }
+
+  // Update card meta
+  const meta = card.querySelector(".card-meta");
+  if (meta) {
+    meta.innerHTML = `
+      <span>Preview / Regenerate</span>
+      <span>✓</span>
+    `;
+  }
+}
+
 // -----------------------------------------------------
 // Account menu placeholder
 // -----------------------------------------------------
@@ -426,8 +472,6 @@ function renderStoryboard(project) {
         if (!pageObj) return;
 
         await generateSingleIllustration(pageNum, pageObj.text);
-        const pid = localStorage.getItem("projectId");
-        if (pid) await openProjectById(pid);
       }
     });
   });
@@ -825,7 +869,7 @@ async function generateCharacterModel() {
   }
 }
 
-async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
+async function generateSingleIllustration(pageNum, pageText, isRegeneration = false, skipRefresh = false) {
   const projectId = localStorage.getItem("projectId");
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first.", "error");
@@ -878,8 +922,8 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       "success"
     );
 
-    // Hide spinner on success (will be replaced by image on refresh)
-    hideTileSpinner(pageNum);
+    // Update the tile immediately with the new image
+    updateTileWithImage(pageNum, data.image_url, data.revisions || 0);
 
   } catch (err) {
     console.error("Illustration request failed:", err);
@@ -935,7 +979,6 @@ async function generateIllustrations() {
   }
 
   showToast("Illustrations complete", "All missing pages generated", "success");
-  await openProjectById(projectId);
 }
 
 // -----------------------------------------------------
