@@ -2,6 +2,16 @@
 
 let CURRENT_VIEW = "grid";
 let CURRENT_FILTER = "all";
+let CURRENT_PHASE = "dashboard";
+
+function setPhase(phase) {
+  CURRENT_PHASE = phase;
+  document.body.dataset.phase = phase;
+
+  // Optional: keep title/actions consistent later
+  // For now, phase only controls layout via CSS.
+}
+
 
 // -----------------------------------------------------
 // Small utilities
@@ -73,8 +83,21 @@ function projectStatusText(p) {
 }
 
 async function loadDashboard() {
+  setPhase("dashboard");
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
   showLoader("Loading your books...");
+
+  try {
+    const res = await fetch("/api/projects-list");
+    const data = await res.json();
+    renderDashboard(data.projects || []);
+  } catch (e) {
+    console.error(e);
+    $("results").innerHTML = `<div class="loader">Couldn’t load projects.</div>`;
+  }
+}
+
+
 
   try {
     const res = await fetch("/api/projects-list");
@@ -105,11 +128,11 @@ function renderDashboard(projects) {
 
     const status = projectStatusText(p);
 
-    return `
+    return;
       <div class="story-card" data-open-project="${p.id}">
         <div class="thumb">
           <span class="badge">${status}</span>
-          ${p.illustrations?.[0]?.image_url ? `<img src="${p.illustrations[0].image_url}" alt="thumb">` : ""}
+			${p.illustrations?.[0]?.image_url ? '<img src="' + p.illustrations[0].image_url + '" alt="thumb">' : ""}    
         </div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(title)}</div>
@@ -159,18 +182,21 @@ async function openProjectById(projectId) {
 
   // state routing
   if (!project.story_ideas?.length) {
+    setPhase("ideas");
     setWorkspaceTitle("Project", "Generate story ideas to begin.");
     $("results").innerHTML = `<div class="loader">This book has no ideas yet. Use the form to generate them.</div>`;
     return;
   }
 
   if (project.story_ideas?.length && !project.selected_idea) {
+    setPhase("select-idea");
     setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
     renderIdeas(project.story_ideas);
     return;
   }
 
   if (project.story_json?.length) {
+    setPhase("storyboard");
     const title =
       (project.selected_idea && project.selected_idea.title) ||
       (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
@@ -178,19 +204,13 @@ async function openProjectById(projectId) {
     renderStoryboard(project);
     return;
   }
-  
-  // Hide left sidebar once story exists
-const sidebar = document.querySelector(".panel");
-if (sidebar) {
-  sidebar.style.display = project.story_json?.length ? "none" : "";
-}
 
-
-  // fallback
+  setPhase("select-idea");
   renderIdeas(project.story_ideas);
 }
 
 async function fetchIdeas() {
+	
   const name = $("kid-name").value.trim();
   const interests = $("kid-interests").value.trim();
   if (!name) return;
@@ -211,8 +231,10 @@ async function fetchIdeas() {
   }
 
   localStorage.setItem("projectId", data.projectId);
+  setPhase("select-idea");
   setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
   renderIdeas(data.ideas);
+
 }
 
 function renderIdeas(ideas) {
@@ -282,6 +304,7 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
   };
 
   setWorkspaceTitle(project.selected_idea?.title || "Your Book", "Storyboard view");
+  setPhase("storyboard");
   renderStoryboard(project);
 }
 
@@ -289,6 +312,8 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
 // Storyboard rendering
 // -----------------------------------------------------
 function renderStoryboard(project) {
+    setPhase("storyboard");
+    renderCharacterPanel(project);
   const results = $("results");
   localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json || []));
 
@@ -392,6 +417,27 @@ function renderStoryboard(project) {
 
   initUploadModal();
 }
+
+function renderCharacterPanel(project){
+  const panel = $("character-panel-content");
+  if (!panel) return;
+
+  // You can enhance this later. For now: never empty.
+  panel.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="font-weight:700;">Character</div>
+      <div style="color: rgba(255,255,255,0.62); font-size:13px;">
+        Upload a photo and generate a character model.
+      </div>
+      <button class="btn btn-secondary" id="open-upload-modal-side">Upload Photo</button>
+      <button class="btn btn-primary" id="generate-character-btn-side">Generate Character Model</button>
+    </div>
+  `;
+
+  $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
+  $("generate-character-btn-side")?.addEventListener("click", generateCharacterModel);
+}
+
 
 
 // -----------------------------------------------------

@@ -303,6 +303,49 @@ body{
   border-bottom:1px solid var(--stroke);
   background: rgba(255,255,255,0.02);
 }
+/* ------------------------------
+   Workspace body (phase system)
+------------------------------ */
+.workspace-body{
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+}
+
+/* Results should be the main scroll container */
+#results{
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Character panel exists in DOM always, but only visible in storyboard */
+.character-panel{
+  display: none;
+  width: 340px;
+  min-width: 340px;
+  border-right: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.03);
+  padding: 16px;
+}
+
+/* Storyboard layout becomes a 2-column grid */
+body[data-phase="storyboard"] .workspace-body{
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+}
+
+/* Show the character panel only in storyboard */
+body[data-phase="storyboard"] .character-panel{
+  display: block;
+}
+
+/* Hide the left sidebar panel only in storyboard */
+body[data-phase="storyboard"] .panel{
+  display: none;
+}
+
 .workspace-title h2{margin:0}
 .workspace-title p{margin:6px 0 0; color: var(--muted)}
 
