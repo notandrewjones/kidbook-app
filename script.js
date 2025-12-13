@@ -405,19 +405,44 @@ function renderCharacterPanel(project) {
   const panel = $("character-panel-content");
   if (!panel) return;
 
-  panel.innerHTML = `
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <div style="font-weight:700;">Character</div>
-      <div style="color: rgba(255,255,255,0.62); font-size:13px;">
-        Upload a photo and generate a character model.
+  const characterUrl = project.character_model_url || project.characterModelUrl;
+  const kidName = project.kid_name || "Character";
+
+  if (characterUrl) {
+    // Character model exists - show it
+    panel.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div style="font-weight:700;">Character Model</div>
+        <div class="character-preview">
+          <img src="${characterUrl}" alt="${escapeHtml(kidName)}'s character model">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(kidName)}</div>
+            <div style="color: rgba(255,255,255,0.62); font-size:12px;">Model ready</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="open-upload-modal-side">Upload New Photo</button>
+        <button class="btn btn-primary" id="regenerate-character-btn-side">Regenerate Model</button>
       </div>
-      <button class="btn btn-secondary" id="open-upload-modal-side">Upload Photo</button>
-      <button class="btn btn-primary" id="generate-character-btn-side">Generate Character Model</button>
-    </div>
-  `;
+    `;
+
+    $("regenerate-character-btn-side")?.addEventListener("click", generateCharacterModel);
+  } else {
+    // No character model yet - show upload prompt
+    panel.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-weight:700;">Character</div>
+        <div style="color: rgba(255,255,255,0.62); font-size:13px;">
+          Upload a photo and generate a character model to ensure consistent illustrations.
+        </div>
+        <button class="btn btn-secondary" id="open-upload-modal-side">Upload Photo</button>
+        <button class="btn btn-primary" id="generate-character-btn-side">Generate Character Model</button>
+      </div>
+    `;
+
+    $("generate-character-btn-side")?.addEventListener("click", generateCharacterModel);
+  }
 
   $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
-  $("generate-character-btn-side")?.addEventListener("click", generateCharacterModel);
 }
 
 // -----------------------------------------------------
