@@ -35,6 +35,15 @@ body{
   margin:0;
   font-family: var(--sans);
   color: var(--text);
+  background: var(--bg);
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background:
     radial-gradient(1200px 800px at 20% 10%, rgba(124,92,255,0.22), transparent 60%),
     radial-gradient(900px 600px at 80% 30%, rgba(52,211,153,0.16), transparent 55%),
