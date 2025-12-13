@@ -6,12 +6,37 @@ import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
 import { navigate } from '../core/router.js';
 import { renderDashboard, renderStoryboard, renderIdeas } from '../ui/render.js';
 
+// Track recently completed illustrations that may not be on server yet
+const recentlyCompletedIllustrations = new Map(); // projectId -> [{page, image_url, revisions}]
+
+// Called by illustrations.js when a generation completes
+export function recordCompletedIllustration(projectId, illustration) {
+  if (!recentlyCompletedIllustrations.has(projectId)) {
+    recentlyCompletedIllustrations.set(projectId, []);
+  }
+  const list = recentlyCompletedIllustrations.get(projectId);
+  // Remove existing entry for same page
+  const filtered = list.filter(i => Number(i.page) !== Number(illustration.page));
+  filtered.push(illustration);
+  recentlyCompletedIllustrations.set(projectId, filtered);
+}
+
+// Clear recorded illustrations for a project (call after confirmed sync)
+export function clearCompletedIllustrations(projectId) {
+  recentlyCompletedIllustrations.delete(projectId);
+}
+
 // Fetch all projects for dashboard
 export async function loadDashboard() {
   setPhase("dashboard");
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
   showLoader("Loading your books...");
-  state.cachedProject = null;
+  
+  // Don't clear cachedProject if generations are running - we might come back
+  const hasActiveGenerations = state.generatingPages.size > 0 || state.queuedPages.size > 0;
+  if (!hasActiveGenerations) {
+    state.cachedProject = null;
+  }
 
   navigate("dashboard");
 
@@ -30,6 +55,37 @@ export async function loadDashboard() {
 // Load a specific project by ID
 export async function openProjectById(projectId, phaseHint = null) {
   localStorage.setItem("projectId", projectId);
+  
+  // Check if we already have this project cached with active generations
+  const hasActiveGenerations = state.generatingPages.size > 0 || state.queuedPages.size > 0;
+  const isSameProject = state.cachedProject?.id === projectId;
+  
+  // If same project with active generations, just re-render from cache
+  if (isSameProject && hasActiveGenerations) {
+    const project = state.cachedProject;
+    
+    // Determine phase and render
+    let targetPhase = "storyboard";
+    if (!project.story_ideas?.length) targetPhase = "ideas";
+    else if (!project.selected_idea) targetPhase = "select-idea";
+    else if (project.story_json?.length) targetPhase = "storyboard";
+    
+    if (phaseHint && isPhaseValidForProject(phaseHint, project)) {
+      targetPhase = phaseHint;
+    }
+    
+    setPhase(targetPhase);
+    navigate(targetPhase, projectId);
+    
+    if (targetPhase === "storyboard") {
+      const title = project.selected_idea?.title || 
+        (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
+      setWorkspaceTitle(title, "Storyboard view");
+      renderStoryboard(project);
+    }
+    return;
+  }
+  
   showLoader("Loading project...");
 
   const res = await fetch("/api/load-project", {
@@ -43,6 +99,27 @@ export async function openProjectById(projectId, phaseHint = null) {
   if (!project) {
     $("results").innerHTML = `<div class="loader">Couldn't load that project.</div>`;
     return;
+  }
+
+  // Merge any recently completed illustrations that server might not have yet
+  const recentIllustrations = recentlyCompletedIllustrations.get(projectId) || [];
+  if (recentIllustrations.length > 0) {
+    const serverIllustrations = project.illustrations || [];
+    const serverPages = new Set(serverIllustrations.map(i => Number(i.page)));
+    
+    // Add any recent illustrations not on server
+    for (const recent of recentIllustrations) {
+      if (!serverPages.has(Number(recent.page))) {
+        serverIllustrations.push(recent);
+      } else {
+        // Server has it, update if our version is newer (has image)
+        const idx = serverIllustrations.findIndex(i => Number(i.page) === Number(recent.page));
+        if (idx !== -1 && recent.image_url) {
+          serverIllustrations[idx] = recent;
+        }
+      }
+    }
+    project.illustrations = serverIllustrations;
   }
 
   // Cache the project

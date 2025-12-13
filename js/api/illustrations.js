@@ -4,15 +4,12 @@
 import { state } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';
 import { reRenderCurrentView } from '../ui/render.js';
-import { openProjectById } from './projects.js';
+import { openProjectById, recordCompletedIllustration } from './projects.js';
 
 // Queue system
 const MAX_CONCURRENT = 2;
 const generationQueue = [];
 let activeGenerations = 0;
-
-// Add to state for UI tracking
-state.queuedPages = new Set();
 
 // Process the next item in queue if we have capacity
 function processQueue() {
@@ -39,7 +36,6 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
 
   if (status) {
     const queuedCount = state.queuedPages.size;
-    const activeCount = state.generatingPages.size;
     status.textContent = `${actionLabel} page ${pageNum}...` + 
       (queuedCount > 0 ? ` (${queuedCount} queued)` : '');
   }
@@ -70,15 +66,21 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
       return;
     }
 
+    // Build illustration object
+    const newIllustration = {
+      page: pageNum,
+      image_url: data.image_url,
+      revisions: data.revisions || 0,
+    };
+
+    // Record for cross-navigation persistence
+    recordCompletedIllustration(projectId, newIllustration);
+
     // Update cached project with new illustration
     if (state.cachedProject) {
       const existingIllus = state.cachedProject.illustrations || [];
       const filteredIllus = existingIllus.filter((i) => Number(i.page) !== pageNum);
-      filteredIllus.push({
-        page: pageNum,
-        image_url: data.image_url,
-        revisions: data.revisions || 0,
-      });
+      filteredIllus.push(newIllustration);
       state.cachedProject.illustrations = filteredIllus;
     }
 
