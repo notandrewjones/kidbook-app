@@ -66,11 +66,12 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
       return;
     }
 
-    // Build illustration object
+    // Build illustration object with timestamp for cache busting
     const newIllustration = {
       page: pageNum,
       image_url: data.image_url,
       revisions: data.revisions || 0,
+      last_updated: Date.now(),
     };
 
     // Record for cross-navigation persistence

@@ -145,8 +145,13 @@ export function renderStoryboard(project) {
     const i = illusMap.get(Number(p.page));
     const url = i?.image_url || "";
     const rev = typeof i?.revisions === "number" ? i.revisions : 0;
+    const lastUpdated = i?.last_updated || "";
     const isGenerating = state.generatingPages.has(Number(p.page));
     const isQueued = state.queuedPages?.has(Number(p.page));
+
+    // Add cache-busting param to prevent browser from showing stale images
+    const cacheBuster = lastUpdated || rev || Date.now();
+    const imageUrl = url ? `${url}?v=${cacheBuster}` : "";
 
     let badge, thumbContent, cardClass;
 
@@ -158,7 +163,7 @@ export function renderStoryboard(project) {
           <div class="spinner"></div>
           <div>Generating...</div>
         </div>
-        ${url ? `<img src="${url}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
+        ${imageUrl ? `<img src="${imageUrl}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
       `;
     } else if (isQueued) {
       badge = `Queued`;
@@ -168,18 +173,18 @@ export function renderStoryboard(project) {
           <div class="queue-icon">⏳</div>
           <div>Queued</div>
         </div>
-        ${url ? `<img src="${url}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
+        ${imageUrl ? `<img src="${imageUrl}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
       `;
     } else {
       badge = url ? `Ready • r${rev}` : "Missing";
       cardClass = "";
-      thumbContent = url
-        ? `<img src="${url}" alt="Page ${p.page}">`
+      thumbContent = imageUrl
+        ? `<img src="${imageUrl}" alt="Page ${p.page}">`
         : `<div class="thumb-placeholder">Click to generate</div>`;
     }
 
     return `
-      <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${url}">
+      <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${imageUrl}">
         <div class="thumb">
           <span class="badge">${`Page ${p.page} • ${badge}`}</span>
           ${thumbContent}
