@@ -83,14 +83,16 @@ async function loadDashboard() {
   setPhase("dashboard");
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
   showLoader("Loading your books...");
-  CACHED_PROJECT = null; // Clear cache when going to dashboard
+  CACHED_PROJECT = null; // Clear project cache when going to dashboard
 
   try {
     const res = await fetch("/api/projects-list");
     const data = await res.json();
-    renderDashboard(data.projects || []);
+    CACHED_DASHBOARD_PROJECTS = data.projects || [];
+    renderDashboard(CACHED_DASHBOARD_PROJECTS);
   } catch (e) {
     console.error(e);
+    CACHED_DASHBOARD_PROJECTS = null;
     $("results").innerHTML = `<div class="loader">Couldn't load projects.</div>`;
   }
 }
@@ -136,7 +138,9 @@ function renderDashboard(projects) {
     `;
   }).join("");
 
-  results.innerHTML = `<div class="grid">${cards}</div>`;
+  // Use current view setting
+  const containerClass = CURRENT_VIEW === "list" ? "list" : "grid";
+  results.innerHTML = `<div class="${containerClass}">${cards}</div>`;
 
   results.querySelectorAll("[data-open-project]").forEach(el => {
     el.addEventListener("click", async () => {
@@ -145,6 +149,9 @@ function renderDashboard(projects) {
     });
   });
 }
+
+// Cache for dashboard projects (for view switching)
+let CACHED_DASHBOARD_PROJECTS = null;
 
 // -----------------------------------------------------
 // Project open + story / ideas
@@ -427,11 +434,19 @@ function renderStoryboard(project) {
 }
 
 // -----------------------------------------------------
-// Re-render storyboard without fetching (for view switching)
+// Re-render current view without fetching (for view switching)
 // -----------------------------------------------------
+function reRenderCurrentView() {
+  if (CURRENT_PHASE === "storyboard" && CACHED_PROJECT) {
+    renderStoryboard(CACHED_PROJECT);
+  } else if (CURRENT_PHASE === "dashboard" && CACHED_DASHBOARD_PROJECTS) {
+    renderDashboard(CACHED_DASHBOARD_PROJECTS);
+  }
+}
+
+// Alias for backward compatibility
 function reRenderStoryboard() {
-  if (!CACHED_PROJECT || CURRENT_PHASE !== "storyboard") return;
-  renderStoryboard(CACHED_PROJECT);
+  reRenderCurrentView();
 }
 
 // -----------------------------------------------------
@@ -980,22 +995,22 @@ function initViewControls() {
     CURRENT_VIEW = "grid";
     $("view-grid").classList.add("active");
     $("view-list").classList.remove("active");
-    // Re-render without full reload to preserve spinner state
-    reRenderStoryboard();
+    // Re-render without full reload to preserve state
+    reRenderCurrentView();
   });
 
   $("view-list")?.addEventListener("click", () => {
     CURRENT_VIEW = "list";
     $("view-list").classList.add("active");
     $("view-grid").classList.remove("active");
-    // Re-render without full reload to preserve spinner state
-    reRenderStoryboard();
+    // Re-render without full reload to preserve state
+    reRenderCurrentView();
   });
 
   $("page-filter")?.addEventListener("change", (e) => {
     CURRENT_FILTER = e.target.value;
-    // Re-render without full reload to preserve spinner state
-    reRenderStoryboard();
+    // Re-render without full reload to preserve state
+    reRenderCurrentView();
   });
 }
 
