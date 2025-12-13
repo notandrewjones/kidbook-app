@@ -6,9 +6,69 @@ let CURRENT_PHASE = "dashboard";
 let GENERATING_PAGES = new Set(); // Track pages currently being generated
 let CACHED_PROJECT = null; // Cache the current project for view switching
 
+// Flag to prevent pushing state when handling popstate
+let HANDLING_POPSTATE = false;
+
 function setPhase(phase) {
   CURRENT_PHASE = phase;
   document.body.dataset.phase = phase;
+}
+
+// -----------------------------------------------------
+// History management
+// -----------------------------------------------------
+function pushHistoryState(phase, projectId = null) {
+  if (HANDLING_POPSTATE) return; // Don't push when handling back/forward
+  
+  const state = { phase, projectId };
+  const url = projectId ? `?project=${projectId}&phase=${phase}` : `?phase=${phase}`;
+  
+  // Only push if state is different from current
+  const currentState = history.state;
+  if (currentState?.phase === phase && currentState?.projectId === projectId) {
+    return;
+  }
+  
+  history.pushState(state, "", url);
+}
+
+function handlePopState(event) {
+  HANDLING_POPSTATE = true;
+  
+  const state = event.state;
+  
+  if (!state) {
+    // No state, go to dashboard
+    loadDashboard();
+  } else if (state.phase === "dashboard") {
+    loadDashboard();
+  } else if (state.phase === "storyboard" && state.projectId) {
+    openProjectById(state.projectId);
+  } else if (state.phase === "select-idea" && state.projectId) {
+    openProjectById(state.projectId);
+  } else if (state.phase === "ideas" && state.projectId) {
+    openProjectById(state.projectId);
+  } else {
+    loadDashboard();
+  }
+  
+  HANDLING_POPSTATE = false;
+}
+
+function initHistoryFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const phase = params.get("phase");
+  const projectId = params.get("project");
+  
+  // Set initial state without pushing
+  const initialState = { phase: phase || "dashboard", projectId };
+  history.replaceState(initialState, "", window.location.href);
+  
+  if (projectId && (phase === "storyboard" || phase === "select-idea" || phase === "ideas")) {
+    openProjectById(projectId);
+  } else {
+    loadDashboard();
+  }
 }
 
 // -----------------------------------------------------
@@ -84,6 +144,9 @@ async function loadDashboard() {
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
   showLoader("Loading your books...");
   CACHED_PROJECT = null; // Clear project cache when going to dashboard
+  
+  // Push history state
+  pushHistoryState("dashboard");
 
   try {
     const res = await fetch("/api/projects-list");
@@ -183,6 +246,7 @@ async function openProjectById(projectId) {
   // state routing
   if (!project.story_ideas?.length) {
     setPhase("ideas");
+    pushHistoryState("ideas", projectId);
     setWorkspaceTitle("Project", "Generate story ideas to begin.");
     $("results").innerHTML = `<div class="loader">This book has no ideas yet. Use the form to generate them.</div>`;
     return;
@@ -190,6 +254,7 @@ async function openProjectById(projectId) {
 
   if (project.story_ideas?.length && !project.selected_idea) {
     setPhase("select-idea");
+    pushHistoryState("select-idea", projectId);
     setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
     renderIdeas(project.story_ideas);
     return;
@@ -197,6 +262,7 @@ async function openProjectById(projectId) {
 
   if (project.story_json?.length) {
     setPhase("storyboard");
+    pushHistoryState("storyboard", projectId);
     const title =
       (project.selected_idea && project.selected_idea.title) ||
       (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
@@ -206,6 +272,7 @@ async function openProjectById(projectId) {
   }
 
   setPhase("select-idea");
+  pushHistoryState("select-idea", projectId);
   renderIdeas(project.story_ideas);
 }
 
@@ -1034,6 +1101,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initAccountMenu();
   initImageModalEvents();
   initViewControls();
+  
+  // Listen for browser back/forward
+  window.addEventListener("popstate", handlePopState);
 
   $("kid-form")?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1053,6 +1123,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("go-dashboard")?.addEventListener("click", loadDashboard);
 
-  // Start on dashboard by default
-  loadDashboard();
+  // Initialize from URL (supports refresh and direct links)
+  initHistoryFromURL();
 });
