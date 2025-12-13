@@ -153,12 +153,18 @@
           </div>
 
           <div class="modal-side">
+            <!-- Current version indicator -->
+            <div id="current-version-indicator" class="hidden"></div>
+            
+            <!-- Revision history -->
+            <div id="revision-history" class="hidden"></div>
+            
             <label class="label">Revision notes</label>
             <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add a red kite..."></textarea>
 
             <button id="regen-btn" class="btn btn-primary">
               <span>Regenerate</span>
-              <span class="pill">max 2</span>
+              <span class="pill">max 5</span>
             </button>
 
             <div class="modal-help">

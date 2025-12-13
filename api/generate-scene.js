@@ -1,4 +1,4 @@
-// api/generate-scene.js (CommonJS, with regeneration + registries)
+// api/generate-scene.js (CommonJS, with regeneration + registries + revision history)
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
@@ -257,7 +257,7 @@ const protagonist =
       ? project.illustrations
       : [];
 
-    // Find existing illustration for this page (for revision counting)
+    // Find existing illustration for this page (for revision counting and history)
     const existingForPage = existingIllustrations.find(
       (i) => Number(i.page) === Number(page)
     );
@@ -265,16 +265,15 @@ const protagonist =
       existingForPage && typeof existingForPage.revisions === "number"
         ? existingForPage.revisions
         : 0;
+    
+    // Get existing revision history
+    const existingHistory = existingForPage?.revision_history || [];
 
     const isRegen = !!isRegeneration;
 
     console.log("=== REGENERATION FLAG ===");
     console.log({ isRegen, previousRevisions });
     console.log("=========================");
-
-    // NOTE: frontend is enforcing max 2 regenerations,
-    // but we could hard-stop here too if desired:
-    // if (isRegen && previousRevisions >= 2) { ... }
 
     console.log("=== REGISTRY BEFORE UPDATE ===");
     console.log(registry);
@@ -389,8 +388,8 @@ ${characterVisualRules}
 
 STRICT CHARACTER RULES:
 • Do NOT invent new characters
-• Do NOT change a character’s appearance once defined
-• The protagonist’s appearance must NEVER be inferred or redesigned
+• Do NOT change a character's appearance once defined
+• The protagonist's appearance must NEVER be inferred or redesigned
 • Pets must remain visually identical across all pages
 
 
@@ -414,7 +413,7 @@ LOCATION CONTINUITY RULES:
 • New locations should be simple, child-friendly, and reusable.
 
 STYLE REQUIREMENTS:
-• Soft pastel children’s-book illustration style  
+• Soft pastel children's-book illustration style  
 • Clean rounded outlines  
 • Gentle shading, simple shapes  
 • Warm daylight color palette (around 5000–5500K)  
@@ -485,7 +484,9 @@ Now call the image_generation tool.
     const sceneBuffer = Buffer.from(base64Scene, "base64");
 
     // 6. Upload scene image to Supabase
-    const filePath = `illustrations/${projectId}-page-${page}.png`;
+    // Use revision number in filename to keep history
+    const newRevisions = isRegen ? previousRevisions + 1 : 0;
+    const filePath = `illustrations/${projectId}-page-${page}-r${newRevisions}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("book_images")
@@ -553,7 +554,25 @@ Now call the image_generation tool.
       console.log("REGISTRY UPDATE SUCCESS");
     }
 
-    // 9. Save illustration metadata — overwrite existing entry for this page
+    // 9. Build revision history
+    let newHistory = [...existingHistory];
+    
+    // If this is a regeneration, save the previous version to history
+    if (isRegen && existingForPage?.image_url) {
+      newHistory.push({
+        revision: previousRevisions,
+        image_url: existingForPage.image_url,
+        created_at: existingForPage.last_updated || new Date().toISOString(),
+        notes: existingForPage.revision_notes || null,
+      });
+      
+      // Keep only last 5 revisions to avoid bloat
+      if (newHistory.length > 5) {
+        newHistory = newHistory.slice(-5);
+      }
+    }
+
+    // 10. Save illustration metadata — overwrite existing entry for this page
     let updatedIllustrations = [...existingIllustrations];
 
     // Remove any prior entries for this page to avoid duplicates
@@ -561,13 +580,12 @@ Now call the image_generation tool.
       (i) => Number(i.page) !== Number(page)
     );
 
-    const newRevisions = isRegen ? previousRevisions + 1 : previousRevisions;
-
     updatedIllustrations.push({
       page,
       image_url: urlData.publicUrl,
       revisions: newRevisions,
       last_updated: new Date().toISOString(),
+      revision_history: newHistory,
     });
 
     const { error: illusUpdateError } = await supabase
@@ -581,13 +599,14 @@ Now call the image_generation tool.
       console.log("ILLUSTRATIONS UPDATE SUCCESS");
     }
 
-    // 10. Done
+    // 11. Done
     return res.status(200).json({
       page,
       image_url: urlData.publicUrl,
       props_registry: updatedRegistry,
       context_registry: contextRegistry,
       revisions: newRevisions,
+      revision_history: newHistory,
     });
   } catch (err) {
     console.error("❌ Illustration generation error:");

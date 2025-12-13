@@ -963,3 +963,82 @@ body[data-phase="storyboard"] #results {
   font-size: 28px;
   animation: pulse 1.5s ease-in-out infinite;
 }
+
+/* =============================================
+   REVISION HISTORY
+   ============================================= */
+.revision-history-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.revision-thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.revision-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--stroke);
+  cursor: pointer;
+  position: relative;
+  transition: border-color var(--speed) var(--ease), transform var(--speed) var(--ease);
+}
+
+.revision-thumb:hover {
+  border-color: var(--muted);
+  transform: translateY(-2px);
+}
+
+.revision-thumb.active {
+  border-color: var(--brand);
+}
+
+.revision-thumb.current {
+  border-color: var(--brand2);
+}
+
+.revision-thumb.current.active {
+  border-color: var(--brand2);
+}
+
+.revision-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.revision-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text);
+  font-size: 9px;
+  padding: 2px 4px;
+  text-align: center;
+  font-family: var(--mono);
+}
+
+#current-version-indicator {
+  margin-bottom: 12px;
+}
+
+#current-version-indicator .revision-thumb {
+  width: 80px;
+  height: 80px;
+}
+
+#revision-history {
+  border-top: 1px solid var(--stroke);
+  padding-top: 12px;
+  margin-top: 4px;
+}
