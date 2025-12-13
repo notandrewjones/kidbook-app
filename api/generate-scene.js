@@ -330,12 +330,18 @@ console.log("=============================");
       return `• ${char.name} (protagonist): Visual appearance is intentionally unspecified. Keep depiction neutral and child-generic.`;
     }
 
+    const species = char.visual?.species || 'unknown';
+    const breed = char.visual?.breed || 'unspecified';
+    const size = char.visual?.size || 'unspecified';
+    const colors = char.visual?.colors || 'unspecified';
+    const features = char.visual?.distinctive_features || 'none';
+
     return `• ${char.name} (${char.role}): Must be visually consistent across all pages.
-      Species: ${char.visual?.species || "unknown"}
-      Breed: ${char.visual?.breed || "unspecified"}
-      Size: ${char.visual?.size || "unspecified"}
-      Colors: ${char.visual?.colors || "unspecified"}
-      Distinctive features: ${char.visual?.distinctive_features || "none"}`;
+      Species: ${species}
+      Breed: ${breed}
+      Size: ${size}
+      Colors: ${colors}
+      Distinctive features: ${features}`;
   })
   .join("\n");
 
