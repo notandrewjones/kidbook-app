@@ -6,6 +6,7 @@ export const state = {
   currentFilter: "all",
   currentPhase: "dashboard",
   generatingPages: new Set(),
+  queuedPages: new Set(),
   cachedProject: null,
   cachedDashboardProjects: null,
   handlingPopstate: false,
@@ -21,6 +22,7 @@ export function setPhase(phase) {
 export function clearProjectState() {
   state.cachedProject = null;
   state.generatingPages.clear();
+  state.queuedPages.clear();
 }
 
 // Helper to clear all state (for session reset)
@@ -28,6 +30,7 @@ export function clearAllState() {
   state.cachedProject = null;
   state.cachedDashboardProjects = null;
   state.generatingPages.clear();
+  state.queuedPages.clear();
   localStorage.removeItem("projectId");
   localStorage.removeItem("lastStoryPages");
 }

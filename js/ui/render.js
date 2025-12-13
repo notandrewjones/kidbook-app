@@ -146,11 +146,13 @@ export function renderStoryboard(project) {
     const url = i?.image_url || "";
     const rev = typeof i?.revisions === "number" ? i.revisions : 0;
     const isGenerating = state.generatingPages.has(Number(p.page));
+    const isQueued = state.queuedPages?.has(Number(p.page));
 
-    let badge, thumbContent;
+    let badge, thumbContent, cardClass;
 
     if (isGenerating) {
       badge = `Generating...`;
+      cardClass = "generating";
       thumbContent = `
         <div class="generating-overlay">
           <div class="spinner"></div>
@@ -158,15 +160,26 @@ export function renderStoryboard(project) {
         </div>
         ${url ? `<img src="${url}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
       `;
+    } else if (isQueued) {
+      badge = `Queued`;
+      cardClass = "queued";
+      thumbContent = `
+        <div class="queued-overlay">
+          <div class="queue-icon">⏳</div>
+          <div>Queued</div>
+        </div>
+        ${url ? `<img src="${url}" alt="Page ${p.page}" style="opacity: 0.5;">` : ""}
+      `;
     } else {
       badge = url ? `Ready • r${rev}` : "Missing";
+      cardClass = "";
       thumbContent = url
         ? `<img src="${url}" alt="Page ${p.page}">`
         : `<div class="thumb-placeholder">Click to generate</div>`;
     }
 
     return `
-      <div class="story-card ${isGenerating ? "generating" : ""}" data-page="${p.page}" data-image="${url}">
+      <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${url}">
         <div class="thumb">
           <span class="badge">${`Page ${p.page} • ${badge}`}</span>
           ${thumbContent}
@@ -175,8 +188,8 @@ export function renderStoryboard(project) {
           <div class="card-title">Page ${p.page}</div>
           <p class="card-sub">${escapeHtml(p.text)}</p>
           <div class="card-meta">
-            <span>${isGenerating ? "Generating..." : url ? "Preview / Regenerate" : "Generate"}</span>
-            <span>${isGenerating ? "⏳" : url ? "✓" : "+"}</span>
+            <span>${isGenerating ? "Generating..." : isQueued ? "Queued" : url ? "Preview / Regenerate" : "Generate"}</span>
+            <span>${isGenerating ? "⚙️" : isQueued ? "⏳" : url ? "✓" : "+"}</span>
           </div>
         </div>
       </div>
@@ -194,11 +207,16 @@ export function renderStoryboard(project) {
 
   // Wire events
   results.querySelectorAll("[data-page]").forEach((el) => {
-    el.addEventListener("click", async () => {
+    el.addEventListener("click", () => {
       const pageNum = Number(el.getAttribute("data-page"));
 
+      // Don't allow interaction while generating or queued
       if (state.generatingPages.has(pageNum)) {
         showToast("Please wait", "This page is currently being generated", "warn");
+        return;
+      }
+      if (state.queuedPages?.has(pageNum)) {
+        showToast("Already queued", "This page is waiting to generate", "warn");
         return;
       }
 
@@ -209,10 +227,7 @@ export function renderStoryboard(project) {
       } else {
         const pageObj = pages.find((x) => Number(x.page) === pageNum);
         if (!pageObj) return;
-
-        await generateSingleIllustration(pageNum, pageObj.text);
-        const pid = localStorage.getItem("projectId");
-        if (pid) await openProjectById(pid);
+        generateSingleIllustration(pageNum, pageObj.text);
       }
     });
   });
