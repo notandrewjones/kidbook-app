@@ -7,11 +7,7 @@ let CURRENT_PHASE = "dashboard";
 function setPhase(phase) {
   CURRENT_PHASE = phase;
   document.body.dataset.phase = phase;
-
-  // Optional: keep title/actions consistent later
-  // For now, phase only controls layout via CSS.
 }
-
 
 // -----------------------------------------------------
 // Small utilities
@@ -58,7 +54,7 @@ function initAccountMenu() {
   $("orders-btn")?.addEventListener("click", () => alert("Orders UI later"));
 }
 
-function showToast(title, message="", type="success"){
+function showToast(title, message = "", type = "success") {
   const box = document.createElement("div");
   box.className = `toast ${type}`;
   box.innerHTML = `
@@ -68,7 +64,6 @@ function showToast(title, message="", type="success"){
   $("toast-container")?.appendChild(box);
   setTimeout(() => box.remove(), 3200);
 }
-
 
 // -----------------------------------------------------
 // Dashboard
@@ -93,19 +88,7 @@ async function loadDashboard() {
     renderDashboard(data.projects || []);
   } catch (e) {
     console.error(e);
-    $("results").innerHTML = `<div class="loader">Couldn’t load projects.</div>`;
-  }
-}
-
-
-
-  try {
-    const res = await fetch("/api/projects-list");
-    const data = await res.json();
-    renderDashboard(data.projects || []);
-  } catch (e) {
-    console.error(e);
-    $("results").innerHTML = `<div class="loader">Couldn’t load projects.</div>`;
+    $("results").innerHTML = `<div class="loader">Couldn't load projects.</div>`;
   }
 }
 
@@ -128,22 +111,26 @@ function renderDashboard(projects) {
 
     const status = projectStatusText(p);
 
-    return;
+    const thumbImg = p.illustrations?.[0]?.image_url
+      ? `<img src="${p.illustrations[0].image_url}" alt="thumb">`
+      : "";
+
+    return `
       <div class="story-card" data-open-project="${p.id}">
         <div class="thumb">
           <span class="badge">${status}</span>
-			${p.illustrations?.[0]?.image_url ? '<img src="' + p.illustrations[0].image_url + '" alt="thumb">' : ""}    
+          ${thumbImg}
         </div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(title)}</div>
           <p class="card-sub">${escapeHtml(p.kid_name || "Unknown child")}</p>
           <div class="card-meta">
-            <span>${escapeHtml(p.id.slice(0,8))}</span>
+            <span>${escapeHtml(p.id.slice(0, 8))}</span>
             <span>Open</span>
           </div>
         </div>
       </div>
-    ;
+    `;
   }).join("");
 
   results.innerHTML = `<div class="grid">${cards}</div>`;
@@ -165,14 +152,14 @@ async function openProjectById(projectId) {
 
   const res = await fetch("/api/load-project", {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ projectId })
   });
   const data = await res.json();
 
   const project = data?.project;
   if (!project) {
-    $("results").innerHTML = `<div class="loader">Couldn’t load that project.</div>`;
+    $("results").innerHTML = `<div class="loader">Couldn't load that project.</div>`;
     return;
   }
 
@@ -210,7 +197,6 @@ async function openProjectById(projectId) {
 }
 
 async function fetchIdeas() {
-	
   const name = $("kid-name").value.trim();
   const interests = $("kid-interests").value.trim();
   if (!name) return;
@@ -220,7 +206,7 @@ async function fetchIdeas() {
   const existingProjectId = localStorage.getItem("projectId");
   const res = await fetch("/api/story-ideas", {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, interests, projectId: existingProjectId || null })
   });
 
@@ -234,7 +220,6 @@ async function fetchIdeas() {
   setPhase("select-idea");
   setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
   renderIdeas(data.ideas);
-
 }
 
 function renderIdeas(ideas) {
@@ -281,7 +266,7 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
 
   const res = await fetch("/api/write-story", {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ projectId, selectedIdeaIndex })
   });
 
@@ -292,7 +277,7 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
     return;
   }
 
-  // Normalize into a “project-like” object for storyboard
+  // Normalize into a "project-like" object for storyboard
   const project = {
     id: data.projectId,
     kid_name: $("kid-name").value.trim(),
@@ -312,8 +297,8 @@ async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
 // Storyboard rendering
 // -----------------------------------------------------
 function renderStoryboard(project) {
-    setPhase("storyboard");
-    renderCharacterPanel(project);
+  setPhase("storyboard");
+  renderCharacterPanel(project);
   const results = $("results");
   localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json || []));
 
@@ -359,12 +344,10 @@ function renderStoryboard(project) {
       <div class="story-card" data-page="${p.page}" data-image="${url}">
         <div class="thumb">
           <span class="badge">Page ${p.page} • ${badge}</span>
-          ${
-  url
-    ? `<img src="${url}" alt="Page ${p.page}">`
-    : `<div class="thumb-placeholder">Click to generate</div>`
-}
-
+          ${url
+            ? `<img src="${url}" alt="Page ${p.page}">`
+            : `<div class="thumb-placeholder">Click to generate</div>`
+          }
         </div>
         <div class="card-body">
           <div class="card-title">Page ${p.page}</div>
@@ -418,11 +401,10 @@ function renderStoryboard(project) {
   initUploadModal();
 }
 
-function renderCharacterPanel(project){
+function renderCharacterPanel(project) {
   const panel = $("character-panel-content");
   if (!panel) return;
 
-  // You can enhance this later. For now: never empty.
   panel.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:10px;">
       <div style="font-weight:700;">Character</div>
@@ -437,8 +419,6 @@ function renderCharacterPanel(project){
   $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
   $("generate-character-btn-side")?.addEventListener("click", generateCharacterModel);
 }
-
-
 
 // -----------------------------------------------------
 // Modal: illustration preview + regenerate
@@ -493,7 +473,7 @@ async function handleRegenerateIllustration() {
   if (pid) {
     const res = await fetch("/api/load-project", {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId: pid })
     });
     const data = await res.json();
@@ -503,18 +483,14 @@ async function handleRegenerateIllustration() {
 }
 
 function initImageModalEvents() {
-  // close
   $("close-modal")?.addEventListener("click", closeImageModal);
 
-  // backdrop click
   $("image-modal")?.addEventListener("click", (e) => {
     if (e.target?.classList?.contains("modal-backdrop")) closeImageModal();
   });
 
-  // regen
   $("regen-btn")?.addEventListener("click", handleRegenerateIllustration);
 
-  // escape
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeImageModal();
@@ -568,7 +544,7 @@ function initUploadModal() {
   dropzone.addEventListener("click", () => fileInput.click());
 
   // drag states
-  ["dragenter","dragover"].forEach(evt => {
+  ["dragenter", "dragover"].forEach(evt => {
     dropzone.addEventListener(evt, (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -576,7 +552,7 @@ function initUploadModal() {
     });
   });
 
-  ["dragleave","drop"].forEach(evt => {
+  ["dragleave", "drop"].forEach(evt => {
     dropzone.addEventListener(evt, (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -593,12 +569,11 @@ function initUploadModal() {
   });
 
   fileInput.addEventListener("change", async () => {
-  const f = fileInput.files?.[0];
-  if (!f) return;
-  showUploadPreview(f);
-  await uploadPhoto(); // auto-upload
-});
-
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    showUploadPreview(f);
+    await uploadPhoto();
+  });
 
   $("upload-btn")?.addEventListener("click", uploadPhoto);
 }
@@ -641,7 +616,6 @@ async function uploadPhoto() {
 
     if (data.photoUrl) {
       status.textContent = "Uploaded! You can now generate the character model.";
-      // keep modal open so flow feels nice
     } else {
       status.textContent = "Upload failed.";
     }
@@ -681,9 +655,7 @@ async function generateCharacterModel() {
     status.textContent = "Character model ready!";
     showToast("Character model generated", "Applied to all scenes", "success");
 
-    // 🔑 IMPORTANT: reload project so character_model_url is in memory
     await openProjectById(projectId);
-
     closeUploadModal();
 
   } catch (err) {
@@ -692,7 +664,6 @@ async function generateCharacterModel() {
     showToast("Character generation failed", "See console", "error");
   }
 }
-
 
 async function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
   const projectId = localStorage.getItem("projectId");
@@ -704,7 +675,6 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
   const status = $("illustration-status");
   const actionLabel = isRegeneration ? "Regenerating" : "Generating";
 
-  // 🔔 Toast: start
   showToast(
     `${actionLabel} illustration`,
     `Page ${pageNum}`,
@@ -745,7 +715,6 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       return;
     }
 
-    // ✅ Success toast
     showToast(
       isRegeneration ? "Illustration regenerated" : "Illustration generated",
       `Page ${pageNum}`,
@@ -780,7 +749,6 @@ async function generateIllustrations() {
 
   showToast("Generating illustrations", "Missing pages only", "success");
 
-  // Reload project to get latest illustrations
   const res = await fetch("/api/load-project", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -806,8 +774,6 @@ async function generateIllustrations() {
   await openProjectById(projectId);
 }
 
-
-
 // -----------------------------------------------------
 // View controls
 // -----------------------------------------------------
@@ -821,7 +787,7 @@ function initViewControls() {
   });
 
   $("view-list")?.addEventListener("click", () => {
-    CURRENT_VIEW = "list"; // (you can implement list styles later; grid still works)
+    CURRENT_VIEW = "list";
     $("view-list").classList.add("active");
     $("view-grid").classList.remove("active");
     const pid = localStorage.getItem("projectId");
@@ -841,11 +807,11 @@ function initViewControls() {
 function escapeHtml(str) {
   if (str == null) return "";
   return String(str)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 // -----------------------------------------------------
