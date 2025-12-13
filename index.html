@@ -15,21 +15,25 @@
     <!-- Top Nav -->
     <header class="topbar">
       <div class="topbar-left">
-        <div class="brand">
+        <a href="/dashboard" id="brand-link" class="brand">
           <div class="brand-mark">KB</div>
           <div class="brand-text">
             <div class="brand-name">Kids Book Creator</div>
             <div class="brand-sub">Story → Character → Scenes</div>
           </div>
-        </div>
+        </a>
 
-        <div class="search-wrap">
-          <input id="global-search" class="search-input" placeholder="Search projects (placeholder)..." />
-          <span class="kbd-hint">⌘K</span>
-        </div>
+        <button id="nav-dashboard" class="btn btn-secondary nav-btn">
+          <span>Dashboard</span>
+        </button>
       </div>
 
       <div class="topbar-right">
+        <div class="search-wrap">
+          <input id="global-search" class="search-input" placeholder="Search projects..." />
+          <span class="kbd-hint">⌘K</span>
+        </div>
+
         <button id="theme-toggle" class="icon-btn" title="Toggle theme (placeholder)">
           <span class="icon">☾</span>
         </button>

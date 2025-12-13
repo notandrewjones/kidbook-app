@@ -46,8 +46,17 @@ function initApp() {
     $("results").innerHTML = `<div class="loader">Session cleared. Generate ideas to begin.</div>`;
   });
 
-  // Dashboard button
+  // Dashboard button (sidebar)
   $("go-dashboard")?.addEventListener("click", loadDashboard);
+
+  // Brand logo click - navigate to dashboard
+  $("brand-link")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    loadDashboard();
+  });
+
+  // Dashboard button (topbar)
+  $("nav-dashboard")?.addEventListener("click", loadDashboard);
 
   // Initialize router (parses URL and navigates to correct view)
   initRouter();

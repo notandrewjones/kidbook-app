@@ -60,7 +60,9 @@ body::before {
   flex-direction:column;
 }
 
-/* Topbar */
+/* =============================================
+   TOPBAR
+   ============================================= */
 .topbar{
   position:sticky;
   top:0;
@@ -74,6 +76,7 @@ body::before {
   backdrop-filter: blur(14px);
 }
 
+/* Left side: brand + nav */
 .topbar-left{
   display:flex;
   align-items:center;
@@ -81,10 +84,18 @@ body::before {
   min-width: 0;
 }
 
+/* Brand / Logo - clickable */
 .brand{
   display:flex;
   align-items:center;
   gap:12px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity var(--speed) var(--ease);
+}
+.brand:hover{
+  opacity: 0.85;
 }
 .brand-mark{
   width:40px;
@@ -101,13 +112,28 @@ body::before {
 .brand-name{font-weight:700}
 .brand-sub{font-size:12px;color:var(--muted)}
 
+/* Nav button in topbar */
+.nav-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Right side: search + actions */
+.topbar-right{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+/* Search - on right side */
 .search-wrap{
   position:relative;
   display:flex;
   align-items:center;
-  min-width: 260px;
-  max-width: 520px;
-  width: 42vw;
+  min-width: 180px;
+  max-width: 280px;
+  width: 20vw;
 }
 .search-input{
   width:100%;
@@ -136,12 +162,7 @@ body::before {
   background: rgba(0,0,0,0.18);
 }
 
-.topbar-right{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-
+/* Icon buttons */
 .icon-btn{
   border:1px solid var(--stroke);
   background: rgba(255,255,255,0.06);
@@ -154,6 +175,7 @@ body::before {
 .icon-btn:hover{transform: translateY(-1px); background: rgba(255,255,255,0.09);}
 .icon-btn:active{transform: translateY(0px) scale(0.98);}
 
+/* Account menu */
 .account{position:relative}
 .account-btn{
   display:flex;
@@ -203,14 +225,16 @@ body::before {
 .menu-item:hover{background: rgba(255,255,255,0.07);}
 .menu-sep{height:1px;background: var(--stroke);}
 
-/* Main layout */
+/* =============================================
+   MAIN LAYOUT
+   ============================================= */
 .main{
   display:grid;
   grid-template-columns: 360px 1fr;
   gap: 18px;
   padding: 18px;
-  flex: 1; /* Allow main to grow and fill available space */
-  min-height: 0; /* Prevent overflow issues */
+  flex: 1;
+  min-height: 0;
 }
 
 .panel{
@@ -255,7 +279,9 @@ body::before {
   gap:10px;
 }
 
-/* Buttons */
+/* =============================================
+   BUTTONS
+   ============================================= */
 .btn{
   border-radius: 14px;
   padding: 12px 12px;
@@ -296,7 +322,9 @@ body::before {
 .tips{margin:0; padding-left: 18px; color: var(--muted); font-size: 13px}
 .tips li{margin: 6px 0}
 
-/* Workspace */
+/* =============================================
+   WORKSPACE
+   ============================================= */
 .workspace{
   min-width:0;
   border:1px solid var(--stroke);
@@ -315,12 +343,9 @@ body::before {
   padding: 16px;
   border-bottom:1px solid var(--stroke);
   background: rgba(255,255,255,0.02);
-  flex-shrink: 0; /* Prevent header from shrinking */
+  flex-shrink: 0;
 }
 
-/* ------------------------------
-   Workspace body (phase system)
------------------------------- */
 .workspace-body{
   display: flex;
   min-height: 0;
@@ -328,7 +353,6 @@ body::before {
   width: 100%;
 }
 
-/* Results - the main scroll container */
 #results{
   flex: 1 1 auto;
   min-width: 0;
@@ -338,33 +362,28 @@ body::before {
   min-height: calc(100vh - 160px);
 }
 
-/* Character panel exists in DOM always, but only visible in storyboard */
 .character-panel{
   display: none;
   width: 340px;
   min-width: 340px;
-  flex-shrink: 0; /* Prevent panel from shrinking */
+  flex-shrink: 0;
   border-right: 1px solid var(--stroke);
   background: rgba(255,255,255,0.03);
   padding: 16px;
-  overflow-y: auto; /* Allow scrolling if content is tall */
+  overflow-y: auto;
 }
 
 /* =============================================
-   STORYBOARD PHASE LAYOUT FIXES
+   STORYBOARD PHASE LAYOUT
    ============================================= */
-
-/* In storyboard, main layout becomes single column (hide left panel) */
 body[data-phase="storyboard"] .main {
   grid-template-columns: 1fr;
 }
 
-/* Hide the left sidebar panel in storyboard */
 body[data-phase="storyboard"] .panel {
   display: none;
 }
 
-/* Storyboard workspace body uses grid for two-column layout */
 body[data-phase="storyboard"] .workspace-body {
   display: grid;
   grid-template-columns: 340px 1fr;
@@ -372,14 +391,12 @@ body[data-phase="storyboard"] .workspace-body {
   min-height: 0;
 }
 
-/* Show the character panel in storyboard */
 body[data-phase="storyboard"] .character-panel {
   display: block;
   grid-column: 1;
   grid-row: 1;
 }
 
-/* Results takes up remaining space in storyboard */
 body[data-phase="storyboard"] #results {
   grid-column: 2;
   grid-row: 1;
@@ -425,7 +442,9 @@ body[data-phase="storyboard"] #results {
   outline:none;
 }
 
-/* Cards / grids */
+/* =============================================
+   CARDS / GRIDS
+   ============================================= */
 .grid{
   display:grid;
   grid-template-columns: repeat( auto-fill, minmax(220px, 1fr) );
@@ -477,7 +496,9 @@ body[data-phase="storyboard"] #results {
   font-family: var(--mono);
 }
 
-/* Loader */
+/* =============================================
+   LOADER
+   ============================================= */
 .loader{
   display:flex;
   align-items:center;
@@ -495,7 +516,9 @@ body[data-phase="storyboard"] #results {
   animation: spin 900ms linear infinite;
 }
 
-/* Modal */
+/* =============================================
+   MODALS
+   ============================================= */
 .modal{
   position:fixed;
   inset:0;
@@ -578,7 +601,9 @@ body[data-phase="storyboard"] #results {
   line-height: 1.4;
 }
 
-/* Upload modal */
+/* =============================================
+   UPLOAD / DROPZONE
+   ============================================= */
 .dropzone{
   border-radius: 18px;
   border: 1px dashed rgba(255,255,255,0.22);
@@ -630,7 +655,9 @@ body[data-phase="storyboard"] #results {
 .upload-actions{display:flex; gap:10px; flex-wrap:wrap}
 .status-line{color: var(--muted); font-size: 13px}
 
-/* Animations */
+/* =============================================
+   ANIMATIONS
+   ============================================= */
 @keyframes spin{to{transform: rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes popIn{
@@ -641,11 +668,16 @@ body[data-phase="storyboard"] #results {
   from{opacity:0; transform: translateY(10px)}
   to{opacity:1; transform: translateY(0)}
 }
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.95); }
+}
 
-/* Responsive */
+/* =============================================
+   RESPONSIVE
+   ============================================= */
 @media (max-width: 980px){
   .main{grid-template-columns: 1fr; }
-  .search-wrap{display:none}
   .workspace-head{align-items:flex-start; flex-direction:column}
   .modal-body{grid-template-columns: 1fr}
   
@@ -670,7 +702,33 @@ body[data-phase="storyboard"] #results {
   }
 }
 
-/* Toasts */
+/* Topbar responsive */
+@media (max-width: 768px) {
+  .search-wrap {
+    display: none;
+  }
+  
+  .nav-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  
+  .account-meta {
+    display: none;
+  }
+  
+  .account-btn {
+    padding: 6px;
+  }
+  
+  .chev {
+    display: none;
+  }
+}
+
+/* =============================================
+   TOASTS
+   ============================================= */
 .toast-container{
   position: fixed;
   right: 18px;
@@ -707,17 +765,14 @@ body[data-phase="storyboard"] #results {
 }
 
 /* =============================================
-   CONDENSED LIST VIEW - Replace existing .list styles
+   LIST VIEW
    ============================================= */
-
-/* List container */
 .list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* List card - horizontal layout */
 .list .story-card {
   display: grid;
   grid-template-columns: 1fr 120px;
@@ -728,7 +783,6 @@ body[data-phase="storyboard"] #results {
   max-height: 140px;
 }
 
-/* Text content on the left */
 .list .story-card .card-body {
   padding: 14px 16px;
   display: flex;
@@ -758,7 +812,6 @@ body[data-phase="storyboard"] #results {
   font-size: 11px;
 }
 
-/* Thumbnail on the right */
 .list .story-card .thumb {
   width: 120px;
   min-width: 120px;
@@ -792,7 +845,6 @@ body[data-phase="storyboard"] #results {
   height: 100%;
 }
 
-/* Generating overlay in list view */
 .list .story-card .generating-overlay {
   font-size: 12px;
   gap: 6px;
@@ -803,7 +855,15 @@ body[data-phase="storyboard"] #results {
   height: 24px;
 }
 
-/* Responsive: stack on very narrow screens */
+.list .story-card.queued .queued-overlay {
+  font-size: 12px;
+  gap: 4px;
+}
+
+.list .story-card.queued .queue-icon {
+  font-size: 20px;
+}
+
 @media (max-width: 480px) {
   .list .story-card {
     grid-template-columns: 1fr;
@@ -823,6 +883,9 @@ body[data-phase="storyboard"] #results {
   }
 }
 
+/* =============================================
+   CHARACTER PREVIEW
+   ============================================= */
 .character-preview{
   display:flex;
   gap:12px;
@@ -850,38 +913,9 @@ body[data-phase="storyboard"] #results {
   border-radius: 12px;
 }
 
-/* Tile loading spinner overlay */
-.thumb-loading{
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: rgba(11, 15, 25, 0.85);
-  backdrop-filter: blur(4px);
-  z-index: 5;
-  border-radius: inherit;
-}
-
-.thumb-loading .tile-spinner{
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 3px solid rgba(255,255,255,0.15);
-  border-top-color: var(--brand);
-  animation: spin 900ms linear infinite;
-}
-
-.thumb-loading .tile-spinner-text{
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 500;
-}
-
-/* Additional styles for generating state */
-
+/* =============================================
+   GENERATION STATES
+   ============================================= */
 .story-card.generating {
   pointer-events: none;
   opacity: 0.9;
@@ -907,11 +941,6 @@ body[data-phase="storyboard"] #results {
   border-width: 3px;
 }
 
-/* =============================================
-   QUEUE STATE STYLES
-   ============================================= */
-
-/* Queued card state */
 .story-card.queued {
   opacity: 0.85;
 }
@@ -933,19 +962,4 @@ body[data-phase="storyboard"] #results {
 .queue-icon {
   font-size: 28px;
   animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.95); }
-}
-
-/* List view adjustments for queued state */
-.list .story-card.queued .queued-overlay {
-  font-size: 12px;
-  gap: 4px;
-}
-
-.list .story-card.queued .queue-icon {
-  font-size: 20px;
 }
