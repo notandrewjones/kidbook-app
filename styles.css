@@ -1,3 +1,5 @@
+/* styles.css */
+
 :root{
   --bg: #0b0f19;
   --panel: rgba(255,255,255,0.06);
@@ -198,6 +200,8 @@ body{
   grid-template-columns: 360px 1fr;
   gap: 18px;
   padding: 18px;
+  flex: 1; /* Allow main to grow and fill available space */
+  min-height: 0; /* Prevent overflow issues */
 }
 
 .panel{
@@ -302,7 +306,9 @@ body{
   padding: 16px;
   border-bottom:1px solid var(--stroke);
   background: rgba(255,255,255,0.02);
+  flex-shrink: 0; /* Prevent header from shrinking */
 }
+
 /* ------------------------------
    Workspace body (phase system)
 ------------------------------ */
@@ -313,11 +319,14 @@ body{
   width: 100%;
 }
 
-/* Results should be the main scroll container */
+/* Results - the main scroll container */
 #results{
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   overflow: auto;
+  padding: 16px;
+  min-height: calc(100vh - 160px);
 }
 
 /* Character panel exists in DOM always, but only visible in storyboard */
@@ -325,25 +334,49 @@ body{
   display: none;
   width: 340px;
   min-width: 340px;
+  flex-shrink: 0; /* Prevent panel from shrinking */
   border-right: 1px solid var(--stroke);
   background: rgba(255,255,255,0.03);
   padding: 16px;
+  overflow-y: auto; /* Allow scrolling if content is tall */
 }
 
-/* Storyboard layout becomes a 2-column grid */
-body[data-phase="storyboard"] .workspace-body{
-  display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+/* =============================================
+   STORYBOARD PHASE LAYOUT FIXES
+   ============================================= */
+
+/* In storyboard, main layout becomes single column (hide left panel) */
+body[data-phase="storyboard"] .main {
+  grid-template-columns: 1fr;
 }
 
-/* Show the character panel only in storyboard */
-body[data-phase="storyboard"] .character-panel{
-  display: block;
-}
-
-/* Hide the left sidebar panel only in storyboard */
-body[data-phase="storyboard"] .panel{
+/* Hide the left sidebar panel in storyboard */
+body[data-phase="storyboard"] .panel {
   display: none;
+}
+
+/* Storyboard workspace body uses grid for two-column layout */
+body[data-phase="storyboard"] .workspace-body {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  grid-template-rows: 1fr;
+  min-height: 0;
+}
+
+/* Show the character panel in storyboard */
+body[data-phase="storyboard"] .character-panel {
+  display: block;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/* Results takes up remaining space in storyboard */
+body[data-phase="storyboard"] #results {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  overflow: auto;
 }
 
 .workspace-title h2{margin:0}
@@ -381,12 +414,6 @@ body[data-phase="storyboard"] .panel{
   padding: 10px 12px;
   border-radius: 14px;
   outline:none;
-}
-
-/* Results area */
-.results{
-  padding: 16px;
-  min-height: calc(100vh - 160px);
 }
 
 /* Cards / grids */
@@ -611,6 +638,26 @@ body[data-phase="storyboard"] .panel{
   .search-wrap{display:none}
   .workspace-head{align-items:flex-start; flex-direction:column}
   .modal-body{grid-template-columns: 1fr}
+  
+  /* Storyboard responsive: stack character panel above results */
+  body[data-phase="storyboard"] .workspace-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  
+  body[data-phase="storyboard"] .character-panel {
+    width: 100%;
+    min-width: 0;
+    grid-column: 1;
+    grid-row: 1;
+    border-right: none;
+    border-bottom: 1px solid var(--stroke);
+  }
+  
+  body[data-phase="storyboard"] #results {
+    grid-column: 1;
+    grid-row: 2;
+  }
 }
 
 /* Toasts */
