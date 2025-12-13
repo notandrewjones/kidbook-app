@@ -311,8 +311,6 @@ function renderStoryboard(project) {
   // -------------------------------
   const topActions = `
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
-      <button id="open-upload-modal" class="btn btn-secondary">Upload Photo</button>
-      <button id="generate-character-btn" class="btn btn-primary">Generate Character Model</button>
       <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
     </div>
     <div id="character-status" class="status-line"></div>
@@ -394,13 +392,14 @@ function renderStoryboard(project) {
     });
   });
 
-  $("open-upload-modal")?.addEventListener("click", openUploadModal);
-  $("generate-character-btn")?.addEventListener("click", generateCharacterModel);
   $("generate-illustrations-btn")?.addEventListener("click", generateIllustrations);
 
   initUploadModal();
 }
 
+// -----------------------------------------------------
+// Character Panel (embedded upload or model display)
+// -----------------------------------------------------
 function renderCharacterPanel(project) {
   const panel = $("character-panel-content");
   if (!panel) return;
@@ -426,23 +425,125 @@ function renderCharacterPanel(project) {
     `;
 
     $("regenerate-character-btn-side")?.addEventListener("click", generateCharacterModel);
+    $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
   } else {
-    // No character model yet - show upload prompt
+    // No character model yet - show embedded upload UI
     panel.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="font-weight:700;">Character</div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div style="font-weight:700;">Character Model</div>
         <div style="color: rgba(255,255,255,0.62); font-size:13px;">
-          Upload a photo and generate a character model to ensure consistent illustrations.
+          Upload a photo to generate a consistent character model for all illustrations.
         </div>
-        <button class="btn btn-secondary" id="open-upload-modal-side">Upload Photo</button>
-        <button class="btn btn-primary" id="generate-character-btn-side">Generate Character Model</button>
+        
+        <div id="panel-dropzone" class="dropzone" tabindex="0">
+          <div class="dropzone-inner">
+            <div class="drop-icon">⬆︎</div>
+            <div class="drop-title">Drop photo here</div>
+            <div class="drop-sub">or click to choose</div>
+            <div class="drop-hint">PNG / JPG</div>
+          </div>
+        </div>
+        
+        <input id="panel-photo-input" type="file" accept="image/*" class="hidden" />
+        
+        <div id="panel-upload-preview" class="upload-preview hidden"></div>
+        <div id="panel-upload-status" class="status-line"></div>
       </div>
     `;
 
-    $("generate-character-btn-side")?.addEventListener("click", generateCharacterModel);
+    initPanelUpload();
+  }
+}
+
+function initPanelUpload() {
+  const dropzone = $("panel-dropzone");
+  const fileInput = $("panel-photo-input");
+
+  if (!dropzone || !fileInput) return;
+
+  // Click to open file picker
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  // Drag states
+  ["dragenter", "dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  // Handle drop
+  dropzone.addEventListener("drop", (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      fileInput.files = files;
+      handlePanelFileSelect(files[0]);
+    }
+  });
+
+  // Handle file input change
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files?.[0];
+    if (f) handlePanelFileSelect(f);
+  });
+}
+
+async function handlePanelFileSelect(file) {
+  const preview = $("panel-upload-preview");
+  const status = $("panel-upload-status");
+  const dropzone = $("panel-dropzone");
+  const projectId = localStorage.getItem("projectId");
+
+  if (!projectId) {
+    if (status) status.textContent = "No project loaded.";
+    return;
   }
 
-  $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
+  // Show preview
+  if (preview) {
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${url}" alt="preview">`;
+    preview.classList.remove("hidden");
+  }
+
+  // Hide dropzone after selection
+  if (dropzone) dropzone.style.display = "none";
+
+  // Upload the photo
+  if (status) status.textContent = "Uploading photo...";
+
+  const formData = new FormData();
+  formData.append("photo", file);
+  formData.append("projectId", projectId);
+
+  try {
+    const res = await fetch("/api/upload-child-photo", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.photoUrl) {
+      if (status) status.textContent = "Photo uploaded! Generating character model...";
+      showToast("Photo uploaded", "Now generating character model...", "success");
+      
+      // Automatically generate character model
+      await generateCharacterModel();
+    } else {
+      if (status) status.textContent = "Upload failed. Try again.";
+      if (dropzone) dropzone.style.display = "block";
+    }
+  } catch (e) {
+    console.error(e);
+    if (status) status.textContent = "Upload failed. Try again.";
+    if (dropzone) dropzone.style.display = "block";
+  }
 }
 
 // -----------------------------------------------------
@@ -652,7 +753,7 @@ async function uploadPhoto() {
 
 async function generateCharacterModel() {
   const projectId = localStorage.getItem("projectId");
-  const status = $("character-status");
+  const status = $("character-status") || $("panel-upload-status");
 
   if (!projectId) {
     showToast("No project loaded", "Open a project first", "error");
@@ -660,7 +761,7 @@ async function generateCharacterModel() {
   }
 
   const kidName = $("kid-name").value.trim();
-  status.textContent = "Generating character model…";
+  if (status) status.textContent = "Generating character model…";
 
   showToast("Generating character", "This may take ~20 seconds", "success");
 
@@ -677,7 +778,7 @@ async function generateCharacterModel() {
       throw new Error("No model URL returned");
     }
 
-    status.textContent = "Character model ready!";
+    if (status) status.textContent = "Character model ready!";
     showToast("Character model generated", "Applied to all scenes", "success");
 
     await openProjectById(projectId);
@@ -685,7 +786,7 @@ async function generateCharacterModel() {
 
   } catch (err) {
     console.error(err);
-    status.textContent = "Failed to generate character model.";
+    if (status) status.textContent = "Failed to generate character model.";
     showToast("Character generation failed", "See console", "error");
   }
 }
