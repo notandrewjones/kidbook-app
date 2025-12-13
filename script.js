@@ -32,6 +32,47 @@ function showLoader(message) {
 }
 
 // -----------------------------------------------------
+// Tile Loading Spinner (shows on individual cards)
+// -----------------------------------------------------
+function showTileSpinner(pageNum, message = "Generating...") {
+  const card = document.querySelector(`[data-page="${pageNum}"]`);
+  if (!card) return;
+
+  const thumb = card.querySelector(".thumb");
+  if (!thumb) return;
+
+  // Remove any existing spinner
+  hideTileSpinner(pageNum);
+
+  // Create spinner overlay
+  const overlay = document.createElement("div");
+  overlay.className = "thumb-loading";
+  overlay.innerHTML = `
+    <div class="tile-spinner"></div>
+    <div class="tile-spinner-text">${message}</div>
+  `;
+
+  thumb.appendChild(overlay);
+
+  // Disable click on this card while loading
+  card.style.pointerEvents = "none";
+}
+
+function hideTileSpinner(pageNum) {
+  const card = document.querySelector(`[data-page="${pageNum}"]`);
+  if (!card) return;
+
+  const thumb = card.querySelector(".thumb");
+  if (!thumb) return;
+
+  const existing = thumb.querySelector(".thumb-loading");
+  if (existing) existing.remove();
+
+  // Re-enable click
+  card.style.pointerEvents = "";
+}
+
+// -----------------------------------------------------
 // Account menu placeholder
 // -----------------------------------------------------
 function initAccountMenu() {
@@ -203,15 +244,11 @@ async function fetchIdeas() {
 
   showLoader("Generating story ideas...");
 
-  // FIX: Always create a NEW project when generating fresh ideas
-  // Clear stale project data to prevent cross-contamination
-  localStorage.removeItem("projectId");
-  localStorage.removeItem("lastStoryPages");
-
+  const existingProjectId = localStorage.getItem("projectId");
   const res = await fetch("/api/story-ideas", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, interests, projectId: null })  // <-- Always null = new project
+    body: JSON.stringify({ name, interests, projectId: existingProjectId || null })
   });
 
   const data = await res.json();
@@ -311,14 +348,13 @@ function renderStoryboard(project) {
   const illusMap = new Map(illus.map(i => [Number(i.page), i]));
 
   // -------------------------------
-  // Header actions
+  // Header actions (removed status line)
   // -------------------------------
   const topActions = `
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
       <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
     </div>
     <div id="character-status" class="status-line"></div>
-    <div id="illustration-status" class="status-line"></div>
   `;
 
   // -------------------------------
@@ -596,20 +632,14 @@ async function handleRegenerateIllustration() {
     ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
     : pageData.text;
 
+  // Close modal before regenerating
+  closeImageModal();
+
   await generateSingleIllustration(pageNum, pageTextWithNotes, true);
 
-  // Refresh modal image
+  // Refresh the project to show updated image
   const pid = localStorage.getItem("projectId");
-  if (pid) {
-    const res = await fetch("/api/load-project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: pid })
-    });
-    const data = await res.json();
-    const updated = data?.project?.illustrations?.find(i => Number(i.page) === pageNum);
-    if (updated?.image_url) $("modal-image").src = updated.image_url;
-  }
+  if (pid) await openProjectById(pid);
 }
 
 function initImageModalEvents() {
@@ -802,18 +832,16 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
     return;
   }
 
-  const status = $("illustration-status");
   const actionLabel = isRegeneration ? "Regenerating" : "Generating";
+
+  // Show spinner on the tile
+  showTileSpinner(pageNum, `${actionLabel}...`);
 
   showToast(
     `${actionLabel} illustration`,
     `Page ${pageNum}`,
     "success"
   );
-
-  if (status) {
-    status.textContent = `${actionLabel} page ${pageNum}...`;
-  }
 
   try {
     const res = await fetch("/api/generate-scene", {
@@ -838,9 +866,8 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
         "error"
       );
 
-      if (status) {
-        status.textContent = `Failed on page ${pageNum}.`;
-      }
+      // Hide spinner on error
+      hideTileSpinner(pageNum);
 
       return;
     }
@@ -851,9 +878,8 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       "success"
     );
 
-    if (status) {
-      status.textContent = `Done: page ${pageNum}`;
-    }
+    // Hide spinner on success (will be replaced by image on refresh)
+    hideTileSpinner(pageNum);
 
   } catch (err) {
     console.error("Illustration request failed:", err);
@@ -864,9 +890,8 @@ async function generateSingleIllustration(pageNum, pageText, isRegeneration = fa
       "error"
     );
 
-    if (status) {
-      status.textContent = `Failed on page ${pageNum}.`;
-    }
+    // Hide spinner on error
+    hideTileSpinner(pageNum);
   }
 }
 
@@ -894,8 +919,17 @@ async function generateIllustrations() {
     (project.illustrations || []).map(i => Number(i.page))
   );
 
+  // Show spinners on all pages that will be generated
   for (const p of pages) {
     if (!existing.has(Number(p.page))) {
+      showTileSpinner(p.page, "Queued...");
+    }
+  }
+
+  for (const p of pages) {
+    if (!existing.has(Number(p.page))) {
+      // Update spinner text to show it's now generating
+      showTileSpinner(p.page, "Generating...");
       await generateSingleIllustration(p.page, p.text);
     }
   }
