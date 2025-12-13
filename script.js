@@ -143,7 +143,7 @@ function renderDashboard(projects) {
           </div>
         </div>
       </div>
-    `;
+    ;
   }).join("");
 
   results.innerHTML = `<div class="grid">${cards}</div>`;
