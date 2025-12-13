@@ -1042,3 +1042,23 @@ body[data-phase="storyboard"] #results {
   padding-top: 12px;
   margin-top: 4px;
 }
+
+/* Use This Version button */
+#use-version-btn {
+  width: 100%;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  background: var(--brand2);
+  border-color: var(--brand2);
+  color: white;
+}
+
+#use-version-btn:hover {
+  background: var(--brand2-hover, #2d8a6e);
+  border-color: var(--brand2-hover, #2d8a6e);
+}
+
+#use-version-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

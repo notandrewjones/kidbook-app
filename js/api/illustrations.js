@@ -226,6 +226,74 @@ export async function handleRegenerateIllustration() {
   // The UI will update via reRenderCurrentView from the queue system
 }
 
+// Handle setting a past revision as the primary illustration
+export async function handleSetIllustration() {
+  const projectId = localStorage.getItem("projectId");
+  const useVersionBtn = $("use-version-btn");
+  
+  if (!projectId || !useVersionBtn) return;
+  
+  const pageNum = Number(useVersionBtn.dataset.page || "0");
+  const selectedUrl = useVersionBtn.dataset.selectedUrl;
+  
+  if (!pageNum || !selectedUrl) {
+    showToast("Error", "No revision selected", "error");
+    return;
+  }
+  
+  // Disable button while processing
+  useVersionBtn.disabled = true;
+  useVersionBtn.querySelector("span").textContent = "Setting...";
+  
+  try {
+    const res = await fetch("/api/set-illustration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        page: pageNum,
+        selectedImageUrl: selectedUrl,
+      }),
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok || data?.error) {
+      console.error("Set illustration error:", data);
+      showToast("Failed", data?.error || "Could not set illustration", "error");
+      return;
+    }
+    
+    // Update cached project with new illustration data
+    if (state.cachedProject) {
+      const existingIllus = state.cachedProject.illustrations || [];
+      const filteredIllus = existingIllus.filter((i) => Number(i.page) !== pageNum);
+      filteredIllus.push({
+        page: pageNum,
+        image_url: data.image_url,
+        revisions: data.revisions,
+        last_updated: Date.now(),
+        revision_history: data.revision_history || [],
+      });
+      state.cachedProject.illustrations = filteredIllus;
+    }
+    
+    showToast("Version restored", `Page ${pageNum} updated`, "success");
+    
+    // Close modal and refresh view
+    closeImageModal();
+    reRenderCurrentView();
+    
+  } catch (err) {
+    console.error("Set illustration request failed:", err);
+    showToast("Network error", "Could not set illustration", "error");
+  } finally {
+    // Re-enable button
+    useVersionBtn.disabled = false;
+    useVersionBtn.querySelector("span").textContent = "Use This Version";
+  }
+}
+
 // Get queue status for UI
 export function getQueueStatus() {
   return {

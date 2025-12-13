@@ -3,8 +3,13 @@
 
 import { state } from '../core/state.js';
 import { $ } from '../core/utils.js';
-import { handleRegenerateIllustration } from '../api/illustrations.js';
+import { handleRegenerateIllustration, handleSetIllustration } from '../api/illustrations.js';
 import { uploadPhoto } from '../api/character.js';
+
+// Track which image URL is currently being viewed in the modal
+let currentlyViewingUrl = null;
+let currentPrimaryUrl = null;
+let currentPageNum = null;
 
 // =====================================================
 // Image Preview Modal
@@ -17,6 +22,7 @@ export function openImageModal(pageNum, imageUrl) {
   const regen = $("regen-btn");
   const subtitle = $("modal-subtitle");
   const historyContainer = $("revision-history");
+  const useVersionBtn = $("use-version-btn");
 
   if (!modal || !img || !notes || !regen) return;
 
@@ -24,6 +30,17 @@ export function openImageModal(pageNum, imageUrl) {
   notes.value = "";
   regen.dataset.page = String(pageNum);
   subtitle.textContent = `Page ${pageNum}`;
+
+  // Track state for "Use This Version" button
+  currentlyViewingUrl = imageUrl;
+  currentPrimaryUrl = imageUrl;
+  currentPageNum = pageNum;
+  
+  // Hide "Use This Version" button initially (viewing current)
+  if (useVersionBtn) {
+    useVersionBtn.classList.add("hidden");
+    useVersionBtn.dataset.page = String(pageNum);
+  }
 
   // Get revision history from cached project
   const illustration = state.cachedProject?.illustrations?.find(
@@ -64,6 +81,7 @@ export function openImageModal(pageNum, imageUrl) {
         thumb.addEventListener("click", () => {
           const url = thumb.dataset.url;
           img.src = url;
+          currentlyViewingUrl = url;
           
           // Update active state
           historyContainer.querySelectorAll(".revision-thumb").forEach(t => 
@@ -73,6 +91,9 @@ export function openImageModal(pageNum, imageUrl) {
           
           // Remove active from current indicator if exists
           $("current-version-indicator")?.querySelector(".revision-thumb")?.classList.remove("active");
+          
+          // Show "Use This Version" button since we're viewing a past revision
+          updateUseVersionButton();
         });
       });
     } else {
@@ -95,12 +116,16 @@ export function openImageModal(pageNum, imageUrl) {
       
       currentIndicator.querySelector(".revision-thumb")?.addEventListener("click", () => {
         img.src = imageUrl;
+        currentlyViewingUrl = imageUrl;
         
         // Update active states
         historyContainer?.querySelectorAll(".revision-thumb").forEach(t => 
           t.classList.remove("active")
         );
         currentIndicator.querySelector(".revision-thumb")?.classList.add("active");
+        
+        // Hide "Use This Version" button since we're viewing current
+        updateUseVersionButton();
       });
     } else {
       currentIndicator.innerHTML = "";
@@ -112,11 +137,42 @@ export function openImageModal(pageNum, imageUrl) {
   modal.setAttribute("aria-hidden", "false");
 }
 
+// Helper to show/hide "Use This Version" button based on what's being viewed
+function updateUseVersionButton() {
+  const useVersionBtn = $("use-version-btn");
+  if (!useVersionBtn) return;
+  
+  // Compare URLs without cache busters
+  const viewingClean = currentlyViewingUrl?.split('?')[0] || '';
+  const primaryClean = currentPrimaryUrl?.split('?')[0] || '';
+  
+  if (viewingClean !== primaryClean) {
+    useVersionBtn.classList.remove("hidden");
+    useVersionBtn.dataset.selectedUrl = currentlyViewingUrl;
+  } else {
+    useVersionBtn.classList.add("hidden");
+  }
+}
+
+// Get the currently selected URL for setting as primary
+export function getSelectedRevisionUrl() {
+  return currentlyViewingUrl;
+}
+
+export function getCurrentPageNum() {
+  return currentPageNum;
+}
+
 export function closeImageModal() {
   const modal = $("image-modal");
   if (!modal) return;
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
+  
+  // Reset tracking state
+  currentlyViewingUrl = null;
+  currentPrimaryUrl = null;
+  currentPageNum = null;
 }
 
 export function initImageModalEvents() {
@@ -127,6 +183,9 @@ export function initImageModalEvents() {
   });
 
   $("regen-btn")?.addEventListener("click", handleRegenerateIllustration);
+  
+  // Wire up "Use This Version" button
+  $("use-version-btn")?.addEventListener("click", handleSetIllustration);
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
