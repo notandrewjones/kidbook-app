@@ -88,8 +88,8 @@ async function handler(req, res) {
         notes: existingForPage.revision_notes || null,
       });
 
-    // Keep only last 5 revisions
-    const trimmedHistory = newHistory.length > 5 ? newHistory.slice(-5) : newHistory;
+    // Keep only last 2 revisions
+    const trimmedHistory = newHistory.length > 2 ? newHistory.slice(-2) : newHistory;
 
     // 5. Update the illustration entry
     const updatedIllustrations = existingIllustrations.map((illus) => {

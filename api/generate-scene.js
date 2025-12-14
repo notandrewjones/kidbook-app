@@ -572,9 +572,9 @@ Now call the image_generation tool.
         notes: existingForPage.revision_notes || null,
       });
       
-      // Keep only last 5 revisions to avoid bloat
-      if (newHistory.length > 5) {
-        newHistory = newHistory.slice(-5);
+      // Keep only last 2 revisions to avoid bloat
+      if (newHistory.length > 2) {
+        newHistory = newHistory.slice(-2);
       }
     }
 
