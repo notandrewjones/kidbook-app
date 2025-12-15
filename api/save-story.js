@@ -35,17 +35,18 @@ async function handler(req, res) {
       return res.status(500).json({ error: "Could not load project." });
     }
 
-    if (project.story_locked) {
+    if (project.story_locked === true) {
       return res.status(400).json({ 
         error: "Story is locked and cannot be edited." 
       });
     }
 
-    // Save the story pages
+    // Save the story pages and ensure story_locked is false
     const { data: updated, error: updateError } = await supabase
       .from("book_projects")
       .update({
         story_json: storyPages,
+        story_locked: false,
       })
       .eq("id", projectId)
       .select("id, story_json, story_locked")

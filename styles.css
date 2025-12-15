@@ -1062,3 +1062,158 @@ body[data-phase="storyboard"] #results {
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* =============================================
+   STORY EDITOR
+   ============================================= */
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.editor-info {
+  flex: 1;
+  min-width: 280px;
+}
+
+.editor-info p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editor-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 12px;
+  transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.editor-card:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.editor-card-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-page-num {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.editor-textarea {
+  flex: 1;
+  min-height: 80px;
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color var(--speed) var(--ease);
+}
+
+.editor-textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.editor-textarea::placeholder {
+  color: var(--muted);
+}
+
+.editor-card-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px;
+}
+
+.editor-card-actions .icon-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--stroke);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+}
+
+.editor-card-actions .icon-btn:hover {
+  background: var(--surface);
+  border-color: var(--muted);
+  color: var(--text);
+}
+
+.editor-card-actions .icon-btn.delete-page:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+#editor-status {
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* =============================================
+   EDIT-STORY PHASE LAYOUT
+   ============================================= */
+body[data-phase="edit-story"] .main {
+  grid-template-columns: 1fr;
+}
+
+body[data-phase="edit-story"] .panel {
+  display: none;
+}
+
+body[data-phase="edit-story"] .workspace-body {
+  display: block;
+}
+
+body[data-phase="edit-story"] .character-panel {
+  display: none;
+}
+
+body[data-phase="edit-story"] #results {
+  padding: 20px;
+}

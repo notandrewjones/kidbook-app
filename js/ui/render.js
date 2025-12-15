@@ -135,18 +135,18 @@ export function renderStoryEditor(project) {
     <div id="editor-status" class="status-line"></div>
   `;
   
-  // Build page editor cards
+  // Build page editor cards (horizontal layout: textarea left, actions right)
   const pageCards = editedPages.map((p, idx) => `
     <div class="editor-card" data-page-index="${idx}">
-      <div class="editor-card-header">
+      <div class="editor-card-main">
         <span class="editor-page-num">Page ${p.page}</span>
-        <div class="editor-card-actions">
-          ${idx > 0 ? `<button class="icon-btn move-up" title="Move up">↑</button>` : ''}
-          ${idx < editedPages.length - 1 ? `<button class="icon-btn move-down" title="Move down">↓</button>` : ''}
-          <button class="icon-btn delete-page" title="Delete page">🗑</button>
-        </div>
+        <textarea class="editor-textarea" data-page-index="${idx}" rows="3" placeholder="Enter page text...">${escapeHtml(p.text)}</textarea>
       </div>
-      <textarea class="editor-textarea" data-page-index="${idx}" rows="4">${escapeHtml(p.text)}</textarea>
+      <div class="editor-card-actions">
+        ${idx > 0 ? `<button class="icon-btn move-up" title="Move up">↑</button>` : `<button class="icon-btn" disabled style="opacity:0.3">↑</button>`}
+        ${idx < editedPages.length - 1 ? `<button class="icon-btn move-down" title="Move down">↓</button>` : `<button class="icon-btn" disabled style="opacity:0.3">↓</button>`}
+        <button class="icon-btn delete-page" title="Delete page">🗑</button>
+      </div>
     </div>
   `).join("");
   
