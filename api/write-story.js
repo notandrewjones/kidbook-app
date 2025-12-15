@@ -1,4 +1,5 @@
 // api/write-story.js (CommonJS)
+// Generates the story text only - context extraction happens in finalize-story.js
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
@@ -32,110 +33,6 @@ function cleanJsonOutput(text) {
 
   return text.substring(firstBrace, lastBrace + 1);
 }
-
-/**
- * Extract canonical narrative context
- */
-async function extractContextFromStory(storyPages) {
-  const fullText = storyPages.map(p => p.text).join("\n");
-
-  const prompt = `
-Extract canonical world facts from the following children's picture-book story.
-
-Return ONLY JSON in this exact format:
-
-{
-  "child": {},
-  "pets": {},
-  "people": {},
-  "items": {},
-  "locations": {},
-  "notes": ""
-}
-
-Rules:
-• Preserve names, relationships, and factual traits
-• Do NOT invent new entities
-• Do NOT describe visual appearance here
-• Visual details belong elsewhere
-• This data is narrative truth ONLY
-
-STORY TEXT:
-${fullText}
-`;
-
-  const response = await client.responses.create({
-    model: "gpt-4.1",
-    input: prompt,
-  });
-
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
-
-  return JSON.parse(cleanJsonOutput(raw));
-}
-
-/**
- * Extract visual character profiles
- */
-async function extractCharacterVisuals(storyPages, contextRegistry, kidName) {
-  const storyText = storyPages.map(p => p.text).join("\n");
-
-  const prompt = `
-You are defining VISUAL CONSISTENCY for illustrated characters
-in a children's picture book.
-
-Return ONLY JSON in this exact format:
-
-{
-  "characters": {
-    "character_key": {
-      "name": "",
-      "role": "protagonist | pet | side_character",
-      "visual_source": "pending | auto",
-      "visual": null | {
-        "species": "",
-        "breed": "",
-        "size": "",
-        "colors": "",
-        "distinctive_features": ""
-      }
-    }
-  }
-}
-
-Rules:
-• If the character matches the CHILD (name: "${kidName}"):
-  - role MUST be "protagonist"
-  - visual_source MUST be "pending"
-  - visual MUST be null
-• Pets and non-protagonist characters MUST receive visual descriptions
-• Do NOT invent new characters
-• Be consistent and reusable
-• This data will be reused across all illustrations
-
-STORY TEXT:
-${storyText}
-
-WORLD CONTEXT:
-${JSON.stringify(contextRegistry, null, 2)}
-`;
-
-  const response = await client.responses.create({
-    model: "gpt-4.1",
-    input: prompt,
-  });
-
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
-
-  if (!raw) throw new Error("Character visual extraction returned no output");
-
-  return JSON.parse(cleanJsonOutput(raw));
-}
-
 
 /* -------------------------------------------------
    Main Handler
@@ -226,67 +123,14 @@ Return ONLY JSON:
     const storyPages = parsed.story;
 
     /* ---------------------------------------------
-       4. Extract context + visuals
-    --------------------------------------------- */
-    const contextRegistry = await extractContextFromStory(storyPages);
-    const visualCharacters = await extractCharacterVisuals(
-      storyPages,
-      contextRegistry
-    );
-
-   /* ---------------------------------------------
-   5. Merge into props_registry SAFELY
---------------------------------------------- */
-
-// Load existing props_registry if it exists
-const { data: existingProject } = await supabase
-  .from("book_projects")
-  .select("props_registry")
-  .eq("id", projectId)
-  .single();
-
-let propsRegistry =
-  existingProject?.props_registry?.[0] || {
-    notes: "",
-    characters: {},
-    props: {},
-    environments: {},
-  };
-
-// Merge characters WITHOUT overwriting locked/user visuals
-for (const [key, character] of Object.entries(
-  visualCharacters.characters || {}
-)) {
-  const existing = propsRegistry.characters[key];
-
-  // HARD PROTECTION: never overwrite user or locked visuals
-  if (
-    existing &&
-    (existing.visual_source === "user" ||
-     existing.visual_source === "locked")
-  ) {
-    continue;
-  }
-
-  propsRegistry.characters[key] = {
-    ...existing,
-    ...character,
-    first_seen_page:
-      existing?.first_seen_page ?? character.first_seen_page ?? 1,
-  };
-}
-
-
-    /* ---------------------------------------------
-       6. Persist everything
+       4. Save story as draft (no context yet)
     --------------------------------------------- */
     const { data: updated, error: updateError } = await supabase
       .from("book_projects")
       .update({
         selected_idea: ideaToUse,
         story_json: storyPages,
-        context_registry: contextRegistry,
-        props_registry: [propsRegistry],
+        story_locked: false, // Mark as editable
       })
       .eq("id", projectId)
       .select("*")
@@ -297,13 +141,13 @@ for (const [key, character] of Object.entries(
     }
 
     /* ---------------------------------------------
-       7. Respond cleanly
+       5. Respond with draft story
     --------------------------------------------- */
     return res.status(200).json({
       projectId: updated.id,
       story_json: updated.story_json,
-      context_registry: updated.context_registry,
-      props_registry: updated.props_registry,
+      selected_idea: updated.selected_idea,
+      story_locked: false,
     });
 
   } catch (err) {

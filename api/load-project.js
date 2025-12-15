@@ -27,6 +27,7 @@ async function handler(req, res) {
         story_ideas,
         selected_idea,
         story_json,
+        story_locked,
         illustrations,
         character_model_url,
         context_registry,
@@ -56,6 +57,7 @@ async function handler(req, res) {
         ...data,
         story_ideas: data.story_ideas || [],
         story_json: data.story_json || [],
+        story_locked: data.story_locked || false,
         illustrations: normalizedIllustrations,
         props_registry: data.props_registry || [],
         context_registry: data.context_registry || {}

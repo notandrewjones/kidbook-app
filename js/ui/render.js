@@ -1,10 +1,10 @@
 // js/ui/render.js
-// Rendering functions for dashboard, storyboard, and ideas
+// Rendering functions for dashboard, storyboard, ideas, and story editor
 
 import { state } from '../core/state.js';
 import { $, escapeHtml, showToast } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
-import { writeStoryFromIdeaIndex, fetchIdeas } from '../api/story.js';
+import { writeStoryFromIdeaIndex, fetchIdeas, saveStoryEdits, finalizeStory } from '../api/story.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
 import { openImageModal, initUploadModal } from './modals.js';
 import { renderCharacterPanel } from './panels.js';
@@ -13,6 +13,8 @@ import { renderCharacterPanel } from './panels.js';
 export function reRenderCurrentView() {
   if (state.currentPhase === "storyboard" && state.cachedProject) {
     renderStoryboard(state.cachedProject);
+  } else if (state.currentPhase === "edit-story" && state.cachedProject) {
+    renderStoryEditor(state.cachedProject);
   } else if (state.currentPhase === "dashboard" && state.cachedDashboardProjects) {
     renderDashboard(state.cachedDashboardProjects);
   }
@@ -108,6 +110,190 @@ export function renderIdeas(ideas) {
   });
 
   $("regen-ideas")?.addEventListener("click", fetchIdeas);
+}
+
+// Render the story editor (edit phase before finalization)
+export function renderStoryEditor(project) {
+  const results = $("results");
+  const pages = project.story_json || [];
+  
+  // Store current state for editing
+  let editedPages = JSON.parse(JSON.stringify(pages)); // Deep clone
+  
+  // Header with actions
+  const headerHtml = `
+    <div class="editor-header">
+      <div class="editor-info">
+        <p>Review and edit your story below. Click on any page text to edit it. When you're happy with the story, click "Finalize & Continue" to proceed to illustration generation.</p>
+      </div>
+      <div class="editor-actions">
+        <button id="save-draft-btn" class="btn btn-secondary">Save Draft</button>
+        <button id="add-page-btn" class="btn btn-secondary">+ Add Page</button>
+        <button id="finalize-btn" class="btn btn-primary">Finalize & Continue →</button>
+      </div>
+    </div>
+    <div id="editor-status" class="status-line"></div>
+  `;
+  
+  // Build page editor cards
+  const pageCards = editedPages.map((p, idx) => `
+    <div class="editor-card" data-page-index="${idx}">
+      <div class="editor-card-header">
+        <span class="editor-page-num">Page ${p.page}</span>
+        <div class="editor-card-actions">
+          ${idx > 0 ? `<button class="icon-btn move-up" title="Move up">↑</button>` : ''}
+          ${idx < editedPages.length - 1 ? `<button class="icon-btn move-down" title="Move down">↓</button>` : ''}
+          <button class="icon-btn delete-page" title="Delete page">🗑</button>
+        </div>
+      </div>
+      <textarea class="editor-textarea" data-page-index="${idx}" rows="4">${escapeHtml(p.text)}</textarea>
+    </div>
+  `).join("");
+  
+  results.innerHTML = `
+    ${headerHtml}
+    <div class="editor-grid">
+      ${pageCards}
+    </div>
+  `;
+  
+  // Helper to get current edited pages from DOM
+  function collectEditedPages() {
+    const textareas = results.querySelectorAll(".editor-textarea");
+    const collected = [];
+    textareas.forEach((ta, idx) => {
+      collected.push({
+        page: idx + 1,
+        text: ta.value.trim()
+      });
+    });
+    return collected;
+  }
+  
+  // Helper to re-render editor with current state
+  function refreshEditor() {
+    editedPages = collectEditedPages();
+    // Re-number pages
+    editedPages = editedPages.map((p, idx) => ({ ...p, page: idx + 1 }));
+    
+    // Update project in state
+    if (state.cachedProject) {
+      state.cachedProject.story_json = editedPages;
+    }
+    
+    renderStoryEditor({ ...project, story_json: editedPages });
+  }
+  
+  // Wire up text editing (auto-save on blur)
+  results.querySelectorAll(".editor-textarea").forEach(ta => {
+    ta.addEventListener("input", () => {
+      // Mark as dirty
+      const status = $("editor-status");
+      if (status) status.textContent = "Unsaved changes...";
+    });
+  });
+  
+  // Move up
+  results.querySelectorAll(".move-up").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".editor-card");
+      const idx = Number(card.dataset.pageIndex);
+      if (idx > 0) {
+        editedPages = collectEditedPages();
+        [editedPages[idx - 1], editedPages[idx]] = [editedPages[idx], editedPages[idx - 1]];
+        editedPages = editedPages.map((p, i) => ({ ...p, page: i + 1 }));
+        if (state.cachedProject) state.cachedProject.story_json = editedPages;
+        renderStoryEditor({ ...project, story_json: editedPages });
+      }
+    });
+  });
+  
+  // Move down
+  results.querySelectorAll(".move-down").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".editor-card");
+      const idx = Number(card.dataset.pageIndex);
+      editedPages = collectEditedPages();
+      if (idx < editedPages.length - 1) {
+        [editedPages[idx], editedPages[idx + 1]] = [editedPages[idx + 1], editedPages[idx]];
+        editedPages = editedPages.map((p, i) => ({ ...p, page: i + 1 }));
+        if (state.cachedProject) state.cachedProject.story_json = editedPages;
+        renderStoryEditor({ ...project, story_json: editedPages });
+      }
+    });
+  });
+  
+  // Delete page
+  results.querySelectorAll(".delete-page").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".editor-card");
+      const idx = Number(card.dataset.pageIndex);
+      editedPages = collectEditedPages();
+      if (editedPages.length > 1) {
+        editedPages.splice(idx, 1);
+        editedPages = editedPages.map((p, i) => ({ ...p, page: i + 1 }));
+        if (state.cachedProject) state.cachedProject.story_json = editedPages;
+        renderStoryEditor({ ...project, story_json: editedPages });
+        showToast("Page deleted", "", "success");
+      } else {
+        showToast("Cannot delete", "Story must have at least one page", "warn");
+      }
+    });
+  });
+  
+  // Add page
+  $("add-page-btn")?.addEventListener("click", () => {
+    editedPages = collectEditedPages();
+    editedPages.push({
+      page: editedPages.length + 1,
+      text: ""
+    });
+    if (state.cachedProject) state.cachedProject.story_json = editedPages;
+    renderStoryEditor({ ...project, story_json: editedPages });
+    showToast("Page added", "", "success");
+    
+    // Focus the new textarea
+    setTimeout(() => {
+      const textareas = results.querySelectorAll(".editor-textarea");
+      textareas[textareas.length - 1]?.focus();
+    }, 100);
+  });
+  
+  // Save draft
+  $("save-draft-btn")?.addEventListener("click", async () => {
+    const btn = $("save-draft-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    
+    const currentPages = collectEditedPages();
+    const result = await saveStoryEdits(currentPages);
+    
+    btn.disabled = false;
+    btn.textContent = "Save Draft";
+    
+    if (result.success) {
+      const status = $("editor-status");
+      if (status) status.textContent = "Draft saved!";
+      showToast("Draft saved", "", "success");
+    }
+  });
+  
+  // Finalize and continue
+  $("finalize-btn")?.addEventListener("click", async () => {
+    const currentPages = collectEditedPages();
+    
+    // Validate
+    const emptyPages = currentPages.filter(p => !p.text.trim());
+    if (emptyPages.length > 0) {
+      showToast("Empty pages", "Please fill in all pages before finalizing", "warn");
+      return;
+    }
+    
+    await finalizeStory(currentPages);
+  });
 }
 
 // Render the storyboard

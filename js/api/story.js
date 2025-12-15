@@ -2,8 +2,8 @@
 // Story ideas and story writing API calls
 
 import { state, setPhase } from '../core/state.js';
-import { $, showLoader, setWorkspaceTitle } from '../core/utils.js';
-import { renderIdeas, renderStoryboard } from '../ui/render.js';
+import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
+import { renderIdeas, renderStoryEditor, renderStoryboard } from '../ui/render.js';
 
 // Generate story ideas from child info
 export async function fetchIdeas() {
@@ -32,7 +32,7 @@ export async function fetchIdeas() {
   renderIdeas(data.ideas);
 }
 
-// Write a full story from a selected idea
+// Write a full story from a selected idea (goes to edit phase, not storyboard)
 export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
   const projectId = localStorage.getItem("projectId");
   if (!projectId) return;
@@ -52,19 +52,97 @@ export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
     return;
   }
 
-  // Build project object for storyboard
+  // Build project object for editor
   const project = {
     id: data.projectId,
     kid_name: $("kid-name").value.trim(),
     kid_interests: $("kid-interests").value.trim(),
     selected_idea: data.selected_idea || null,
     story_json: data.story_json || [],
+    story_locked: false,
     illustrations: [],
-    context_registry: data.context_registry || {},
   };
 
   state.cachedProject = project;
-  setWorkspaceTitle(project.selected_idea?.title || "Your Book", "Storyboard view");
-  setPhase("storyboard");
-  renderStoryboard(project);
+  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json));
+  
+  setWorkspaceTitle(project.selected_idea?.title || "Edit Your Story", "Review and edit the story before continuing.");
+  setPhase("edit-story");
+  renderStoryEditor(project);
+}
+
+// Save story edits (without finalizing)
+export async function saveStoryEdits(storyPages) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return { success: false };
+
+  try {
+    const res = await fetch("/api/save-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, storyPages }),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      console.error(data);
+      showToast("Save failed", data.error, "error");
+      return { success: false };
+    }
+
+    // Update cached project
+    if (state.cachedProject) {
+      state.cachedProject.story_json = data.story_json;
+    }
+    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
+
+    return { success: true, story_json: data.story_json };
+  } catch (err) {
+    console.error("Save error:", err);
+    showToast("Save failed", "Network error", "error");
+    return { success: false };
+  }
+}
+
+// Finalize story and proceed to storyboard
+export async function finalizeStory(storyPages) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return;
+
+  showLoader("Finalizing story and building character models...");
+
+  try {
+    const res = await fetch("/api/finalize-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, storyPages }),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      console.error(data);
+      $("results").innerHTML = `<div class="loader">Failed to finalize story.</div>`;
+      showToast("Finalize failed", data.error, "error");
+      return;
+    }
+
+    // Update cached project with full data
+    if (state.cachedProject) {
+      state.cachedProject.story_json = data.story_json;
+      state.cachedProject.story_locked = true;
+      state.cachedProject.context_registry = data.context_registry;
+      state.cachedProject.props_registry = data.props_registry;
+    }
+    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
+
+    setWorkspaceTitle(state.cachedProject?.selected_idea?.title || "Your Book", "Storyboard view");
+    setPhase("storyboard");
+    renderStoryboard(state.cachedProject);
+
+    showToast("Story finalized", "Ready for illustration generation", "success");
+  } catch (err) {
+    console.error("Finalize error:", err);
+    $("results").innerHTML = `<div class="loader">Failed to finalize story.</div>`;
+    showToast("Finalize failed", "Network error", "error");
+  }
 }
