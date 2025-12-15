@@ -4,7 +4,6 @@
 import { state } from '../core/state.js';
 import { $, escapeHtml, showToast } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
-import { writeStoryFromIdeaIndex, fetchIdeas, saveStoryEdits, finalizeStory } from '../api/story.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
 import { openImageModal, initUploadModal } from './modals.js';
 import { renderCharacterPanel } from './panels.js';
@@ -101,15 +100,19 @@ export function renderIdeas(ideas) {
     </div>
   `;
 
-  // Wire click events
+  // Wire click events (use dynamic import to avoid circular dependency)
   results.querySelectorAll("[data-idea-index]").forEach((el) => {
     el.addEventListener("click", async () => {
       const idx = Number(el.getAttribute("data-idea-index"));
+      const { writeStoryFromIdeaIndex } = await import('../api/story.js');
       await writeStoryFromIdeaIndex(idx);
     });
   });
 
-  $("regen-ideas")?.addEventListener("click", fetchIdeas);
+  $("regen-ideas")?.addEventListener("click", async () => {
+    const { fetchIdeas } = await import('../api/story.js');
+    await fetchIdeas();
+  });
 }
 
 // Render the story editor (edit phase before finalization)
@@ -262,13 +265,14 @@ export function renderStoryEditor(project) {
     }, 100);
   });
   
-  // Save draft
+  // Save draft (use dynamic import to avoid circular dependency)
   $("save-draft-btn")?.addEventListener("click", async () => {
     const btn = $("save-draft-btn");
     btn.disabled = true;
     btn.textContent = "Saving...";
     
     const currentPages = collectEditedPages();
+    const { saveStoryEdits } = await import('../api/story.js');
     const result = await saveStoryEdits(currentPages);
     
     btn.disabled = false;
@@ -281,7 +285,7 @@ export function renderStoryEditor(project) {
     }
   });
   
-  // Finalize and continue
+  // Finalize and continue (use dynamic import to avoid circular dependency)
   $("finalize-btn")?.addEventListener("click", async () => {
     const currentPages = collectEditedPages();
     
@@ -292,6 +296,7 @@ export function renderStoryEditor(project) {
       return;
     }
     
+    const { finalizeStory } = await import('../api/story.js');
     await finalizeStory(currentPages);
   });
 }
