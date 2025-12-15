@@ -37,13 +37,16 @@ function cleanJsonOutput(text) {
 
 /**
  * Extract canonical narrative context
- * Enhanced to capture multiple characters properly
+ * Enhanced to capture multiple characters properly and their relationships
  */
 async function extractContextFromStory(storyPages) {
   const fullText = storyPages.map(p => p.text).join("\n");
 
   const prompt = `
 Extract canonical world facts from the following children's picture-book story.
+
+IMPORTANT: Only extract NAMED characters - not generic groups like "friends", "everyone", "family".
+A named character is someone with a specific name (Gary, Mom, Fluffy) or a specific role that's addressed directly.
 
 Return ONLY JSON in this exact format:
 
@@ -54,10 +57,11 @@ Return ONLY JSON in this exact format:
     "traits": []
   },
   "additional_children": {
-    "sibling_key": {
-      "name": "",
-      "relationship": "sibling/friend/cousin",
-      "traits": []
+    "character_key": {
+      "name": "specific name like Gary, Emma, etc - NOT generic terms like 'friends'",
+      "relationship": "friend/sibling/cousin/neighbor",
+      "traits": [],
+      "appears_with_protagonist": true
     }
   },
   "pets": {
@@ -70,9 +74,10 @@ Return ONLY JSON in this exact format:
   },
   "people": {
     "person_key": {
-      "name": "",
+      "name": "specific name or role like Mom, Grandpa Joe, Teacher Mrs. Smith",
       "relationship": "mom/dad/grandma/teacher/etc",
-      "traits": []
+      "traits": [],
+      "location": "where they are typically found in the story"
     }
   },
   "items": {
@@ -84,24 +89,38 @@ Return ONLY JSON in this exact format:
   "locations": {
     "location_key": {
       "name": "",
-      "description": ""
+      "description": "",
+      "owner": "who this location belongs to, if mentioned (e.g., 'Gary' for 'Gary's house')"
     }
   },
+  "character_presence_notes": "Notes about which characters appear together, e.g., 'When at Gary's house, Gary is present with protagonist'",
   "notes": ""
 }
 
-Rules:
+CRITICAL RULES:
 • "child" is the protagonist (main character the story is about)
-• "additional_children" are siblings, friends, playmates who are also children
-• "people" are adults (parents, grandparents, teachers, etc.)
-• Preserve names, relationships, and factual traits
-• Do NOT invent new entities not in the story
-• Do NOT describe visual appearance here (that's handled separately)
-• Keys should be lowercase, underscore-separated versions of names
+• Do NOT include generic terms like "friends", "family", "everyone", "kids" as characters
+• Only include NAMED individuals or specific roles (Mom, Dad, Grandma, etc.)
+• "additional_children" are OTHER named children (siblings, specific friends with names)
+• If the story says "visits Gary's house", Gary should be extracted as a character
+• Track location ownership - "Gary's yard" means Gary is associated with that location
+• Note when characters appear together (for illustration purposes)
 
 STORY TEXT:
 ${fullText}
 `;
+
+  const response = await client.responses.create({
+    model: "gpt-4.1",
+    input: prompt,
+  });
+
+  const raw =
+    response.output_text ??
+    response.output?.[0]?.content?.[0]?.text;
+
+  return JSON.parse(cleanJsonOutput(raw));
+}
 
   const response = await client.responses.create({
     model: "gpt-4.1",

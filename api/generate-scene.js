@@ -152,6 +152,7 @@ ${pagesText}
 
 // -------------------------------------------------------
 // NEW: Analyze which characters appear in this scene
+// Enhanced to track implicit presence through story flow
 // -------------------------------------------------------
 async function analyzeSceneComposition(pageText, contextRegistry, characterModels, allPages, currentPage) {
   // Build character list from available models
@@ -165,54 +166,94 @@ async function analyzeSceneComposition(pageText, contextRegistry, characterModel
   // Also include characters from context registry that may not have models
   const contextCharacters = [];
   if (contextRegistry?.child?.name) {
-    contextCharacters.push({ name: contextRegistry.child.name, role: "protagonist" });
+    contextCharacters.push({ 
+      name: contextRegistry.child.name, 
+      role: "protagonist",
+      key: contextRegistry.child.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    });
+  }
+  if (contextRegistry?.additional_children) {
+    for (const [key, child] of Object.entries(contextRegistry.additional_children)) {
+      contextCharacters.push({ 
+        name: child.name || key, 
+        role: child.relationship || "friend",
+        key: key
+      });
+    }
   }
   if (contextRegistry?.pets) {
     for (const [key, pet] of Object.entries(contextRegistry.pets)) {
-      contextCharacters.push({ name: pet.name || key, role: "pet", type: pet.type || pet.species });
+      contextCharacters.push({ 
+        name: pet.name || key, 
+        role: "pet", 
+        type: pet.type || pet.species,
+        key: key
+      });
     }
   }
   if (contextRegistry?.people) {
     for (const [key, person] of Object.entries(contextRegistry.people)) {
-      contextCharacters.push({ name: person.name || key, role: person.relationship || "person" });
+      contextCharacters.push({ 
+        name: person.name || key, 
+        role: person.relationship || "person",
+        key: key
+      });
     }
   }
 
+  // Build story context up to and including current page
+  // This helps track who is "present" in the scene based on narrative flow
+  const storyContextUpToPage = (allPages || [])
+    .filter(p => Number(p.page) <= Number(currentPage))
+    .map(p => `Page ${p.page}: ${p.text}`)
+    .join("\n");
+
   const prompt = `
-You are a children's book illustrator planning a scene composition.
+You are a children's book illustrator analyzing WHO should appear in an illustration.
 
-Analyze this page text and determine:
-1. Which characters should APPEAR in this illustration
-2. What type of SHOT would work best (close-up, medium, wide, establishing)
-3. What is the FOCAL POINT of the scene
+CRITICAL: Track character presence through the NARRATIVE FLOW, not just explicit mentions on this page.
 
-PAGE TEXT:
+For example:
+- "Harley visits Gary's house" → Gary is now PRESENT with Harley
+- "They played together" → BOTH Harley AND Gary should be in the scene
+- "She ran to the park" → Only the female character mentioned earlier
+- Plural pronouns (they, them, we) after establishing multiple characters → ALL those characters
+
+STORY SO FAR (for context of who is present):
+${storyContextUpToPage}
+
+CURRENT PAGE TO ILLUSTRATE (Page ${currentPage}):
 "${pageText}"
 
-AVAILABLE CHARACTERS WITH MODELS:
-${JSON.stringify(availableCharacters, null, 2)}
+ALL KNOWN CHARACTERS:
+${JSON.stringify([...availableCharacters, ...contextCharacters], null, 2)}
 
-STORY CONTEXT (all known characters):
-${JSON.stringify(contextCharacters, null, 2)}
-
-Return ONLY JSON:
+Analyze and return ONLY JSON:
 {
   "characters_in_scene": [
-    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background" }
+    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why they should appear" }
   ],
   "shot_type": "close-up|medium|wide|establishing",
-  "focal_point": "description of what the viewer's eye should focus on",
+  "focal_point": "what the viewer's eye should focus on",
   "show_characters": true,
-  "notes": "any special composition notes"
+  "notes": "composition notes"
 }
 
-RULES:
-• If the text focuses on an object, action, or setting rather than characters, set show_characters to false
-• Characters mentioned by name or pronoun should appear
-• The protagonist typically appears unless the scene specifically excludes them
-• Limit to maximum ${MAX_CHARACTER_MODELS_PER_SCENE} characters for visual clarity
-• Consider the narrative: a "close-up of the birthday cake" means no characters in frame
-• "primary" = character is the focus; "secondary" = supporting; "background" = visible but not focus
+RULES FOR CHARACTER PRESENCE:
+1. The protagonist appears unless the text explicitly excludes them
+2. If the story established Character A went to Character B's location, Character B is PRESENT
+3. Plural pronouns (they, them, their, we, us) mean ALL recently mentioned characters are present
+4. "Together", "with", "and" indicate multiple characters
+5. Going to someone's house/place means that person is there
+6. If uncertain whether a character is present, INCLUDE them rather than exclude
+7. Maximum ${MAX_CHARACTER_MODELS_PER_SCENE} characters per scene for visual clarity
+8. Characters mentioned by possessive ("Gary's yard") implies Gary owns/is at that location
+
+SHOT TYPE RULES:
+- "close-up": Focus on an object, emotion, or single detail (may exclude characters)
+- "medium": Standard scene showing characters from waist up or full body
+- "wide": Environmental shot showing characters in their setting
+- "establishing": Scene-setting shot, often at beginning of a sequence
 `;
 
   const response = await client.responses.create({
@@ -237,7 +278,14 @@ RULES:
   }
 
   try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    
+    // Log for debugging
+    console.log("=== SCENE COMPOSITION ANALYSIS ===");
+    console.log("Page:", currentPage);
+    console.log("Characters detected:", parsed.characters_in_scene?.map(c => `${c.name} (${c.reason})`));
+    
+    return parsed;
   } catch (err) {
     console.error("SCENE COMPOSITION PARSE ERROR:", err);
     const protagonist = availableCharacters.find(c => c.is_protagonist || c.role === "protagonist");
@@ -438,6 +486,9 @@ async function handler(req, res) {
     const environmentsJson = JSON.stringify(registry.environments || {}, null, 2);
     const propsJson = JSON.stringify(registry.props || {}, null, 2);
     const contextJson = JSON.stringify(contextRegistry || {}, null, 2);
+    
+    // Extract character presence notes if available
+    const presenceNotes = contextRegistry?.character_presence_notes || "";
 
     // Build character visual rules based on scene composition
     const characterVisualRules = buildCharacterVisualRules(
@@ -470,7 +521,7 @@ SCENE COMPOSITION ANALYSIS:
 Shot type: ${sceneComposition.shot_type}
 Focal point: ${sceneComposition.focal_point}
 Show characters: ${sceneComposition.show_characters}
-Characters in scene: ${sceneComposition.characters_in_scene.map(c => `${c.name} (${c.prominence})`).join(", ") || "None"}
+Characters in scene: ${sceneComposition.characters_in_scene.map(c => `${c.name} (${c.prominence}${c.reason ? ': ' + c.reason : ''})`).join(", ") || "None"}
 Composition notes: ${sceneComposition.notes || "None"}
 
 PAGE TEXT:
@@ -478,6 +529,11 @@ PAGE TEXT:
 
 LOCATION DETECTED:
 ${detectedLocation || "Infer a simple, neutral setting that fits the action."}
+
+${presenceNotes ? `
+CHARACTER PRESENCE NOTES (from story analysis):
+${presenceNotes}
+` : ''}
 
 ${characterReferenceInstructions}
 
@@ -502,10 +558,12 @@ STRICT RULES:
 • If show_characters is false, focus on the focal_point without prominent characters
 • Respect shot_type: close-up = tight framing, wide = environmental context
 • Primary characters should be visually prominent; background characters smaller/less detailed
+• If multiple characters are listed in "Characters in scene", draw ALL of them
 
 CONTEXT CONTINUITY RULES:
 • If context registry defines a specific pet/person/item, use those exact details
 • Generic references ("her dog") should match specific registry entries ("Cricket the beagle")
+• If at a character's location (e.g., "Gary's house"), that character should typically be present
 
 STYLE REQUIREMENTS:
 • Soft pastel children's-book illustration style

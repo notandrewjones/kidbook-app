@@ -155,24 +155,63 @@ function getDetectedCharactersNeedingModels(project, existingModels) {
   const existingKeys = new Set(existingModels.map(cm => cm.character_key));
   const existingNames = new Set(existingModels.map(cm => cm.name?.toLowerCase()));
 
+  // Generic terms that should NOT be prompted for character uploads
+  const genericTerms = new Set([
+    'friends', 'friend', 'family', 'everyone', 'somebody', 'someone',
+    'people', 'kids', 'children', 'neighbors', 'neighbours', 'guests',
+    'visitors', 'others', 'them', 'they', 'we', 'us', 'group',
+    'classmates', 'teammates', 'siblings', 'parents', 'adults',
+    'boys', 'girls', 'babies', 'toddlers', 'strangers'
+  ]);
+
+  // Helper to check if a name is a proper name (not generic)
+  function isProperCharacterName(name) {
+    if (!name) return false;
+    const lowerName = name.toLowerCase().trim();
+    
+    // Filter out generic terms
+    if (genericTerms.has(lowerName)) return false;
+    
+    // Filter out single-word generic descriptors
+    if (lowerName.length < 2) return false;
+    
+    // A proper name typically starts with uppercase in the original
+    // and is a specific identifier, not a role
+    const isCapitalized = name[0] === name[0].toUpperCase();
+    
+    // Check if it looks like a proper noun (specific name)
+    // Names like "Gary", "Mom", "Grandma" are fine
+    // But "the friends", "some kids" are not
+    return isCapitalized || 
+           ['mom', 'dad', 'grandma', 'grandpa', 'grandmother', 'grandfather', 
+            'mommy', 'daddy', 'nana', 'papa', 'granny', 'uncle', 'aunt',
+            'teacher', 'coach'].includes(lowerName);
+  }
+
   // Check additional_children (siblings, friends)
   for (const [key, child] of Object.entries(context.additional_children || {})) {
-    if (!existingKeys.has(key) && !existingNames.has(child.name?.toLowerCase())) {
+    const name = child.name || key;
+    if (!existingKeys.has(key) && 
+        !existingNames.has(name?.toLowerCase()) &&
+        isProperCharacterName(name)) {
       detected.push({
         character_key: key,
-        name: child.name || key,
+        name: name,
         role: child.relationship || "sibling",
         source: "story",
       });
     }
   }
 
-  // Check pets
+  // Check pets - pets almost always have specific names
   for (const [key, pet] of Object.entries(context.pets || {})) {
-    if (!existingKeys.has(key) && !existingNames.has(pet.name?.toLowerCase())) {
+    const name = pet.name || key;
+    if (!existingKeys.has(key) && 
+        !existingNames.has(name?.toLowerCase()) &&
+        isProperCharacterName(name)) {
       detected.push({
         character_key: key,
-        name: pet.name || key,
+        name: name,
         role: "pet",
         type: pet.type || pet.species,
         source: "story",
@@ -182,10 +221,13 @@ function getDetectedCharactersNeedingModels(project, existingModels) {
 
   // Check people (parents, grandparents, teachers, etc.)
   for (const [key, person] of Object.entries(context.people || {})) {
-    if (!existingKeys.has(key) && !existingNames.has(person.name?.toLowerCase())) {
+    const name = person.name || key;
+    if (!existingKeys.has(key) && 
+        !existingNames.has(name?.toLowerCase()) &&
+        isProperCharacterName(name)) {
       detected.push({
         character_key: key,
-        name: person.name || key,
+        name: name,
         role: person.relationship || "other",
         source: "story",
       });
