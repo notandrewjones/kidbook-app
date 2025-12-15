@@ -1,5 +1,6 @@
 // js/core/state.js
 // Global application state
+// Uses sessionStorage for tab isolation (each tab has its own session)
 
 export const state = {
   currentView: "grid",
@@ -18,6 +19,43 @@ export function setPhase(phase) {
   document.body.dataset.phase = phase;
 }
 
+// =====================================================
+// Tab-isolated storage helpers (use sessionStorage)
+// sessionStorage is per-tab, localStorage is shared
+// =====================================================
+
+export function getProjectId() {
+  return sessionStorage.getItem("projectId");
+}
+
+export function setProjectId(id) {
+  if (id) {
+    sessionStorage.setItem("projectId", id);
+  } else {
+    sessionStorage.removeItem("projectId");
+  }
+}
+
+export function getLastStoryPages() {
+  const stored = sessionStorage.getItem("lastStoryPages");
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function setLastStoryPages(pages) {
+  if (pages) {
+    sessionStorage.setItem("lastStoryPages", JSON.stringify(pages));
+  } else {
+    sessionStorage.removeItem("lastStoryPages");
+  }
+}
+
 // Helper to clear project-related state
 export function clearProjectState() {
   state.cachedProject = null;
@@ -31,8 +69,8 @@ export function clearAllState() {
   state.cachedDashboardProjects = null;
   state.generatingPages.clear();
   state.queuedPages.clear();
-  localStorage.removeItem("projectId");
-  localStorage.removeItem("lastStoryPages");
+  sessionStorage.removeItem("projectId");
+  sessionStorage.removeItem("lastStoryPages");
 }
 
 // Start a completely new project (clears projectId so a new one is created)

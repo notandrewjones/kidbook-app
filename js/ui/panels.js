@@ -2,7 +2,7 @@
 // Side panels - Multi-character management
 
 import { $, escapeHtml, showToast } from '../core/utils.js';
-import { state } from '../core/state.js';
+import { state, getProjectId } from '../core/state.js';
 import { 
   uploadAndGenerateCharacterModel,
   deleteCharacterModel,
@@ -108,7 +108,7 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       if (confirm("Remove this character model?")) {
         const success = await deleteCharacterModel(key);
         if (success) {
-          const pid = localStorage.getItem("projectId");
+          const pid = getProjectId();
           if (pid) await openProjectById(pid);
         }
       }
@@ -421,7 +421,7 @@ async function handleProtagonistUpload(file, project) {
 
   if (result) {
     if (status) status.textContent = "Character model ready!";
-    const pid = localStorage.getItem("projectId");
+    const pid = getProjectId();
     if (pid) await openProjectById(pid);
   } else {
     if (status) status.textContent = "Failed. Try again.";
@@ -568,7 +568,7 @@ export function openAddCharacterModal(forProtagonist = false) {
       if (result) {
         modal.classList.add("hidden");
         showToast("Character added", `${name} is ready`, "success");
-        const pid = localStorage.getItem("projectId");
+        const pid = getProjectId();
         if (pid) await openProjectById(pid);
       } else {
         createBtn.disabled = false;

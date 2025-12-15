@@ -2,7 +2,7 @@
 // Character model generation and photo upload - Multi-character support
 
 import { $, showToast } from '../core/utils.js';
-import { state } from '../core/state.js';
+import { state, getProjectId } from '../core/state.js';
 import { openProjectById } from './projects.js';
 import { closeUploadModal, closeCharacterModal } from '../ui/modals.js';
 
@@ -14,7 +14,7 @@ import { closeUploadModal, closeCharacterModal } from '../ui/modals.js';
  * @param {boolean} isProtagonist - Is this the main character?
  */
 export async function uploadCharacterPhoto(file, characterName, characterRole = "other", isProtagonist = false) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
 
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first", "error");
@@ -67,7 +67,7 @@ export async function uploadCharacterPhoto(file, characterName, characterRole = 
  * @param {string} photoUrl - Optional: URL of already uploaded photo
  */
 export async function generateCharacterModel(characterName = null, characterRole = null, isProtagonist = false, photoUrl = null) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
 
   if (!projectId) {
     showToast("No project loaded", "Open a project first", "error");
@@ -140,7 +140,7 @@ export async function uploadAndGenerateCharacterModel(file, characterName, chara
  * Fetch list of character models and suggestions for the project
  */
 export async function fetchCharacterModels() {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) return null;
 
   try {
@@ -164,7 +164,7 @@ export async function fetchCharacterModels() {
  * Delete a character model
  */
 export async function deleteCharacterModel(characterKey) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId || !characterKey) return false;
 
   try {
@@ -207,7 +207,7 @@ export async function deleteCharacterModel(characterKey) {
 
 // Legacy function for backward compatibility
 export async function uploadPhoto() {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   const fileInput = $("child-photo");
   const status = $("upload-status");
 
@@ -238,7 +238,7 @@ export async function handlePanelFileSelect(file) {
   const preview = $("panel-upload-preview");
   const status = $("panel-upload-status");
   const dropzone = $("panel-dropzone");
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
 
   if (!projectId) {
     if (status) status.textContent = "No project loaded.";
@@ -266,7 +266,7 @@ export async function handlePanelFileSelect(file) {
 
   if (result) {
     if (status) status.textContent = "Character model ready!";
-    const pid = localStorage.getItem("projectId");
+    const pid = getProjectId();
     if (pid) await openProjectById(pid);
     closeUploadModal();
   } else {

@@ -39,7 +39,7 @@ function cleanJsonOutput(text) {
  * Extract canonical narrative context
  * Enhanced to capture multiple characters properly and their relationships
  */
-async function extractContextFromStory(storyPages) {
+async function extractContextFromStory(storyPages, kidInterests) {
   const fullText = storyPages.map(p => p.text).join("\n");
 
   const prompt = `
@@ -47,6 +47,16 @@ Extract canonical world facts from the following children's picture-book story.
 
 IMPORTANT: Only extract NAMED characters - not generic groups like "friends", "everyone", "family".
 A named character is someone with a specific name (Gary, Mom, Fluffy) or a specific role that's addressed directly.
+
+CRITICAL - ORIGINAL USER INPUT:
+The user provided these details when creating the book: "${kidInterests || 'None provided'}"
+These details are AUTHORITATIVE. If the user specified a specific breed, name, color, or detail,
+you MUST use that EXACT information, even if the story text is more generic.
+
+For example:
+- User input: "golden retriever named Max" → breed MUST be "golden retriever", name MUST be "Max"
+- User input: "black labrador" → breed MUST be "black labrador"
+- User input: "tabby cat called Whiskers" → type MUST be "tabby cat", name MUST be "Whiskers"
 
 Return ONLY JSON in this exact format:
 
@@ -68,7 +78,7 @@ Return ONLY JSON in this exact format:
     "pet_key": {
       "name": "",
       "type": "dog/cat/etc",
-      "breed": "",
+      "breed": "EXACT breed from user input if specified",
       "traits": []
     }
   },
@@ -105,6 +115,7 @@ CRITICAL RULES:
 • If the story says "visits Gary's house", Gary should be extracted as a character
 • Track location ownership - "Gary's yard" means Gary is associated with that location
 • Note when characters appear together (for illustration purposes)
+• ALWAYS prefer specific details from ORIGINAL USER INPUT over generic story text
 
 STORY TEXT:
 ${fullText}
@@ -226,7 +237,7 @@ async function handler(req, res) {
     --------------------------------------------- */
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
-      .select("kid_name, props_registry, character_models, character_model_url")
+      .select("kid_name, kid_interests, props_registry, character_models, character_model_url")
       .eq("id", projectId)
       .single();
 
@@ -234,7 +245,7 @@ async function handler(req, res) {
       return res.status(500).json({ error: "Could not load project." });
     }
 
-    const { kid_name, character_models } = project;
+    const { kid_name, kid_interests, character_models } = project;
 
     // Handle legacy: create character_models array if only old field exists
     let existingCharacterModels = Array.isArray(character_models) ? character_models : [];
@@ -255,7 +266,7 @@ async function handler(req, res) {
        2. Extract context + visuals from final story
     --------------------------------------------- */
     console.log("Extracting context from finalized story...");
-    const contextRegistry = await extractContextFromStory(storyPages);
+    const contextRegistry = await extractContextFromStory(storyPages, kid_interests);
     
     console.log("Extracting character visuals...");
     const visualCharacters = await extractCharacterVisuals(

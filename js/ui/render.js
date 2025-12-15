@@ -1,7 +1,7 @@
 // js/ui/render.js
 // Rendering functions for dashboard, storyboard, ideas, and story editor
 
-import { state } from '../core/state.js';
+import { state, setLastStoryPages } from '../core/state.js';
 import { $, escapeHtml, showToast } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
@@ -307,7 +307,7 @@ export function renderStoryboard(project) {
   renderCharacterPanel(project);
   
   const results = $("results");
-  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json || []));
+  setLastStoryPages(project.story_json || []);
 
   const pages = project.story_json || [];
   const illus = Array.isArray(project.illustrations) ? project.illustrations : [];

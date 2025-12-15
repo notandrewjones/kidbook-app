@@ -1,7 +1,7 @@
 // js/api/story.js
 // Story ideas and story writing API calls
 
-import { state, setPhase } from '../core/state.js';
+import { state, setPhase, getProjectId, setProjectId, setLastStoryPages } from '../core/state.js';
 import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
 
 // Generate story ideas from child info
@@ -14,7 +14,7 @@ export async function fetchIdeas() {
 
   // IMPORTANT: Only pass projectId if we're editing an existing project
   // If projectId is null/undefined, a NEW project will be created
-  const existingProjectId = localStorage.getItem("projectId");
+  const existingProjectId = getProjectId();
   
   // Check if we're intentionally starting fresh (no cached project means new)
   // If there's a cached project with the same ID, we're editing
@@ -38,7 +38,7 @@ export async function fetchIdeas() {
   }
 
   // Store the new/existing project ID
-  localStorage.setItem("projectId", data.projectId);
+  setProjectId(data.projectId);
   
   // Update cached project reference
   state.cachedProject = {
@@ -58,7 +58,7 @@ export async function fetchIdeas() {
 
 // Write a full story from a selected idea (goes to edit phase, not storyboard)
 export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) return;
 
   showLoader("Writing the story...");
@@ -89,7 +89,7 @@ export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
   };
 
   state.cachedProject = project;
-  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json));
+  setLastStoryPages(project.story_json);
   
   setWorkspaceTitle(project.selected_idea?.title || "Edit Your Story", "Review and edit the story before continuing.");
   setPhase("edit-story");
@@ -101,7 +101,7 @@ export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
 
 // Save story edits (without finalizing)
 export async function saveStoryEdits(storyPages) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) return { success: false };
 
   try {
@@ -122,7 +122,7 @@ export async function saveStoryEdits(storyPages) {
     if (state.cachedProject) {
       state.cachedProject.story_json = data.story_json;
     }
-    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
+    setLastStoryPages(data.story_json);
 
     return { success: true, story_json: data.story_json };
   } catch (err) {
@@ -134,7 +134,7 @@ export async function saveStoryEdits(storyPages) {
 
 // Finalize story and proceed to storyboard
 export async function finalizeStory(storyPages) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) return;
 
   showLoader("Finalizing story and extracting characters...");
@@ -162,7 +162,7 @@ export async function finalizeStory(storyPages) {
       state.cachedProject.props_registry = data.props_registry;
       state.cachedProject.character_models = data.character_models || [];
     }
-    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
+    setLastStoryPages(data.story_json);
 
     setWorkspaceTitle(state.cachedProject?.selected_idea?.title || "Your Book", "Storyboard view");
     setPhase("storyboard");

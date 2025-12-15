@@ -608,7 +608,7 @@ Now call the image_generation tool.
           type: "image_generation",
           model: "gpt-image-1",
           size: "1024x1024",
-          quality: "high",
+          quality: "low",
           background: "opaque",
           output_format: "png",
           output_compression: 100,
