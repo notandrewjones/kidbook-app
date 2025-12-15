@@ -1,5 +1,6 @@
 // api/finalize-story.js (CommonJS)
 // Locks the story, extracts context registry, and generates character visuals
+// Updated to support multiple character models
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
@@ -36,6 +37,7 @@ function cleanJsonOutput(text) {
 
 /**
  * Extract canonical narrative context
+ * Enhanced to capture multiple characters properly
  */
 async function extractContextFromStory(storyPages) {
   const fullText = storyPages.map(p => p.text).join("\n");
@@ -46,20 +48,56 @@ Extract canonical world facts from the following children's picture-book story.
 Return ONLY JSON in this exact format:
 
 {
-  "child": {},
-  "pets": {},
-  "people": {},
-  "items": {},
-  "locations": {},
+  "child": {
+    "name": "protagonist name",
+    "gender": "boy/girl/unspecified",
+    "traits": []
+  },
+  "additional_children": {
+    "sibling_key": {
+      "name": "",
+      "relationship": "sibling/friend/cousin",
+      "traits": []
+    }
+  },
+  "pets": {
+    "pet_key": {
+      "name": "",
+      "type": "dog/cat/etc",
+      "breed": "",
+      "traits": []
+    }
+  },
+  "people": {
+    "person_key": {
+      "name": "",
+      "relationship": "mom/dad/grandma/teacher/etc",
+      "traits": []
+    }
+  },
+  "items": {
+    "item_key": {
+      "name": "",
+      "description": ""
+    }
+  },
+  "locations": {
+    "location_key": {
+      "name": "",
+      "description": ""
+    }
+  },
   "notes": ""
 }
 
 Rules:
+• "child" is the protagonist (main character the story is about)
+• "additional_children" are siblings, friends, playmates who are also children
+• "people" are adults (parents, grandparents, teachers, etc.)
 • Preserve names, relationships, and factual traits
-• Do NOT invent new entities
-• Do NOT describe visual appearance here
-• Visual details belong elsewhere
-• This data is narrative truth ONLY
+• Do NOT invent new entities not in the story
+• Do NOT describe visual appearance here (that's handled separately)
+• Keys should be lowercase, underscore-separated versions of names
 
 STORY TEXT:
 ${fullText}
@@ -79,13 +117,31 @@ ${fullText}
 
 /**
  * Extract visual character profiles
+ * Enhanced to handle multiple characters with proper model linking
  */
-async function extractCharacterVisuals(storyPages, contextRegistry, kidName) {
+async function extractCharacterVisuals(storyPages, contextRegistry, characterModels) {
   const storyText = storyPages.map(p => p.text).join("\n");
+
+  // Build a list of characters that already have uploaded models
+  const modeledCharacters = (characterModels || []).map(cm => ({
+    key: cm.character_key,
+    name: cm.name,
+    role: cm.role,
+    is_protagonist: cm.is_protagonist,
+  }));
 
   const prompt = `
 You are defining VISUAL CONSISTENCY for illustrated characters
 in a children's picture book.
+
+CHARACTERS WITH UPLOADED MODELS (do NOT generate visuals for these):
+${JSON.stringify(modeledCharacters, null, 2)}
+
+For characters with uploaded models, set:
+- visual_source: "user"
+- visual: null
+
+For characters WITHOUT models, generate consistent visual descriptions.
 
 Return ONLY JSON in this exact format:
 
@@ -93,28 +149,29 @@ Return ONLY JSON in this exact format:
   "characters": {
     "character_key": {
       "name": "",
-      "role": "protagonist | pet | side_character",
-      "visual_source": "pending | auto",
+      "role": "protagonist | sibling | friend | parent | pet | other",
+      "visual_source": "user | auto",
+      "has_model": true | false,
       "visual": null | {
         "species": "",
-        "breed": "",
-        "size": "",
-        "colors": "",
-        "distinctive_features": ""
+        "age_range": "child | adult | elderly",
+        "hair": "",
+        "skin_tone": "",
+        "build": "",
+        "distinctive_features": "",
+        "typical_clothing": ""
       }
     }
   }
 }
 
 Rules:
-• If the character matches the CHILD (name: "${kidName}"):
-  - role MUST be "protagonist"
-  - visual_source MUST be "pending"
-  - visual MUST be null
-• Pets and non-protagonist characters MUST receive visual descriptions
-• Do NOT invent new characters
-• Be consistent and reusable
-• This data will be reused across all illustrations
+• Match character keys to context registry keys where possible
+• Characters with uploaded models: visual_source = "user", visual = null, has_model = true
+• Characters without models: visual_source = "auto", has_model = false, generate visual
+• For pets: use species, breed, size, colors, distinctive_features instead of human attributes
+• Be consistent and specific enough to reuse across all illustrations
+• Do NOT invent new characters not in the story
 
 STORY TEXT:
 ${storyText}
@@ -158,11 +215,11 @@ async function handler(req, res) {
 
   try {
     /* ---------------------------------------------
-       1. Load project for kid_name
+       1. Load project
     --------------------------------------------- */
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
-      .select("kid_name, props_registry")
+      .select("kid_name, props_registry, character_models, character_model_url")
       .eq("id", projectId)
       .single();
 
@@ -170,7 +227,22 @@ async function handler(req, res) {
       return res.status(500).json({ error: "Could not load project." });
     }
 
-    const { kid_name } = project;
+    const { kid_name, character_models } = project;
+
+    // Handle legacy: create character_models array if only old field exists
+    let existingCharacterModels = Array.isArray(character_models) ? character_models : [];
+    
+    if (project.character_model_url && existingCharacterModels.length === 0) {
+      existingCharacterModels.push({
+        character_key: kid_name?.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "protagonist",
+        name: kid_name || "Child",
+        role: "protagonist",
+        model_url: project.character_model_url,
+        is_protagonist: true,
+        visual_source: "user",
+        created_at: new Date().toISOString(),
+      });
+    }
 
     /* ---------------------------------------------
        2. Extract context + visuals from final story
@@ -182,7 +254,7 @@ async function handler(req, res) {
     const visualCharacters = await extractCharacterVisuals(
       storyPages,
       contextRegistry,
-      kid_name
+      existingCharacterModels
     );
 
     /* ---------------------------------------------
@@ -208,12 +280,26 @@ async function handler(req, res) {
         (existing.visual_source === "user" ||
          existing.visual_source === "locked")
       ) {
+        // But DO update non-visual fields
+        propsRegistry.characters[key] = {
+          ...existing,
+          name: character.name || existing.name,
+          role: character.role || existing.role,
+        };
         continue;
       }
+
+      // Check if this character has an uploaded model
+      const hasModel = existingCharacterModels.some(
+        cm => cm.character_key === key || 
+              cm.name?.toLowerCase() === character.name?.toLowerCase()
+      );
 
       propsRegistry.characters[key] = {
         ...existing,
         ...character,
+        has_model: hasModel || character.has_model,
+        visual_source: hasModel ? "user" : (character.visual_source || "auto"),
         first_seen_page:
           existing?.first_seen_page ?? character.first_seen_page ?? 1,
       };
@@ -229,6 +315,7 @@ async function handler(req, res) {
         story_locked: true,
         context_registry: contextRegistry,
         props_registry: [propsRegistry],
+        character_models: existingCharacterModels,
       })
       .eq("id", projectId)
       .select("*")
@@ -248,6 +335,7 @@ async function handler(req, res) {
       story_locked: true,
       context_registry: updated.context_registry,
       props_registry: updated.props_registry,
+      character_models: updated.character_models,
     });
 
   } catch (err) {

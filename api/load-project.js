@@ -1,4 +1,5 @@
 // api/load-project.js (CommonJS)
+// Updated to include character_models array
 
 const { createClient } = require("@supabase/supabase-js");
 
@@ -30,6 +31,8 @@ async function handler(req, res) {
         story_locked,
         illustrations,
         character_model_url,
+        character_models,
+        pending_character_photos,
         context_registry,
         props_registry
       `)
@@ -45,11 +48,32 @@ async function handler(req, res) {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    // Normalize to prevent UI crashes
-    // Ensure each illustration has revision_history array
+    // Normalize character_models
+    let characterModels = Array.isArray(data.character_models)
+      ? data.character_models
+      : [];
+
+    // Handle legacy: if only character_model_url exists, convert to array format
+    if (data.character_model_url && characterModels.length === 0) {
+      const protagonistName = data.context_registry?.child?.name || data.kid_name || "Child";
+      const protagonistKey = protagonistName.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "protagonist";
+      
+      characterModels.push({
+        character_key: protagonistKey,
+        name: protagonistName,
+        role: "protagonist",
+        model_url: data.character_model_url,
+        is_protagonist: true,
+        visual_source: "user",
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    // Normalize illustrations to include revision_history
     const normalizedIllustrations = (data.illustrations || []).map(illus => ({
       ...illus,
-      revision_history: illus.revision_history || []
+      revision_history: illus.revision_history || [],
+      scene_composition: illus.scene_composition || null,
     }));
 
     return res.status(200).json({
@@ -59,8 +83,10 @@ async function handler(req, res) {
         story_json: data.story_json || [],
         story_locked: data.story_locked || false,
         illustrations: normalizedIllustrations,
+        character_models: characterModels,
+        pending_character_photos: data.pending_character_photos || [],
         props_registry: data.props_registry || [],
-        context_registry: data.context_registry || {}
+        context_registry: data.context_registry || {},
       }
     });
 
@@ -73,5 +99,5 @@ async function handler(req, res) {
 module.exports = handler;
 
 module.exports.config = {
-  api: { bodyParser: { sizeLimit: "10mb" } }
+  api: { bodyParser: { sizeLimit: "10mb" } },
 };
