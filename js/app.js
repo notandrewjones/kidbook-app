@@ -10,7 +10,7 @@ import { initRouter, setRouteHandlers } from './core/router.js';
 import { loadDashboard, openProjectById } from './api/projects.js';
 
 // UI
-import { initViewControls, initAccountMenu } from './ui/controls.js';
+import { initViewControls, initAccountMenu, initSearch } from './ui/controls.js';
 import { initImageModalEvents } from './ui/modals.js';
 
 // =====================================================
@@ -28,6 +28,7 @@ function initApp() {
   initAccountMenu();
   initImageModalEvents();
   initViewControls();
+  initSearch();
 
   // Form submission - generate ideas (use dynamic import to avoid circular dependency)
   $("kid-form")?.addEventListener("submit", async (e) => {
