@@ -177,7 +177,18 @@ export default async function handler(req, res) {
           ]
         }
       ],
-      tools: [{ type: "image_generation" }]
+      tools: [
+        {
+          type: "image_generation",
+          model: "gpt-image-1",
+          size: "1024x1024",
+          quality: "low", // Change to "high" for production
+          background: "transparent",
+          output_format: "png",
+          output_compression: 100,
+          moderation: "auto",
+        },
+      ]
     });
 
     const imageCall = response.output.find(o => o.type === "image_generation_call");

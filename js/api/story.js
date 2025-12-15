@@ -12,11 +12,23 @@ export async function fetchIdeas() {
 
   showLoader("Generating story ideas...");
 
+  // IMPORTANT: Only pass projectId if we're editing an existing project
+  // If projectId is null/undefined, a NEW project will be created
   const existingProjectId = localStorage.getItem("projectId");
+  
+  // Check if we're intentionally starting fresh (no cached project means new)
+  // If there's a cached project with the same ID, we're editing
+  const shouldUseExistingProject = existingProjectId && 
+    state.cachedProject?.id === existingProjectId;
+
   const res = await fetch("/api/story-ideas", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, interests, projectId: existingProjectId || null }),
+    body: JSON.stringify({ 
+      name, 
+      interests, 
+      projectId: shouldUseExistingProject ? existingProjectId : null 
+    }),
   });
 
   const data = await res.json();
@@ -25,7 +37,17 @@ export async function fetchIdeas() {
     return;
   }
 
+  // Store the new/existing project ID
   localStorage.setItem("projectId", data.projectId);
+  
+  // Update cached project reference
+  state.cachedProject = {
+    id: data.projectId,
+    kid_name: name,
+    kid_interests: interests,
+    story_ideas: data.ideas,
+  };
+
   setPhase("select-idea");
   setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
   
@@ -63,6 +85,7 @@ export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
     story_json: data.story_json || [],
     story_locked: false,
     illustrations: [],
+    character_models: [],
   };
 
   state.cachedProject = project;
@@ -114,7 +137,7 @@ export async function finalizeStory(storyPages) {
   const projectId = localStorage.getItem("projectId");
   if (!projectId) return;
 
-  showLoader("Finalizing story and building character models...");
+  showLoader("Finalizing story and extracting characters...");
 
   try {
     const res = await fetch("/api/finalize-story", {
@@ -137,6 +160,7 @@ export async function finalizeStory(storyPages) {
       state.cachedProject.story_locked = true;
       state.cachedProject.context_registry = data.context_registry;
       state.cachedProject.props_registry = data.props_registry;
+      state.cachedProject.character_models = data.character_models || [];
     }
     localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
 
@@ -147,7 +171,7 @@ export async function finalizeStory(storyPages) {
     const { renderStoryboard } = await import('../ui/render.js');
     renderStoryboard(state.cachedProject);
 
-    showToast("Story finalized", "Ready for illustration generation", "success");
+    showToast("Story finalized", "Now add character models to generate illustrations", "success");
   } catch (err) {
     console.error("Finalize error:", err);
     $("results").innerHTML = `<div class="loader">Failed to finalize story.</div>`;

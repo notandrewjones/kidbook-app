@@ -30,6 +30,9 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
   const protagonistModel = characterModels.find(cm => cm.is_protagonist || cm.role === "protagonist");
   const otherModels = characterModels.filter(cm => !cm.is_protagonist && cm.role !== "protagonist");
 
+  // Detect characters from context_registry that don't have models yet
+  const detectedCharacters = getDetectedCharactersNeedingModels(project, characterModels);
+
   panel.innerHTML = `
     <div class="character-panel-inner">
       <div class="panel-section">
@@ -40,9 +43,9 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
         
         ${protagonistModel ? renderCharacterCard(protagonistModel, true) : `
           <div class="no-protagonist-notice">
-            <p>No protagonist model yet.</p>
+            <p>Upload a photo of the main character to start generating illustrations.</p>
             <button class="btn btn-primary btn-sm" id="add-protagonist-btn">
-              Add Protagonist
+              Add ${escapeHtml(project.kid_name || 'Protagonist')}
             </button>
           </div>
         `}
@@ -54,19 +57,42 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
         ` : ""}
       </div>
       
+      ${detectedCharacters.length > 0 ? `
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Detected in Story</span>
+            <span class="panel-section-count">${detectedCharacters.length}</span>
+          </div>
+          <p class="panel-section-desc">
+            These characters appear in your story. Add photos for visual consistency, or let AI generate them.
+          </p>
+          <div class="detected-characters-list">
+            ${detectedCharacters.map(dc => renderDetectedCharacterCard(dc)).join("")}
+          </div>
+        </div>
+      ` : ""}
+      
       <div class="panel-section">
         <button class="btn btn-secondary btn-full" id="add-character-btn">
           <span class="btn-icon">+</span>
-          Add Character
+          Add Other Character
         </button>
       </div>
       
-      <div class="panel-section panel-section-muted">
-        <div class="panel-tip">
-          <strong>Tip:</strong> Add models for characters who appear frequently. 
-          Max 4 characters per scene for best results.
+      ${!protagonistModel ? `
+        <div class="panel-section panel-section-muted">
+          <div class="panel-tip panel-tip-warning">
+            <strong>⚠️ Required:</strong> Add the protagonist's photo before generating illustrations.
+          </div>
         </div>
-      </div>
+      ` : `
+        <div class="panel-section panel-section-muted">
+          <div class="panel-tip">
+            <strong>Tip:</strong> Characters without photos will be AI-generated based on story context.
+            Max 4 character references per scene.
+          </div>
+        </div>
+      `}
     </div>
   `;
 
@@ -99,6 +125,107 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       }
     });
   });
+
+  // Wire up detected character actions
+  panel.querySelectorAll("[data-upload-for-character]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.uploadForCharacter;
+      const name = btn.dataset.characterName;
+      const role = btn.dataset.characterRole;
+      openAddCharacterModalPrefilled(name, role);
+    });
+  });
+
+  panel.querySelectorAll("[data-generate-for-character]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.generateForCharacter;
+      const name = btn.dataset.characterName;
+      showToast("AI Generation", `${name} will be AI-generated based on story context`, "success");
+      // Mark as "use AI" in the UI - the actual generation happens during scene generation
+    });
+  });
+}
+
+// Get characters detected in story that don't have models
+function getDetectedCharactersNeedingModels(project, existingModels) {
+  const detected = [];
+  const context = project.context_registry || {};
+  const existingKeys = new Set(existingModels.map(cm => cm.character_key));
+  const existingNames = new Set(existingModels.map(cm => cm.name?.toLowerCase()));
+
+  // Check additional_children (siblings, friends)
+  for (const [key, child] of Object.entries(context.additional_children || {})) {
+    if (!existingKeys.has(key) && !existingNames.has(child.name?.toLowerCase())) {
+      detected.push({
+        character_key: key,
+        name: child.name || key,
+        role: child.relationship || "sibling",
+        source: "story",
+      });
+    }
+  }
+
+  // Check pets
+  for (const [key, pet] of Object.entries(context.pets || {})) {
+    if (!existingKeys.has(key) && !existingNames.has(pet.name?.toLowerCase())) {
+      detected.push({
+        character_key: key,
+        name: pet.name || key,
+        role: "pet",
+        type: pet.type || pet.species,
+        source: "story",
+      });
+    }
+  }
+
+  // Check people (parents, grandparents, teachers, etc.)
+  for (const [key, person] of Object.entries(context.people || {})) {
+    if (!existingKeys.has(key) && !existingNames.has(person.name?.toLowerCase())) {
+      detected.push({
+        character_key: key,
+        name: person.name || key,
+        role: person.relationship || "other",
+        source: "story",
+      });
+    }
+  }
+
+  return detected;
+}
+
+// Render a detected character card (no model yet)
+function renderDetectedCharacterCard(character) {
+  const roleLabel = getRoleLabel(character.role);
+  const typeInfo = character.type ? ` (${character.type})` : "";
+
+  return `
+    <div class="character-card detected">
+      <div class="character-card-image">
+        <div class="character-placeholder">?</div>
+      </div>
+      <div class="character-card-info">
+        <div class="character-card-name">${escapeHtml(character.name)}</div>
+        <div class="character-card-role">${roleLabel}${typeInfo}</div>
+      </div>
+      <div class="character-card-actions">
+        <button 
+          class="btn btn-sm btn-primary" 
+          data-upload-for-character="${character.character_key}"
+          data-character-name="${escapeHtml(character.name)}"
+          data-character-role="${character.role}"
+          title="Upload photo"
+        >📷</button>
+        <button 
+          class="btn btn-sm btn-secondary" 
+          data-generate-for-character="${character.character_key}"
+          data-character-name="${escapeHtml(character.name)}"
+          title="Let AI generate"
+        >🤖</button>
+      </div>
+    </div>
+  `;
 }
 
 // Render a single character card
@@ -442,6 +569,30 @@ function openRegenerateCharacterModal(model) {
       if (nameInput) nameInput.value = model.name;
       if (roleSelect) roleSelect.value = model.role;
       if (title) title.textContent = `Regenerate ${model.name}`;
+    }
+  }, 50);
+}
+
+// Open modal pre-filled for a detected character
+function openAddCharacterModalPrefilled(name, role) {
+  openAddCharacterModal(role === "protagonist");
+  
+  setTimeout(() => {
+    const modal = $("add-character-modal");
+    if (modal) {
+      const nameInput = modal.querySelector("#new-char-name");
+      const roleSelect = modal.querySelector("#new-char-role");
+      const title = modal.querySelector(".modal-title");
+      const createBtn = modal.querySelector("#create-char-btn");
+      
+      if (nameInput) nameInput.value = name;
+      if (roleSelect) roleSelect.value = role;
+      if (title) title.textContent = `Add ${name}`;
+      
+      // Update button state since name is pre-filled
+      if (createBtn && nameInput.value.trim()) {
+        // Button will enable once file is selected
+      }
     }
   }, 50);
 }

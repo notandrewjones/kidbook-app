@@ -168,11 +168,19 @@ export async function deleteCharacterModel(characterKey) {
   if (!projectId || !characterKey) return false;
 
   try {
-    const res = await fetch(`/api/character-models?projectId=${projectId}`, {
+    const res = await fetch(`/api/character-models`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ characterKey }),
+      body: JSON.stringify({ projectId, characterKey }),
     });
+
+    // Check if response is OK before parsing
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Delete failed:", res.status, text);
+      showToast("Delete failed", `Server error: ${res.status}`, "error");
+      return false;
+    }
 
     const data = await res.json();
 

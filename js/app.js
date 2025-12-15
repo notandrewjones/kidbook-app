@@ -2,7 +2,7 @@
 // Main application entry point
 
 // Core
-import { state, clearAllState, setPhase } from './core/state.js';
+import { state, clearAllState, setPhase, startNewProject } from './core/state.js';
 import { $, setWorkspaceTitle } from './core/utils.js';
 import { initRouter, setRouteHandlers } from './core/router.js';
 
@@ -37,9 +37,9 @@ function initApp() {
     await fetchIdeas();
   });
 
-  // Reset session button
+  // Reset session button - IMPORTANT: Clear projectId so new project is created
   $("reset-session")?.addEventListener("click", () => {
-    clearAllState();
+    startNewProject(); // This clears localStorage.projectId
     $("kid-name").value = "";
     $("kid-interests").value = "";
     setPhase("dashboard");

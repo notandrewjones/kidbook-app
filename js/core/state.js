@@ -34,3 +34,8 @@ export function clearAllState() {
   localStorage.removeItem("projectId");
   localStorage.removeItem("lastStoryPages");
 }
+
+// Start a completely new project (clears projectId so a new one is created)
+export function startNewProject() {
+  clearAllState();
+}

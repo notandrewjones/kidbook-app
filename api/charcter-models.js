@@ -9,7 +9,8 @@ const supabase = createClient(
 );
 
 async function handler(req, res) {
-  const { projectId } = req.query;
+  // Accept projectId from query (GET) or body (DELETE/PATCH)
+  const projectId = req.query?.projectId || req.body?.projectId;
 
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
@@ -117,7 +118,8 @@ async function handler(req, res) {
 
   // DELETE - Remove a character model
   if (req.method === "DELETE") {
-    const { characterKey } = req.body || {};
+    // Accept characterKey from either body or query
+    const { characterKey } = req.body || req.query || {};
 
     if (!characterKey) {
       return res.status(400).json({ error: "Missing characterKey" });

@@ -1421,6 +1421,18 @@ body[data-phase="edit-story"] #results {
   color: var(--text);
 }
 
+.panel-tip-warning {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.1);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.panel-tip-warning strong {
+  color: var(--warn);
+}
+
 /* Character Cards */
 .character-card {
   display: flex;
@@ -1440,6 +1452,11 @@ body[data-phase="edit-story"] #results {
 .character-card.protagonist {
   border-color: rgba(124, 92, 255, 0.35);
   background: rgba(124, 92, 255, 0.08);
+}
+
+.character-card.detected {
+  border-style: dashed;
+  background: rgba(255,255,255,0.02);
 }
 
 .character-card-image {
@@ -1494,7 +1511,8 @@ body[data-phase="edit-story"] #results {
   flex-shrink: 0;
 }
 
-.other-characters-list {
+.other-characters-list,
+.detected-characters-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1554,6 +1572,42 @@ body[data-phase="edit-story"] #results {
 /* Select Full Width */
 .select-full {
   width: 100%;
+}
+
+/* =============================================
+   PROTAGONIST REQUIRED NOTICE
+   ============================================= */
+.protagonist-required-notice {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.protagonist-required-notice p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.warning-text {
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Disabled state for cards without protagonist */
+.story-card[data-can-generate="false"] .thumb-placeholder {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* =============================================

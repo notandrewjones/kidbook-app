@@ -6,7 +6,7 @@ import { $, escapeHtml, showToast } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
 import { openImageModal, initUploadModal } from './modals.js';
-import { renderCharacterPanel } from './panels.js';
+import { renderCharacterPanel, openAddCharacterModal } from './panels.js';
 
 // Re-render current view without fetching (for view/filter switching)
 export function reRenderCurrentView() {
@@ -39,7 +39,7 @@ export function renderDashboard(projects) {
 
     // Check if this is a draft (has story but not locked, no illustrations, no character model)
     const hasIllustrations = p.illustrations?.length > 0;
-    const hasCharacterModel = !!p.character_model_url;
+    const hasCharacterModel = !!p.character_model_url || (p.character_models?.length > 0);
     const isDraft = p.story_json?.length > 0 && 
                     !p.story_locked && 
                     !hasIllustrations &&
@@ -185,24 +185,9 @@ export function renderStoryEditor(project) {
     return collected;
   }
   
-  // Helper to re-render editor with current state
-  function refreshEditor() {
-    editedPages = collectEditedPages();
-    // Re-number pages
-    editedPages = editedPages.map((p, idx) => ({ ...p, page: idx + 1 }));
-    
-    // Update project in state
-    if (state.cachedProject) {
-      state.cachedProject.story_json = editedPages;
-    }
-    
-    renderStoryEditor({ ...project, story_json: editedPages });
-  }
-  
   // Wire up text editing (auto-save on blur)
   results.querySelectorAll(".editor-textarea").forEach(ta => {
     ta.addEventListener("input", () => {
-      // Mark as dirty
       const status = $("editor-status");
       if (status) status.textContent = "Unsaved changes...";
     });
@@ -270,14 +255,13 @@ export function renderStoryEditor(project) {
     renderStoryEditor({ ...project, story_json: editedPages });
     showToast("Page added", "", "success");
     
-    // Focus the new textarea
     setTimeout(() => {
       const textareas = results.querySelectorAll(".editor-textarea");
       textareas[textareas.length - 1]?.focus();
     }, 100);
   });
   
-  // Save draft (use dynamic import to avoid circular dependency)
+  // Save draft
   $("save-draft-btn")?.addEventListener("click", async () => {
     const btn = $("save-draft-btn");
     btn.disabled = true;
@@ -297,11 +281,10 @@ export function renderStoryEditor(project) {
     }
   });
   
-  // Finalize and continue (use dynamic import to avoid circular dependency)
+  // Finalize and continue
   $("finalize-btn")?.addEventListener("click", async () => {
     const currentPages = collectEditedPages();
     
-    // Validate
     const emptyPages = currentPages.filter(p => !p.text.trim());
     if (emptyPages.length > 0) {
       showToast("Empty pages", "Please fill in all pages before finalizing", "warn");
@@ -311,6 +294,12 @@ export function renderStoryEditor(project) {
     const { finalizeStory } = await import('../api/story.js');
     await finalizeStory(currentPages);
   });
+}
+
+// Check if protagonist model exists
+function hasProtagonistModel(project) {
+  const characterModels = project.character_models || [];
+  return characterModels.some(cm => cm.is_protagonist || cm.role === "protagonist");
 }
 
 // Render the storyboard
@@ -324,11 +313,27 @@ export function renderStoryboard(project) {
   const illus = Array.isArray(project.illustrations) ? project.illustrations : [];
   const illusMap = new Map(illus.map((i) => [Number(i.page), i]));
 
-  // Header actions
+  // Check if protagonist model exists - required for generation
+  const hasProtagonist = hasProtagonistModel(project);
+
+  // Header actions - conditionally enable based on protagonist
   const topActions = `
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
-      <button id="generate-illustrations-btn" class="btn btn-primary">Generate Illustrations</button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+      ${hasProtagonist ? `
+        <button id="generate-illustrations-btn" class="btn btn-primary">Generate All Illustrations</button>
+      ` : `
+        <button id="generate-illustrations-btn" class="btn btn-primary" disabled title="Add protagonist first">
+          Generate All Illustrations
+        </button>
+        <span class="warning-text">← Add protagonist photo first</span>
+      `}
     </div>
+    ${!hasProtagonist ? `
+      <div class="protagonist-required-notice">
+        <p>📷 <strong>Photo required:</strong> Upload a photo of ${escapeHtml(project.kid_name || 'the main character')} in the Character Models panel to start generating illustrations.</p>
+        <button id="add-protagonist-inline" class="btn btn-primary btn-sm">Add ${escapeHtml(project.kid_name || 'Protagonist')} Photo</button>
+      </div>
+    ` : ''}
     <div id="character-status" class="status-line"></div>
     <div id="illustration-status" class="status-line"></div>
   `;
@@ -352,7 +357,6 @@ export function renderStoryboard(project) {
     const isGenerating = state.generatingPages.has(Number(p.page));
     const isQueued = state.queuedPages?.has(Number(p.page));
 
-    // Add cache-busting param to prevent browser from showing stale images
     const cacheBuster = lastUpdated || rev || Date.now();
     const imageUrl = url ? `${url}?v=${cacheBuster}` : "";
 
@@ -383,11 +387,11 @@ export function renderStoryboard(project) {
       cardClass = "";
       thumbContent = imageUrl
         ? `<img src="${imageUrl}" alt="Page ${p.page}">`
-        : `<div class="thumb-placeholder">Click to generate</div>`;
+        : `<div class="thumb-placeholder">${hasProtagonist ? 'Click to generate' : 'Add protagonist first'}</div>`;
     }
 
     return `
-      <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${imageUrl}">
+      <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${imageUrl}" data-can-generate="${hasProtagonist}">
         <div class="thumb">
           <span class="badge">${`Page ${p.page} • ${badge}`}</span>
           ${thumbContent}
@@ -396,8 +400,8 @@ export function renderStoryboard(project) {
           <div class="card-title">Page ${p.page}</div>
           <p class="card-sub">${escapeHtml(p.text)}</p>
           <div class="card-meta">
-            <span>${isGenerating ? "Generating..." : isQueued ? "Queued" : url ? "Preview / Regenerate" : "Generate"}</span>
-            <span>${isGenerating ? "⚙️" : isQueued ? "⏳" : url ? "✓" : "+"}</span>
+            <span>${isGenerating ? "Generating..." : isQueued ? "Queued" : url ? "Preview / Regenerate" : hasProtagonist ? "Generate" : "Waiting..."}</span>
+            <span>${isGenerating ? "⚙️" : isQueued ? "⏳" : url ? "✓" : hasProtagonist ? "+" : "📷"}</span>
           </div>
         </div>
       </div>
@@ -417,8 +421,8 @@ export function renderStoryboard(project) {
   results.querySelectorAll("[data-page]").forEach((el) => {
     el.addEventListener("click", () => {
       const pageNum = Number(el.getAttribute("data-page"));
+      const canGenerate = el.getAttribute("data-can-generate") === "true";
 
-      // Don't allow interaction while generating or queued
       if (state.generatingPages.has(pageNum)) {
         showToast("Please wait", "This page is currently being generated", "warn");
         return;
@@ -432,15 +436,29 @@ export function renderStoryboard(project) {
 
       if (url) {
         openImageModal(pageNum, url);
-      } else {
+      } else if (canGenerate) {
         const pageObj = pages.find((x) => Number(x.page) === pageNum);
         if (!pageObj) return;
         generateSingleIllustration(pageNum, pageObj.text);
+      } else {
+        showToast("Protagonist required", "Add a photo of the main character first", "warn");
+        openAddCharacterModal(true);
       }
     });
   });
 
-  $("generate-illustrations-btn")?.addEventListener("click", generateIllustrations);
+  $("generate-illustrations-btn")?.addEventListener("click", () => {
+    if (!hasProtagonist) {
+      showToast("Protagonist required", "Add a photo of the main character first", "warn");
+      openAddCharacterModal(true);
+      return;
+    }
+    generateIllustrations();
+  });
+
+  $("add-protagonist-inline")?.addEventListener("click", () => {
+    openAddCharacterModal(true);
+  });
 
   initUploadModal();
 }
