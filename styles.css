@@ -1459,6 +1459,31 @@ body[data-phase="edit-story"] #results {
   background: rgba(255,255,255,0.02);
 }
 
+/* Clickable upload area */
+.character-card-image.clickable-upload {
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+}
+
+.character-card-image.clickable-upload:hover {
+  background: rgba(124, 92, 255, 0.15);
+  border-color: var(--brand);
+}
+
+.character-card-image.clickable-upload:hover .upload-icon {
+  color: var(--brand);
+}
+
+.character-placeholder.upload-icon {
+  color: var(--muted);
+  transition: color var(--speed) var(--ease);
+}
+
+.character-placeholder.upload-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
 .character-card-image {
   width: 48px;
   height: 48px;

@@ -244,8 +244,18 @@ function renderDetectedCharacterCard(character) {
 
   return `
     <div class="character-card detected">
-      <div class="character-card-image">
-        <div class="character-placeholder">?</div>
+      <div class="character-card-image clickable-upload" 
+           data-upload-for-character="${character.character_key}"
+           data-character-name="${escapeHtml(character.name)}"
+           data-character-role="${character.role}"
+           title="Click to upload photo">
+        <div class="character-placeholder upload-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
       </div>
       <div class="character-card-info">
         <div class="character-card-name">${escapeHtml(character.name)}</div>
@@ -253,18 +263,11 @@ function renderDetectedCharacterCard(character) {
       </div>
       <div class="character-card-actions">
         <button 
-          class="btn btn-sm btn-primary" 
-          data-upload-for-character="${character.character_key}"
-          data-character-name="${escapeHtml(character.name)}"
-          data-character-role="${character.role}"
-          title="Upload photo"
-        >📷</button>
-        <button 
           class="btn btn-sm btn-secondary" 
           data-generate-for-character="${character.character_key}"
           data-character-name="${escapeHtml(character.name)}"
-          title="Let AI generate"
-        >🤖</button>
+          title="Let AI generate this character"
+        >Generate for me</button>
       </div>
     </div>
   `;
