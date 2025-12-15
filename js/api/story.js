@@ -1,214 +1,156 @@
-// js/api/projects.js
-// Project loading and listing API calls
+// js/api/story.js
+// Story ideas and story writing API calls
 
 import { state, setPhase } from '../core/state.js';
 import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
-import { navigate } from '../core/router.js';
-import { renderDashboard, renderStoryboard, renderStoryEditor, renderIdeas } from '../ui/render.js';
 
-// Track recently completed illustrations that may not be on server yet
-const recentlyCompletedIllustrations = new Map(); // projectId -> [{page, image_url, revisions}]
+// Generate story ideas from child info
+export async function fetchIdeas() {
+  const name = $("kid-name").value.trim();
+  const interests = $("kid-interests").value.trim();
+  if (!name) return;
 
-// Called by illustrations.js when a generation completes
-export function recordCompletedIllustration(projectId, illustration) {
-  if (!recentlyCompletedIllustrations.has(projectId)) {
-    recentlyCompletedIllustrations.set(projectId, []);
-  }
-  const list = recentlyCompletedIllustrations.get(projectId);
-  // Remove existing entry for same page
-  const filtered = list.filter(i => Number(i.page) !== Number(illustration.page));
-  filtered.push(illustration);
-  recentlyCompletedIllustrations.set(projectId, filtered);
-}
+  showLoader("Generating story ideas...");
 
-// Clear recorded illustrations for a project (call after confirmed sync)
-export function clearCompletedIllustrations(projectId) {
-  recentlyCompletedIllustrations.delete(projectId);
-}
-
-// Fetch all projects for dashboard
-export async function loadDashboard() {
-  setPhase("dashboard");
-  setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
-  showLoader("Loading your books...");
-  
-  // Don't clear cachedProject if generations are running - we might come back
-  const hasActiveGenerations = state.generatingPages.size > 0 || state.queuedPages.size > 0;
-  if (!hasActiveGenerations) {
-    state.cachedProject = null;
-  }
-
-  navigate("dashboard");
-
-  try {
-    const res = await fetch("/api/projects-list");
-    const data = await res.json();
-    state.cachedDashboardProjects = data.projects || [];
-    renderDashboard(state.cachedDashboardProjects);
-  } catch (e) {
-    console.error(e);
-    state.cachedDashboardProjects = null;
-    $("results").innerHTML = `<div class="loader">Couldn't load projects.</div>`;
-  }
-}
-
-// Load a specific project by ID
-export async function openProjectById(projectId, phaseHint = null) {
-  localStorage.setItem("projectId", projectId);
-  
-  // Check if we already have this project cached with active generations
-  const hasActiveGenerations = state.generatingPages.size > 0 || state.queuedPages.size > 0;
-  const isSameProject = state.cachedProject?.id === projectId;
-  
-  // If same project with active generations, just re-render from cache
-  if (isSameProject && hasActiveGenerations) {
-    const project = state.cachedProject;
-    
-    // Determine phase and render
-    let targetPhase = "storyboard";
-    if (!project.story_ideas?.length) targetPhase = "ideas";
-    else if (!project.selected_idea) targetPhase = "select-idea";
-    else if (project.story_json?.length) targetPhase = "storyboard";
-    
-    if (phaseHint && isPhaseValidForProject(phaseHint, project)) {
-      targetPhase = phaseHint;
-    }
-    
-    setPhase(targetPhase);
-    navigate(targetPhase, projectId);
-    
-    if (targetPhase === "storyboard") {
-      const title = project.selected_idea?.title || 
-        (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
-      setWorkspaceTitle(title, "Storyboard view");
-      renderStoryboard(project);
-    }
-    return;
-  }
-  
-  showLoader("Loading project...");
-
-  const res = await fetch("/api/load-project", {
+  const existingProjectId = localStorage.getItem("projectId");
+  const res = await fetch("/api/story-ideas", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId }),
+    body: JSON.stringify({ name, interests, projectId: existingProjectId || null }),
   });
-  const data = await res.json();
 
-  const project = data?.project;
-  if (!project) {
-    $("results").innerHTML = `<div class="loader">Couldn't load that project.</div>`;
+  const data = await res.json();
+  if (data.error) {
+    $("results").innerHTML = `<div class="loader">Failed to generate ideas.</div>`;
     return;
   }
 
-  // Merge any recently completed illustrations that server might not have yet
-  const recentIllustrations = recentlyCompletedIllustrations.get(projectId) || [];
-  if (recentIllustrations.length > 0) {
-    const serverIllustrations = project.illustrations || [];
-    const serverPages = new Set(serverIllustrations.map(i => Number(i.page)));
-    
-    // Add any recent illustrations not on server
-    for (const recent of recentIllustrations) {
-      if (!serverPages.has(Number(recent.page))) {
-        serverIllustrations.push(recent);
-      } else {
-        // Server has it, update if our version is newer (has image)
-        const idx = serverIllustrations.findIndex(i => Number(i.page) === Number(recent.page));
-        if (idx !== -1 && recent.image_url) {
-          serverIllustrations[idx] = recent;
-        }
-      }
-    }
-    project.illustrations = serverIllustrations;
+  localStorage.setItem("projectId", data.projectId);
+  setPhase("select-idea");
+  setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
+  
+  // Dynamic import to avoid circular dependency
+  const { renderIdeas } = await import('../ui/render.js');
+  renderIdeas(data.ideas);
+}
+
+// Write a full story from a selected idea (goes to edit phase, not storyboard)
+export async function writeStoryFromIdeaIndex(selectedIdeaIndex) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return;
+
+  showLoader("Writing the story...");
+
+  const res = await fetch("/api/write-story", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId, selectedIdeaIndex }),
+  });
+
+  const data = await res.json();
+  if (data.error) {
+    console.error(data);
+    $("results").innerHTML = `<div class="loader">Failed to write story.</div>`;
+    return;
   }
 
-  // Cache the project
+  // Build project object for editor
+  const project = {
+    id: data.projectId,
+    kid_name: $("kid-name").value.trim(),
+    kid_interests: $("kid-interests").value.trim(),
+    selected_idea: data.selected_idea || null,
+    story_json: data.story_json || [],
+    story_locked: false,
+    illustrations: [],
+  };
+
   state.cachedProject = project;
+  localStorage.setItem("lastStoryPages", JSON.stringify(project.story_json));
+  
+  setWorkspaceTitle(project.selected_idea?.title || "Edit Your Story", "Review and edit the story before continuing.");
+  setPhase("edit-story");
+  
+  // Dynamic import to avoid circular dependency
+  const { renderStoryEditor } = await import('../ui/render.js');
+  renderStoryEditor(project);
+}
 
-  // Populate form inputs
-  $("kid-name").value = project.kid_name || "";
-  $("kid-interests").value = project.kid_interests || "";
+// Save story edits (without finalizing)
+export async function saveStoryEdits(storyPages) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return { success: false };
 
-  // Determine appropriate phase based on project state
-  let targetPhase;
+  try {
+    const res = await fetch("/api/save-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, storyPages }),
+    });
 
-  if (!project.story_ideas?.length) {
-    targetPhase = "ideas";
-  } else if (project.story_ideas?.length && !project.selected_idea) {
-    targetPhase = "select-idea";
-  } else if (project.story_json?.length) {
-    // Check if story is locked - if so, go to storyboard; otherwise, edit mode
-    // Also treat projects with existing illustrations as "locked" (legacy projects)
-    const hasIllustrations = project.illustrations?.length > 0;
-    const hasCharacterModel = !!project.character_model_url;
-    const isEffectivelyLocked = project.story_locked || hasIllustrations || hasCharacterModel;
-    
-    if (isEffectivelyLocked) {
-      targetPhase = "storyboard";
-    } else {
-      targetPhase = "edit-story";
+    const data = await res.json();
+    if (data.error) {
+      console.error(data);
+      showToast("Save failed", data.error, "error");
+      return { success: false };
     }
-  } else {
-    targetPhase = "select-idea";
-  }
 
-  // Honor phaseHint if valid
-  if (phaseHint && isPhaseValidForProject(phaseHint, project)) {
-    targetPhase = phaseHint;
-  }
+    // Update cached project
+    if (state.cachedProject) {
+      state.cachedProject.story_json = data.story_json;
+    }
+    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
 
-  // Navigate and render
-  setPhase(targetPhase);
-  navigate(targetPhase, projectId);
-
-  if (targetPhase === "ideas") {
-    setWorkspaceTitle("Project", "Generate story ideas to begin.");
-    $("results").innerHTML = `<div class="loader">This book has no ideas yet. Use the form to generate them.</div>`;
-  } else if (targetPhase === "select-idea") {
-    setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
-    renderIdeas(project.story_ideas);
-  } else if (targetPhase === "edit-story") {
-    const title = project.selected_idea?.title || "Edit Your Story";
-    setWorkspaceTitle(title, "Review and edit the story before continuing.");
-    renderStoryEditor(project);
-  } else if (targetPhase === "storyboard") {
-    const title =
-      (project.selected_idea && project.selected_idea.title) ||
-      (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
-    setWorkspaceTitle(title, "Storyboard view");
-    renderStoryboard(project);
+    return { success: true, story_json: data.story_json };
+  } catch (err) {
+    console.error("Save error:", err);
+    showToast("Save failed", "Network error", "error");
+    return { success: false };
   }
 }
 
-// Check if a phase is valid for the current project state
-function isPhaseValidForProject(phase, project) {
-  if (phase === "ideas") return true;
-  if (phase === "select-idea") return project.story_ideas?.length > 0;
-  
-  // For edit-story, must have story but NOT be locked and have no illustrations/character
-  if (phase === "edit-story") {
-    const hasIllustrations = project.illustrations?.length > 0;
-    const hasCharacterModel = !!project.character_model_url;
-    return project.story_json?.length > 0 && !project.story_locked && !hasIllustrations && !hasCharacterModel;
-  }
-  
-  // For storyboard, must have story and be locked OR have illustrations/character
-  if (phase === "storyboard") {
-    const hasIllustrations = project.illustrations?.length > 0;
-    const hasCharacterModel = !!project.character_model_url;
-    return project.story_json?.length > 0 && (project.story_locked || hasIllustrations || hasCharacterModel);
-  }
-  
-  return false;
-}
+// Finalize story and proceed to storyboard
+export async function finalizeStory(storyPages) {
+  const projectId = localStorage.getItem("projectId");
+  if (!projectId) return;
 
-// Get project status text for dashboard cards
-export function projectStatusText(p) {
-  if (!p.story_ideas || !p.story_ideas.length) return "No story ideas yet";
-  if (p.story_ideas && !p.selected_idea) return "Ideas ready — pick one";
-  if (p.selected_idea && (!p.story_json || !p.story_json.length)) return "Idea selected — story not written yet";
-  if (p.story_json?.length && !p.story_locked) return "Story draft — needs review";
-  if (p.story_json?.length && (!p.illustrations || !p.illustrations.length)) return "Story ready — no illustrations yet";
-  if (p.story_json?.length && p.illustrations?.length) return `Story + ${p.illustrations.length} illustration(s)`;
-  return "In progress";
+  showLoader("Finalizing story and building character models...");
+
+  try {
+    const res = await fetch("/api/finalize-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, storyPages }),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      console.error(data);
+      $("results").innerHTML = `<div class="loader">Failed to finalize story.</div>`;
+      showToast("Finalize failed", data.error, "error");
+      return;
+    }
+
+    // Update cached project with full data
+    if (state.cachedProject) {
+      state.cachedProject.story_json = data.story_json;
+      state.cachedProject.story_locked = true;
+      state.cachedProject.context_registry = data.context_registry;
+      state.cachedProject.props_registry = data.props_registry;
+    }
+    localStorage.setItem("lastStoryPages", JSON.stringify(data.story_json));
+
+    setWorkspaceTitle(state.cachedProject?.selected_idea?.title || "Your Book", "Storyboard view");
+    setPhase("storyboard");
+    
+    // Dynamic import to avoid circular dependency
+    const { renderStoryboard } = await import('../ui/render.js');
+    renderStoryboard(state.cachedProject);
+
+    showToast("Story finalized", "Ready for illustration generation", "success");
+  } catch (err) {
+    console.error("Finalize error:", err);
+    $("results").innerHTML = `<div class="loader">Failed to finalize story.</div>`;
+    showToast("Finalize failed", "Network error", "error");
+  }
 }

@@ -33,7 +33,7 @@ function initApp() {
   $("kid-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const { fetchIdeas } = await import('./api/story.js');
-    fetchIdeas();
+    await fetchIdeas();
   });
 
   // Reset session button
