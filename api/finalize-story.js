@@ -122,18 +122,6 @@ ${fullText}
   return JSON.parse(cleanJsonOutput(raw));
 }
 
-  const response = await client.responses.create({
-    model: "gpt-4.1",
-    input: prompt,
-  });
-
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
-
-  return JSON.parse(cleanJsonOutput(raw));
-}
-
 /**
  * Extract visual character profiles
  * Enhanced to handle multiple characters with proper model linking
