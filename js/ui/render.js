@@ -37,26 +37,28 @@ export function renderDashboard(projects) {
       (p.selected_idea && p.selected_idea.title) ||
       (p.kid_name ? `Book for ${p.kid_name}` : "Untitled Book");
 
-    const status = projectStatusText(p);
-    
-    // Check if this is a draft (has story but not locked, no illustrations)
+    // Check if this is a draft (has story but not locked, no illustrations, no character model)
+    const hasIllustrations = p.illustrations?.length > 0;
+    const hasCharacterModel = !!p.character_model_url;
     const isDraft = p.story_json?.length > 0 && 
                     !p.story_locked && 
-                    (!p.illustrations || p.illustrations.length === 0);
+                    !hasIllustrations &&
+                    !hasCharacterModel;
 
-    const thumbImg = p.illustrations?.[0]?.image_url
+    // For drafts, show "Draft" as status; otherwise use normal status
+    const status = isDraft ? "Draft" : projectStatusText(p);
+
+    const thumbImg = hasIllustrations
       ? `<img src="${p.illustrations[0].image_url}" alt="thumb">`
       : "";
     
-    // Add draft class and badge
+    // Add draft class for styling
     const cardClass = isDraft ? "story-card draft" : "story-card";
-    const draftBadge = isDraft ? `<span class="badge badge-draft">Draft</span>` : "";
 
     return `
       <div class="${cardClass}" data-open-project="${p.id}">
         <div class="thumb">
-          <span class="badge">${status}</span>
-          ${draftBadge}
+          <span class="badge${isDraft ? ' badge-draft' : ''}">${status}</span>
           ${thumbImg}
         </div>
         <div class="card-body">

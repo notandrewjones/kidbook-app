@@ -1217,3 +1217,21 @@ body[data-phase="edit-story"] .character-panel {
 body[data-phase="edit-story"] #results {
   padding: 20px;
 }
+
+/* =============================================
+   DRAFT BADGE & CARD STYLING
+   ============================================= */
+.story-card.draft {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+
+.badge.badge-draft {
+  background: var(--brand);
+  color: white;
+}
+
+.story-card.draft .card-meta span:last-child {
+  color: var(--brand);
+  font-weight: 600;
+}

@@ -4,7 +4,7 @@
 import { state, setPhase } from '../core/state.js';
 import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
 import { navigate } from '../core/router.js';
-import { renderDashboard, renderStoryboard, renderIdeas } from '../ui/render.js';
+import { renderDashboard, renderStoryboard, renderStoryEditor, renderIdeas } from '../ui/render.js';
 
 // Track recently completed illustrations that may not be on server yet
 const recentlyCompletedIllustrations = new Map(); // projectId -> [{page, image_url, revisions}]
@@ -137,7 +137,25 @@ export async function openProjectById(projectId, phaseHint = null) {
   } else if (project.story_ideas?.length && !project.selected_idea) {
     targetPhase = "select-idea";
   } else if (project.story_json?.length) {
-    targetPhase = "storyboard";
+    // Check if story is locked - if so, go to storyboard; otherwise, edit mode
+    // Also treat projects with existing illustrations as "locked" (legacy projects)
+    const hasIllustrations = project.illustrations?.length > 0;
+    const hasCharacterModel = !!project.character_model_url;
+    const isEffectivelyLocked = project.story_locked === true || hasIllustrations || hasCharacterModel;
+    
+    console.log("Phase detection:", {
+      story_locked: project.story_locked,
+      story_locked_type: typeof project.story_locked,
+      hasIllustrations,
+      hasCharacterModel,
+      isEffectivelyLocked
+    });
+    
+    if (isEffectivelyLocked) {
+      targetPhase = "storyboard";
+    } else {
+      targetPhase = "edit-story";
+    }
   } else {
     targetPhase = "select-idea";
   }
@@ -157,6 +175,10 @@ export async function openProjectById(projectId, phaseHint = null) {
   } else if (targetPhase === "select-idea") {
     setWorkspaceTitle("Select a Story Idea", "Pick one to write the full story.");
     renderIdeas(project.story_ideas);
+  } else if (targetPhase === "edit-story") {
+    const title = project.selected_idea?.title || "Edit Your Story";
+    setWorkspaceTitle(title, "Review and edit the story before continuing.");
+    renderStoryEditor(project);
   } else if (targetPhase === "storyboard") {
     const title =
       (project.selected_idea && project.selected_idea.title) ||
@@ -170,7 +192,21 @@ export async function openProjectById(projectId, phaseHint = null) {
 function isPhaseValidForProject(phase, project) {
   if (phase === "ideas") return true;
   if (phase === "select-idea") return project.story_ideas?.length > 0;
-  if (phase === "storyboard") return project.story_json?.length > 0;
+  
+  // For edit-story, must have story but NOT be locked and have no illustrations/character
+  if (phase === "edit-story") {
+    const hasIllustrations = project.illustrations?.length > 0;
+    const hasCharacterModel = !!project.character_model_url;
+    return project.story_json?.length > 0 && !project.story_locked && !hasIllustrations && !hasCharacterModel;
+  }
+  
+  // For storyboard, must have story and be locked OR have illustrations/character
+  if (phase === "storyboard") {
+    const hasIllustrations = project.illustrations?.length > 0;
+    const hasCharacterModel = !!project.character_model_url;
+    return project.story_json?.length > 0 && (project.story_locked || hasIllustrations || hasCharacterModel);
+  }
+  
   return false;
 }
 
@@ -179,6 +215,7 @@ export function projectStatusText(p) {
   if (!p.story_ideas || !p.story_ideas.length) return "No story ideas yet";
   if (p.story_ideas && !p.selected_idea) return "Ideas ready — pick one";
   if (p.selected_idea && (!p.story_json || !p.story_json.length)) return "Idea selected — story not written yet";
+  if (p.story_json?.length && !p.story_locked) return "Story draft — needs review";
   if (p.story_json?.length && (!p.illustrations || !p.illustrations.length)) return "Story ready — no illustrations yet";
   if (p.story_json?.length && p.illustrations?.length) return `Story + ${p.illustrations.length} illustration(s)`;
   return "In progress";
