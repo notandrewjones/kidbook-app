@@ -8,7 +8,6 @@ import { initRouter, setRouteHandlers } from './core/router.js';
 
 // API
 import { loadDashboard, openProjectById } from './api/projects.js';
-import { fetchIdeas } from './api/story.js';
 
 // UI
 import { initViewControls, initAccountMenu } from './ui/controls.js';
@@ -30,9 +29,10 @@ function initApp() {
   initImageModalEvents();
   initViewControls();
 
-  // Form submission - generate ideas
-  $("kid-form")?.addEventListener("submit", (e) => {
+  // Form submission - generate ideas (use dynamic import to avoid circular dependency)
+  $("kid-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const { fetchIdeas } = await import('./api/story.js');
     fetchIdeas();
   });
 
