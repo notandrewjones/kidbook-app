@@ -168,11 +168,14 @@ body::before {
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  background: var(--surface);
+  min-width: 320px;
+  background: rgba(18, 22, 32, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-  max-height: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  max-height: 400px;
   overflow-y: auto;
   z-index: 1000;
 }
@@ -190,9 +193,9 @@ body::before {
 
 .search-result {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: background var(--speed) var(--ease);
   border-bottom: 1px solid var(--stroke);
@@ -204,14 +207,14 @@ body::before {
 
 .search-result:hover,
 .search-result.active {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
 }
 
 .search-result-thumb {
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  background: var(--bg);
+  background: rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,6 +242,7 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 2px;
 }
 
 .search-result-sub {
@@ -247,6 +251,32 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.search-result-match {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.search-result-match-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+}
+
+.search-result-match mark {
+  background: rgba(124, 92, 255, 0.35);
+  color: var(--text);
+  padding: 1px 3px;
+  border-radius: 3px;
 }
 
 .search-result-badge {
@@ -259,6 +289,7 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.3px;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* Icon buttons */

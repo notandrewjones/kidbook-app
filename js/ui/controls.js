@@ -123,7 +123,10 @@ export function initSearch() {
     }
   });
 
+  let currentQuery = "";
+
   async function performSearch(query) {
+    currentQuery = query;
     try {
       // Fetch projects if not cached
       let projects = state.cachedDashboardProjects;
@@ -133,17 +136,38 @@ export function initSearch() {
         projects = data.projects || [];
       }
 
-      // Filter projects by query
+      // Filter projects by query and track where match was found
       const lowerQuery = query.toLowerCase();
-      currentResults = projects.filter(p => {
+      currentResults = projects.map(p => {
         const title = p.selected_idea?.title || p.kid_name || "";
         const kidName = p.kid_name || "";
-        const storyText = (p.story_json || []).map(page => page.text || "").join(" ");
         
-        return title.toLowerCase().includes(lowerQuery) ||
-               kidName.toLowerCase().includes(lowerQuery) ||
-               storyText.toLowerCase().includes(lowerQuery);
-      }).slice(0, 6); // Limit to 6 results
+        // Check title match
+        if (title.toLowerCase().includes(lowerQuery)) {
+          return { ...p, matchType: "title", matchText: null };
+        }
+        
+        // Check kid name match
+        if (kidName.toLowerCase().includes(lowerQuery)) {
+          return { ...p, matchType: "name", matchText: null };
+        }
+        
+        // Check story text match - find which page
+        const pages = p.story_json || [];
+        for (const page of pages) {
+          const text = page.text || "";
+          if (text.toLowerCase().includes(lowerQuery)) {
+            return { 
+              ...p, 
+              matchType: "story", 
+              matchPage: page.page,
+              matchText: text
+            };
+          }
+        }
+        
+        return null;
+      }).filter(Boolean).slice(0, 6); // Limit to 6 results
 
       activeIndex = -1;
       renderResults();
@@ -152,6 +176,41 @@ export function initSearch() {
       currentResults = [];
       renderResults();
     }
+  }
+
+  function highlightMatch(text, query) {
+    if (!query) return escapeHtml(text);
+    
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerText.indexOf(lowerQuery);
+    
+    if (idx === -1) return escapeHtml(text);
+    
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + query.length);
+    const after = text.slice(idx + query.length);
+    
+    return escapeHtml(before) + '<mark>' + escapeHtml(match) + '</mark>' + escapeHtml(after);
+  }
+
+  function getMatchSnippet(text, query, maxLength = 80) {
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerText.indexOf(lowerQuery);
+    
+    if (idx === -1) return text.slice(0, maxLength);
+    
+    // Get context around the match
+    const contextBefore = 20;
+    const start = Math.max(0, idx - contextBefore);
+    const end = Math.min(text.length, idx + query.length + (maxLength - contextBefore - query.length));
+    
+    let snippet = text.slice(start, end);
+    if (start > 0) snippet = "..." + snippet;
+    if (end < text.length) snippet = snippet + "...";
+    
+    return snippet;
   }
 
   function renderResults() {
@@ -172,6 +231,19 @@ export function initSearch() {
                       !p.story_locked && 
                       (!p.illustrations || p.illustrations.length === 0);
 
+      // Build match context HTML
+      let matchHtml = "";
+      if (p.matchType === "story" && p.matchText) {
+        const snippet = getMatchSnippet(p.matchText, currentQuery);
+        const highlighted = highlightMatch(snippet, currentQuery);
+        matchHtml = `
+          <div class="search-result-match">
+            <div class="search-result-match-label">Page ${p.matchPage}</div>
+            ${highlighted}
+          </div>
+        `;
+      }
+
       return `
         <div class="search-result${idx === activeIndex ? ' active' : ''}" data-index="${idx}">
           <div class="search-result-thumb">
@@ -180,6 +252,7 @@ export function initSearch() {
           <div class="search-result-info">
             <div class="search-result-title">${escapeHtml(title)}</div>
             <div class="search-result-sub">${escapeHtml(kidName)}</div>
+            ${matchHtml}
           </div>
           ${isDraft ? `<span class="search-result-badge">Draft</span>` : ""}
         </div>
