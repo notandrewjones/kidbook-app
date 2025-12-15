@@ -23,6 +23,7 @@ async function handler(req, res) {
         story_ideas,
         selected_idea,
         story_json,
+        story_locked,
         illustrations,
         character_model_url
       `
@@ -33,7 +34,13 @@ async function handler(req, res) {
       return res.status(500).json({ error: "Failed to list projects" });
     }
 
-    return res.status(200).json({ projects: data || [] });
+    // Normalize story_locked to boolean
+    const normalizedProjects = (data || []).map(p => ({
+      ...p,
+      story_locked: p.story_locked || false
+    }));
+
+    return res.status(200).json({ projects: normalizedProjects });
   } catch (err) {
     console.error("PROJECTS LIST FATAL:", err);
     return res.status(500).json({ error: "Failed to list projects" });

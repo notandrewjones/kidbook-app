@@ -38,15 +38,25 @@ export function renderDashboard(projects) {
       (p.kid_name ? `Book for ${p.kid_name}` : "Untitled Book");
 
     const status = projectStatusText(p);
+    
+    // Check if this is a draft (has story but not locked, no illustrations)
+    const isDraft = p.story_json?.length > 0 && 
+                    !p.story_locked && 
+                    (!p.illustrations || p.illustrations.length === 0);
 
     const thumbImg = p.illustrations?.[0]?.image_url
       ? `<img src="${p.illustrations[0].image_url}" alt="thumb">`
       : "";
+    
+    // Add draft class and badge
+    const cardClass = isDraft ? "story-card draft" : "story-card";
+    const draftBadge = isDraft ? `<span class="badge badge-draft">Draft</span>` : "";
 
     return `
-      <div class="story-card" data-open-project="${p.id}">
+      <div class="${cardClass}" data-open-project="${p.id}">
         <div class="thumb">
           <span class="badge">${status}</span>
+          ${draftBadge}
           ${thumbImg}
         </div>
         <div class="card-body">
@@ -54,7 +64,7 @@ export function renderDashboard(projects) {
           <p class="card-sub">${escapeHtml(p.kid_name || "Unknown child")}</p>
           <div class="card-meta">
             <span>${escapeHtml(p.id.slice(0, 8))}</span>
-            <span>Open</span>
+            <span>${isDraft ? "Edit Draft" : "Open"}</span>
           </div>
         </div>
       </div>
