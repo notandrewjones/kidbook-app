@@ -1,7 +1,7 @@
-/* compositor.css - Canva-style Book Compositor UI v2 */
+/* compositor.css - Canva-style Book Compositor UI v3 */
 
 /* ============================================
-   CSS Variables
+   Variables
    ============================================ */
 .compositor-canva {
   --comp-bg: #1a1a2e;
@@ -13,129 +13,123 @@
   --comp-text-muted: #9ca3af;
   --comp-primary: #8b5cf6;
   --comp-primary-hover: #7c3aed;
-  --comp-accent: #06b6d4;
   --comp-canvas-bg: #0f172a;
   --comp-taskbar-bg: #1e293b;
-  --comp-radius: 8px;
-  --comp-radius-lg: 12px;
-  --comp-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  --comp-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  --comp-radius: 6px;
+  --comp-radius-lg: 10px;
 }
 
 /* ============================================
-   Main Layout - Viewport Fitted
+   Main Layout - STRICT Viewport Fit
    ============================================ */
 .compositor-canva {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile */
   max-height: 100vh;
+  max-height: 100dvh;
   background: var(--comp-bg);
   color: var(--comp-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
+  box-sizing: border-box;
+}
+
+.compositor-canva *, .compositor-canva *::before, .compositor-canva *::after {
+  box-sizing: border-box;
 }
 
 /* ============================================
-   Top Bar - Fixed Height
+   Top Bar - Compact
    ============================================ */
 .compositor-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 52px;
-  min-height: 52px;
-  padding: 0 16px;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  padding: 0 12px;
   background: var(--comp-surface);
   border-bottom: 1px solid var(--comp-border);
   flex-shrink: 0;
 }
 
-.topbar-left,
-.topbar-center,
-.topbar-right {
+.topbar-left, .topbar-center, .topbar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .topbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 5px;
+  padding: 5px 8px;
   background: transparent;
   border: none;
   border-radius: var(--comp-radius);
   color: var(--comp-text);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.topbar-btn:hover {
-  background: var(--comp-surface-hover);
-}
-
-.topbar-btn-primary {
-  background: var(--comp-primary);
-  font-weight: 500;
-}
-
-.topbar-btn-primary:hover {
-  background: var(--comp-primary-hover);
-}
+.topbar-btn:hover { background: var(--comp-surface-hover); }
+.topbar-btn-primary { background: var(--comp-primary); font-weight: 500; }
+.topbar-btn-primary:hover { background: var(--comp-primary-hover); }
 
 .topbar-divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--comp-border);
 }
 
 .topbar-title {
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--comp-text);
-  max-width: 200px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .topbar-select {
-  padding: 5px 8px;
+  padding: 4px 6px;
   background: var(--comp-surface-hover);
   border: 1px solid var(--comp-border);
   border-radius: var(--comp-radius);
   color: var(--comp-text);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .page-indicator {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--comp-text-muted);
-  min-width: 90px;
+  min-width: 80px;
   text-align: center;
 }
 
 /* ============================================
-   Main Content - Flex Fill
+   Main Content
    ============================================ */
 .compositor-main {
   display: flex;
   flex: 1;
-  min-height: 0; /* Critical for flex child scrolling */
+  min-height: 0;
   overflow: hidden;
 }
 
 /* ============================================
-   Sidebar - All Templates in One List
+   Sidebar
    ============================================ */
 .compositor-sidebar {
-  width: 240px;
-  min-width: 240px;
+  width: 220px;
+  min-width: 220px;
   background: var(--comp-sidebar-bg);
   border-right: 1px solid var(--comp-border);
   display: flex;
@@ -144,36 +138,34 @@
 }
 
 .sidebar-header {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--comp-border);
   flex-shrink: 0;
 }
 
 .sidebar-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--comp-text);
 }
 
-/* Template Gallery - Scrollable */
 .template-gallery {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
 }
 
 .template-category-section {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .template-category-header {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   color: var(--comp-text-muted);
-  padding: 4px 4px 8px;
+  padding: 2px 4px 6px;
   position: sticky;
   top: 0;
   background: var(--comp-sidebar-bg);
@@ -183,7 +175,7 @@
 .template-category-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .template-card {
@@ -197,7 +189,6 @@
 
 .template-card:hover {
   border-color: var(--comp-surface-hover);
-  transform: translateY(-1px);
 }
 
 .template-card.selected {
@@ -207,7 +198,7 @@
 
 .template-preview-visual {
   aspect-ratio: 1;
-  padding: 6px;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -219,10 +210,10 @@
 }
 
 .template-name {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   color: var(--comp-text);
-  padding: 6px;
+  padding: 4px;
   text-align: center;
   background: var(--comp-surface);
   border-top: 1px solid var(--comp-border);
@@ -232,7 +223,7 @@
 }
 
 /* ============================================
-   Canvas Area - Fills Remaining Space
+   Canvas Area
    ============================================ */
 .compositor-canvas-area {
   flex: 1;
@@ -241,6 +232,7 @@
   background: var(--comp-canvas-bg);
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .canvas-container {
@@ -248,21 +240,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
   min-height: 0;
   overflow: hidden;
 }
 
 .preview-wrapper {
   position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .page-preview {
   background: white;
   border-radius: var(--comp-radius);
-  box-shadow: var(--comp-shadow-lg);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   overflow: hidden;
 }
 
@@ -270,103 +263,94 @@
   display: block;
   width: auto;
   height: auto;
-  max-width: calc(100vw - 340px);
-  max-height: calc(100vh - 200px);
+  /* Key: Calculate max size based on available space */
+  max-width: calc(100vw - 280px);
+  max-height: calc(100vh - 180px);
+  max-height: calc(100dvh - 180px);
 }
 
-.preview-loading,
-.preview-error {
+.preview-loading, .preview-error {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 300px;
-  height: 300px;
+  width: 280px;
+  height: 280px;
   color: var(--comp-text-muted);
 }
 
 .spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--comp-border);
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--comp-border);
   border-top-color: var(--comp-primary);
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  animation: spin 0.6s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ============================================
-   Selection Overlay with Resize Handles
+   Selection Overlay
    ============================================ */
 .selection-overlay {
   position: absolute;
   border: 2px solid var(--comp-primary);
-  border-radius: 4px;
+  border-radius: 3px;
   pointer-events: auto;
   cursor: move;
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.05);
 }
 
-.selection-overlay.hidden {
-  display: none;
-}
+.selection-overlay.hidden { display: none; }
 
 .resize-handle {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: white;
   border: 2px solid var(--comp-primary);
   border-radius: 2px;
-  cursor: nwse-resize;
 }
 
-.resize-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
-.resize-handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
-.resize-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
-.resize-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.resize-handle.nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.resize-handle.ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.resize-handle.sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resize-handle.se { bottom: -5px; right: -5px; cursor: nwse-resize; }
 
 /* ============================================
-   Thumbnails Strip - Fixed Height
+   Thumbnails - Compact
    ============================================ */
 .thumbnails-strip {
   background: var(--comp-surface);
   border-top: 1px solid var(--comp-border);
-  padding: 10px 16px;
+  padding: 8px 12px;
   flex-shrink: 0;
-  height: 90px;
-  min-height: 90px;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
 }
 
 .preview-thumbnails {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
   height: 100%;
   align-items: center;
-  padding-bottom: 4px;
 }
 
 .thumbnail {
   flex-shrink: 0;
   cursor: pointer;
-  transition: transform 0.15s;
+  transition: transform 0.1s;
 }
 
-.thumbnail:hover {
-  transform: scale(1.05);
-}
-
-.thumbnail.active .thumbnail-inner {
-  box-shadow: 0 0 0 2px var(--comp-primary);
-}
+.thumbnail:hover { transform: scale(1.05); }
+.thumbnail.active .thumbnail-inner { box-shadow: 0 0 0 2px var(--comp-primary); }
 
 .thumbnail-inner {
-  width: 50px;
-  height: 50px;
-  border-radius: 4px;
+  width: 40px;
+  height: 40px;
+  border-radius: 3px;
   overflow: hidden;
   background: var(--comp-surface-hover);
 }
@@ -383,31 +367,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 10px;
   color: var(--comp-text-muted);
+  background: #fff;
 }
 
 .thumbnail-number {
   display: block;
   text-align: center;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--comp-text-muted);
   margin-top: 2px;
 }
 
 /* ============================================
-   Floating Taskbar
+   Floating Taskbar - Centered to Canvas
    ============================================ */
 .floating-taskbar {
-  position: fixed;
-  bottom: 110px;
+  position: absolute;
+  bottom: 84px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--comp-taskbar-bg);
   border: 1px solid var(--comp-border);
   border-radius: var(--comp-radius-lg);
-  padding: 10px 16px;
-  box-shadow: var(--comp-shadow-lg);
+  padding: 8px 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   z-index: 100;
   transition: opacity 0.15s, transform 0.15s;
 }
@@ -421,17 +406,17 @@
 .taskbar-content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .taskbar-section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .taskbar-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--comp-text-muted);
   text-transform: uppercase;
@@ -439,16 +424,16 @@
 }
 
 .taskbar-value {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--comp-text);
-  min-width: 40px;
+  min-width: 36px;
   text-align: center;
 }
 
 .taskbar-divider {
   width: 1px;
-  height: 28px;
+  height: 24px;
   background: var(--comp-border);
 }
 
@@ -459,9 +444,9 @@
 }
 
 .taskbar-frame-btn {
-  width: 32px;
-  height: 32px;
-  padding: 3px;
+  width: 28px;
+  height: 28px;
+  padding: 2px;
   background: transparent;
   border: 2px solid transparent;
   border-radius: 4px;
@@ -481,10 +466,10 @@
   background: rgba(139, 92, 246, 0.15);
 }
 
-/* Taskbar Controls */
+/* Taskbar Buttons */
 .taskbar-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -492,7 +477,7 @@
   border: 1px solid var(--comp-border);
   border-radius: 4px;
   color: var(--comp-text);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -502,36 +487,37 @@
   border-color: var(--comp-primary);
 }
 
-.taskbar-btn-small {
-  width: 24px;
-  height: 24px;
+.taskbar-btn-icon {
+  width: 26px;
+  height: 26px;
   padding: 0;
   background: transparent;
   border: none;
   color: var(--comp-text-muted);
   cursor: pointer;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.taskbar-btn-small:hover {
-  color: var(--comp-text);
-}
+.taskbar-btn-icon:hover { color: var(--comp-text); }
 
 .taskbar-select {
-  padding: 5px 8px;
+  padding: 4px 6px;
   background: var(--comp-surface-hover);
   border: 1px solid var(--comp-border);
   border-radius: 4px;
   color: var(--comp-text);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
-  min-width: 120px;
+  min-width: 110px;
 }
 
-.taskbar-fontsize {
+.taskbar-fontsize, .taskbar-crop, .taskbar-pan {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 /* Color Buttons */
@@ -541,24 +527,21 @@
 }
 
 .taskbar-color-btn {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
   transition: transform 0.1s;
 }
 
-.taskbar-color-btn:hover {
-  transform: scale(1.15);
-}
-
+.taskbar-color-btn:hover { transform: scale(1.15); }
 .taskbar-color-btn.active {
   box-shadow: 0 0 0 2px var(--comp-taskbar-bg), 0 0 0 4px var(--comp-primary);
 }
 
 /* ============================================
-   Export Modal
+   Modal
    ============================================ */
 .modal {
   position: fixed;
@@ -569,9 +552,7 @@
   z-index: 200;
 }
 
-.modal.hidden {
-  display: none;
-}
+.modal.hidden { display: none; }
 
 .modal-backdrop {
   position: absolute;
@@ -585,27 +566,27 @@
   background: var(--comp-surface);
   border-radius: var(--comp-radius-lg);
   width: 90%;
-  max-width: 420px;
-  box-shadow: var(--comp-shadow-lg);
+  max-width: 380px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--comp-border);
 }
 
 .modal-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .modal-close {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -613,7 +594,7 @@
   border: none;
   border-radius: 4px;
   color: var(--comp-text-muted);
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
 }
 
@@ -622,19 +603,17 @@
   color: var(--comp-text);
 }
 
-.modal-body {
-  padding: 18px;
-}
+.modal-body { padding: 16px; }
 
 .export-options-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .export-option {
-  padding: 16px;
+  padding: 14px;
   background: var(--comp-surface-hover);
   border: 2px solid transparent;
   border-radius: var(--comp-radius);
@@ -643,33 +622,16 @@
   transition: all 0.15s;
 }
 
-.export-option:hover {
-  border-color: var(--comp-primary);
-}
+.export-option:hover { border-color: var(--comp-primary); }
 
-.export-option-icon {
-  font-size: 28px;
-  margin-bottom: 6px;
-}
+.export-option-icon { font-size: 24px; margin-bottom: 4px; }
+.export-option-label { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+.export-option-desc { font-size: 10px; color: var(--comp-text-muted); }
 
-.export-option-label {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 2px;
-}
-
-.export-option-desc {
-  font-size: 11px;
-  color: var(--comp-text-muted);
-}
-
-.export-quality {
-  margin-bottom: 12px;
-}
-
+.export-quality { margin-bottom: 10px; }
 .export-quality label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--comp-text-muted);
   margin-bottom: 4px;
@@ -677,89 +639,44 @@
 
 .export-quality select {
   width: 100%;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: var(--comp-surface-hover);
   border: 1px solid var(--comp-border);
   border-radius: var(--comp-radius);
   color: var(--comp-text);
-  font-size: 13px;
+  font-size: 12px;
 }
 
-.export-progress.hidden {
-  display: none;
-}
+.export-progress.hidden { display: none; }
 
 .progress-bar {
-  height: 6px;
+  height: 5px;
   background: var(--comp-surface-hover);
   border-radius: 3px;
   overflow: hidden;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--comp-primary), var(--comp-accent));
+  background: linear-gradient(90deg, var(--comp-primary), #06b6d4);
   border-radius: 3px;
   transition: width 0.2s;
 }
 
 .progress-text {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--comp-text-muted);
   text-align: center;
 }
 
 /* ============================================
-   Responsive
+   Scrollbars
    ============================================ */
-@media (max-width: 800px) {
-  .compositor-sidebar {
-    width: 180px;
-    min-width: 180px;
-  }
-  
-  .template-category-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .page-preview svg {
-    max-width: calc(100vw - 240px);
-    max-height: calc(100vh - 180px);
-  }
-  
-  .floating-taskbar {
-    left: 10px;
-    right: 10px;
-    transform: none;
-    bottom: 100px;
-  }
-  
-  .floating-taskbar.hidden {
-    transform: translateY(10px);
-  }
-}
-
-@media (max-width: 600px) {
-  .compositor-sidebar {
-    display: none;
-  }
-  
-  .topbar-title {
-    display: none;
-  }
-  
-  .page-preview svg {
-    max-width: calc(100vw - 40px);
-    max-height: calc(100vh - 180px);
-  }
-}
-
-/* Scrollbar Styling */
 .template-gallery::-webkit-scrollbar,
 .preview-thumbnails::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .template-gallery::-webkit-scrollbar-track,
@@ -773,7 +690,28 @@
   border-radius: 3px;
 }
 
-.template-gallery::-webkit-scrollbar-thumb:hover,
-.preview-thumbnails::-webkit-scrollbar-thumb:hover {
-  background: var(--comp-text-muted);
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 800px) {
+  .compositor-sidebar { width: 170px; min-width: 170px; }
+  .template-category-grid { grid-template-columns: 1fr; }
+  .page-preview svg {
+    max-width: calc(100vw - 220px);
+    max-height: calc(100vh - 160px);
+    max-height: calc(100dvh - 160px);
+  }
+  .floating-taskbar { padding: 6px 10px; }
+  .taskbar-content { gap: 6px; }
+}
+
+@media (max-width: 600px) {
+  .compositor-sidebar { display: none; }
+  .topbar-title { display: none; }
+  .page-preview svg {
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 150px);
+    max-height: calc(100dvh - 150px);
+  }
+  .taskbar-content { flex-wrap: wrap; justify-content: center; }
 }

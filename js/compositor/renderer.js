@@ -263,9 +263,12 @@ export class PageRenderer {
     const frameType = imgConfig.frame || 'rectangle';
     const padding = imgConfig.padding || 0;
 
-    console.log('[Renderer] Image config:', { frameType, padding, position });
+    // Get crop settings (per-page zoom/pan within image)
+    const cropSettings = config.cropSettings || { zoom: 1.0, x: 0.5, y: 0.5 };
 
-    // Calculate actual pixel positions
+    console.log('[Renderer] Image config:', { frameType, padding, position, cropSettings });
+
+    // Calculate actual pixel positions for the FRAME
     const x = position.x * pageWidth;
     const y = position.y * pageHeight;
     const w = position.width * pageWidth;
@@ -277,7 +280,7 @@ export class PageRenderer {
     const paddedW = w - (padding * pageWidth * 2);
     const paddedH = h - (padding * pageHeight * 2);
 
-    console.log('[Renderer] Image position:', { paddedX, paddedY, paddedW, paddedH });
+    console.log('[Renderer] Frame position:', { paddedX, paddedY, paddedW, paddedH });
 
     // Get or create defs
     let defs = svg.querySelector('defs');
@@ -286,24 +289,44 @@ export class PageRenderer {
       svg.insertBefore(defs, svg.firstChild);
     }
 
-    // Create clip path
+    // Create clip path for the frame shape
     const clipId = this.generateUniqueId('image-clip');
     const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
     clipPath.setAttribute('id', clipId);
     
-    // Create the clip shape based on frame type
     const clipShape = this.createClipShape(frameType, paddedX, paddedY, paddedW, paddedH);
     clipPath.appendChild(clipShape);
     defs.appendChild(clipPath);
     
     console.log('[Renderer] Created clip path with frame type:', frameType);
 
+    // Calculate image size and position based on crop settings
+    // zoom > 1 means image is larger (zoomed in), showing less of the image
+    // zoom < 1 means image is smaller (zoomed out), showing more
+    const zoom = cropSettings.zoom || 1.0;
+    const cropX = cropSettings.x ?? 0.5; // 0-1, where in image to center
+    const cropY = cropSettings.y ?? 0.5;
+    
+    // Image dimensions after zoom (larger = more zoomed in)
+    const imgW = paddedW * zoom;
+    const imgH = paddedH * zoom;
+    
+    // Calculate offset to pan within the image
+    // cropX/Y of 0.5 = centered, 0 = show left/top edge, 1 = show right/bottom edge
+    const maxOffsetX = Math.max(0, imgW - paddedW);
+    const maxOffsetY = Math.max(0, imgH - paddedH);
+    
+    const imgX = paddedX - (maxOffsetX * cropX);
+    const imgY = paddedY - (maxOffsetY * cropY);
+
+    console.log('[Renderer] Image actual size:', { imgX, imgY, imgW, imgH, zoom });
+
     // Create image element
     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-    image.setAttribute('x', paddedX);
-    image.setAttribute('y', paddedY);
-    image.setAttribute('width', paddedW);
-    image.setAttribute('height', paddedH);
+    image.setAttribute('x', imgX);
+    image.setAttribute('y', imgY);
+    image.setAttribute('width', imgW);
+    image.setAttribute('height', imgH);
     
     // Set href using both methods for compatibility
     image.setAttribute('href', imageUrl);

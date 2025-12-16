@@ -1,5 +1,5 @@
 // js/compositor/ui.js
-// Canva-style UI for book compositor - v2
+// Canva-style UI for book compositor - v3
 
 import { 
   getAllTemplates, 
@@ -20,26 +20,49 @@ export class CompositorUI {
     // State
     this.bookData = null;
     this.selectedTemplate = 'classic-bottom';
+    
+    // Global customizations (apply to all pages)
     this.customizations = {
-      imageScale: 1.0,
-      imageOffsetX: 0,
-      imageOffsetY: 0,
+      fontFamily: null,
+      fontSize: null,
+      colorTheme: null,
+      frame: null,
     };
+    
+    // Per-page crop settings: { [pageIndex]: { cropZoom, cropX, cropY } }
+    this.pageCropSettings = {};
+    
     this.currentPageIndex = 0;
     this.isExporting = false;
     this.isRendering = false;
     
     // Selection & drag state
-    this.selectedElement = null; // 'text' | 'image' | null
+    this.selectedElement = null;
     this.isDragging = false;
     this.isResizing = false;
     this.dragStart = { x: 0, y: 0 };
-    this.dragStartOffset = { x: 0, y: 0 };
-    this.dragStartScale = 1;
+    this.dragStartValues = {};
     
     // Callbacks
     this.onExportComplete = null;
     this.onTemplateChange = null;
+  }
+
+  // Get crop settings for current page
+  getCurrentCrop() {
+    return this.pageCropSettings[this.currentPageIndex] || {
+      cropZoom: 1.0,
+      cropX: 0.5,  // 0-1, center of image visible in frame
+      cropY: 0.5,
+    };
+  }
+
+  // Set crop settings for current page
+  setCurrentCrop(settings) {
+    this.pageCropSettings[this.currentPageIndex] = {
+      ...this.getCurrentCrop(),
+      ...settings,
+    };
   }
 
   initialize(bookData) {
@@ -102,7 +125,7 @@ export class CompositorUI {
 
         <!-- Main Layout -->
         <div class="compositor-main">
-          <!-- Left Sidebar - All Templates -->
+          <!-- Left Sidebar -->
           <aside class="compositor-sidebar">
             <div class="sidebar-header">
               <h3>Templates</h3>
@@ -110,14 +133,14 @@ export class CompositorUI {
             <div id="template-gallery" class="template-gallery"></div>
           </aside>
 
-          <!-- Center - Canvas/Preview Area -->
-          <main class="compositor-canvas-area">
+          <!-- Center - Canvas Area -->
+          <main class="compositor-canvas-area" id="canvas-area">
             <div class="canvas-container">
               <div id="preview-wrapper" class="preview-wrapper">
                 <div id="page-preview" class="page-preview">
                   <div class="preview-loading"><div class="spinner"></div></div>
                 </div>
-                <!-- Selection overlay with resize handles -->
+                <!-- Selection overlay -->
                 <div id="selection-overlay" class="selection-overlay hidden">
                   <div class="resize-handle nw" data-handle="nw"></div>
                   <div class="resize-handle ne" data-handle="ne"></div>
@@ -131,12 +154,12 @@ export class CompositorUI {
             <div class="thumbnails-strip">
               <div id="preview-thumbnails" class="preview-thumbnails"></div>
             </div>
-          </main>
-        </div>
 
-        <!-- Floating Bottom Taskbar -->
-        <div id="floating-taskbar" class="floating-taskbar hidden">
-          <div id="taskbar-content" class="taskbar-content"></div>
+            <!-- Floating Taskbar - Inside canvas area for proper centering -->
+            <div id="floating-taskbar" class="floating-taskbar hidden">
+              <div id="taskbar-content" class="taskbar-content"></div>
+            </div>
+          </main>
         </div>
 
         <!-- Export Modal -->
@@ -163,7 +186,6 @@ export class CompositorUI {
               <div class="export-quality">
                 <label>Quality</label>
                 <select id="export-quality">
-                  <option value="draft">Draft (Fast)</option>
                   <option value="standard" selected>Standard</option>
                   <option value="high">High Quality</option>
                   <option value="print">Print Ready</option>
@@ -187,18 +209,13 @@ export class CompositorUI {
     this.bindEvents();
   }
 
-  /**
-   * Render all templates grouped by category in one scrollable list
-   */
   renderTemplateGallery() {
     const categories = getCategories();
     const gallery = document.getElementById('template-gallery');
     
     let html = '';
-    
     for (const category of categories) {
       const templates = getAllTemplates().filter(t => t.category === category);
-      
       html += `
         <div class="template-category-section">
           <div class="template-category-header">${category.charAt(0).toUpperCase() + category.slice(1)}</div>
@@ -219,7 +236,6 @@ export class CompositorUI {
     
     gallery.innerHTML = html;
 
-    // Bind click events
     gallery.querySelectorAll('.template-card').forEach(card => {
       card.addEventListener('click', () => {
         this.selectTemplate(card.dataset.template);
@@ -229,105 +245,55 @@ export class CompositorUI {
     });
   }
 
-  /**
-   * Generate mini SVG preview with properly scaled frames
-   */
   generateTemplateMiniPreview(template) {
-    const w = 100;
-    const h = 100;
+    const w = 100, h = 100;
     const imgConfig = template.layout?.image || {};
     const textConfig = template.layout?.text || {};
     const imgPos = imgConfig.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
     const textPos = textConfig.position?.region || { x: 0.05, y: 0.7, width: 0.9, height: 0.25 };
     const frameType = imgConfig.frame || 'rectangle';
     
-    // Calculate positions
-    const imgX = imgPos.x * w;
-    const imgY = imgPos.y * h;
-    const imgW = imgPos.width * w;
-    const imgH = imgPos.height * h;
-    
-    const textX = textPos.x * w;
-    const textY = textPos.y * h;
-    const textW = textPos.width * w;
+    const imgX = imgPos.x * w, imgY = imgPos.y * h;
+    const imgW = imgPos.width * w, imgH = imgPos.height * h;
+    const textX = textPos.x * w, textY = textPos.y * h, textW = textPos.width * w;
     
     const colors = template.colors || {};
-    const accentColor = colors.accent || '#a855f7';
-    
-    // Generate frame shape
-    const framePath = this.getFrameSVGForPreview(frameType, imgX, imgY, imgW, imgH, accentColor);
-
-    // Text lines representation
+    const framePath = this.getFrameSVGForPreview(frameType, imgX, imgY, imgW, imgH, colors.accent || '#a855f7');
     const textLines = `
       <rect x="${textX + textW*0.1}" y="${textY + 4}" width="${textW*0.8}" height="3" rx="1.5" fill="${colors.text || '#333'}" opacity="0.5"/>
       <rect x="${textX + textW*0.2}" y="${textY + 10}" width="${textW*0.6}" height="3" rx="1.5" fill="${colors.text || '#333'}" opacity="0.3"/>
     `;
-
     return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%">${framePath}${textLines}</svg>`;
   }
 
-  /**
-   * Get frame SVG for preview thumbnails - properly scaled for each shape
-   */
   getFrameSVGForPreview(frameType, x, y, w, h, color) {
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    
+    const cx = x + w/2, cy = y + h/2;
     switch (frameType) {
-      case 'circle': {
-        const r = Math.min(w, h) / 2 * 0.95;
-        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" opacity="0.7"/>`;
-      }
-      case 'oval': {
-        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.95}" ry="${h/2 * 0.95}" fill="${color}" opacity="0.7"/>`;
-      }
-      case 'rounded': {
-        const rad = Math.min(w, h) * 0.12;
-        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rad}" fill="${color}" opacity="0.7"/>`;
-      }
-      case 'cloud': {
-        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.9}" ry="${h/2 * 0.85}" fill="${color}" opacity="0.7"/>`;
-      }
-      case 'heart': {
-        const scale = 0.9;
-        const hw = w * scale / 2;
-        const hh = h * scale;
-        return `<path d="M${cx} ${y + hh*0.9} C${cx - hw*0.7} ${y + hh*0.55} ${cx - hw*0.9} ${y + hh*0.2} ${cx} ${y + hh*0.35} C${cx + hw*0.9} ${y + hh*0.2} ${cx + hw*0.7} ${y + hh*0.55} ${cx} ${y + hh*0.9}Z" fill="${color}" opacity="0.7"/>`;
-      }
+      case 'circle': return `<circle cx="${cx}" cy="${cy}" r="${Math.min(w,h)/2*0.95}" fill="${color}" opacity="0.7"/>`;
+      case 'oval': return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2*0.95}" ry="${h/2*0.95}" fill="${color}" opacity="0.7"/>`;
+      case 'rounded': return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(w,h)*0.12}" fill="${color}" opacity="0.7"/>`;
+      case 'heart': return `<path d="M${cx} ${y+h*0.85} C${cx-w*0.35} ${y+h*0.5} ${cx-w*0.45} ${y+h*0.18} ${cx} ${y+h*0.32} C${cx+w*0.45} ${y+h*0.18} ${cx+w*0.35} ${y+h*0.5} ${cx} ${y+h*0.85}Z" fill="${color}" opacity="0.7"/>`;
       case 'star': {
-        const r = Math.min(w, h) / 2 * 0.9;
-        const innerR = r * 0.4;
+        const r = Math.min(w,h)/2*0.9, ir = r*0.4;
         let d = '';
         for (let i = 0; i < 10; i++) {
-          const radius = i % 2 === 0 ? r : innerR;
-          const angle = (i * Math.PI / 5) - Math.PI / 2;
-          const px = cx + radius * Math.cos(angle);
-          const py = cy + radius * Math.sin(angle);
-          d += (i === 0 ? 'M' : 'L') + `${px} ${py} `;
+          const rad = i%2===0 ? r : ir;
+          const ang = (i*Math.PI/5) - Math.PI/2;
+          d += (i===0?'M':'L') + `${cx+rad*Math.cos(ang)} ${cy+rad*Math.sin(ang)} `;
         }
-        d += 'Z';
-        return `<path d="${d}" fill="${color}" opacity="0.7"/>`;
+        return `<path d="${d}Z" fill="${color}" opacity="0.7"/>`;
       }
       case 'hexagon': {
-        const r = Math.min(w, h) / 2 * 0.9;
+        const r = Math.min(w,h)/2*0.9;
         let d = '';
         for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI / 3) - Math.PI / 2;
-          const px = cx + r * Math.cos(angle);
-          const py = cy + r * Math.sin(angle);
-          d += (i === 0 ? 'M' : 'L') + `${px} ${py} `;
+          const ang = (i*Math.PI/3) - Math.PI/2;
+          d += (i===0?'M':'L') + `${cx+r*Math.cos(ang)} ${cy+r*Math.sin(ang)} `;
         }
-        d += 'Z';
-        return `<path d="${d}" fill="${color}" opacity="0.7"/>`;
+        return `<path d="${d}Z" fill="${color}" opacity="0.7"/>`;
       }
-      case 'arch': {
-        return `<path d="M${x} ${y+h} L${x} ${y+h*0.35} Q${x} ${y} ${cx} ${y} Q${x+w} ${y} ${x+w} ${y+h*0.35} L${x+w} ${y+h} Z" fill="${color}" opacity="0.7"/>`;
-      }
-      case 'blob': {
-        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.88}" ry="${h/2 * 0.88}" fill="${color}" opacity="0.7"/>`;
-      }
-      default:
-        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}" opacity="0.7"/>`;
+      case 'arch': return `<path d="M${x} ${y+h} L${x} ${y+h*0.35} Q${x} ${y} ${cx} ${y} Q${x+w} ${y} ${x+w} ${y+h*0.35} L${x+w} ${y+h} Z" fill="${color}" opacity="0.7"/>`;
+      default: return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}" opacity="0.7"/>`;
     }
   }
 
@@ -352,12 +318,35 @@ export class CompositorUI {
     document.getElementById('floating-taskbar')?.classList.add('hidden');
     document.getElementById('selection-overlay')?.classList.add('hidden');
     this.selectedElement = null;
+    this.cleanupDragHandlers();
   }
 
-  /**
-   * Show selection overlay with resize handles
-   */
-  showSelectionOverlay(element, bounds) {
+  cleanupDragHandlers() {
+    document.onmousemove = null;
+    document.onmouseup = null;
+  }
+
+  updateSelectionOverlay() {
+    if (!this.selectedElement) return;
+    
+    const container = document.getElementById('page-preview');
+    const svg = container?.querySelector('svg');
+    if (!svg) return;
+
+    let element;
+    if (this.selectedElement === 'image') {
+      element = svg.querySelector('image');
+    } else if (this.selectedElement === 'text') {
+      element = svg.querySelector('g');
+    }
+
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      this.showSelectionOverlay(this.selectedElement, rect);
+    }
+  }
+
+  showSelectionOverlay(elementType, bounds) {
     const overlay = document.getElementById('selection-overlay');
     const wrapper = document.getElementById('preview-wrapper');
     
@@ -370,32 +359,45 @@ export class CompositorUI {
     overlay.style.width = `${bounds.width}px`;
     overlay.style.height = `${bounds.height}px`;
     overlay.classList.remove('hidden');
-    overlay.dataset.element = element;
+    overlay.dataset.element = elementType;
   }
 
   renderImageTaskbar() {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFrame = this.customizations.frame || tmpl.layout?.image?.frame || 'rounded';
+    const crop = this.getCurrentCrop();
     
     return `
       <div class="taskbar-section">
-        <label class="taskbar-label">Frame Shape</label>
+        <label class="taskbar-label">Frame</label>
         <div class="taskbar-frames">
-          ${Object.keys(FRAME_SHAPES).slice(0, 10).map(frameId => `
+          ${Object.keys(FRAME_SHAPES).slice(0, 8).map(frameId => `
             <button class="taskbar-frame-btn ${frameId === currentFrame ? 'active' : ''}" 
                     data-frame="${frameId}" title="${FRAME_SHAPES[frameId].name}">
-              <svg viewBox="0 0 32 32" width="24" height="24">
-                ${this.getFrameIconSVG(frameId)}
-              </svg>
+              <svg viewBox="0 0 32 32" width="22" height="22">${this.getFrameIconSVG(frameId)}</svg>
             </button>
           `).join('')}
         </div>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Scale</label>
-        <span class="taskbar-value" id="scale-value">${Math.round((this.customizations.imageScale || 1) * 100)}%</span>
-        <button class="taskbar-btn-small" id="scale-reset" title="Reset">⟲</button>
+        <label class="taskbar-label">Crop (this page)</label>
+        <div class="taskbar-crop">
+          <button class="taskbar-btn" id="crop-zoom-out" title="Zoom out">−</button>
+          <span class="taskbar-value" id="crop-zoom-value">${Math.round(crop.cropZoom * 100)}%</span>
+          <button class="taskbar-btn" id="crop-zoom-in" title="Zoom in">+</button>
+        </div>
+        <button class="taskbar-btn-icon" id="crop-reset" title="Reset crop">⟲</button>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <label class="taskbar-label">Pan</label>
+        <div class="taskbar-pan">
+          <button class="taskbar-btn" id="pan-left" title="Pan left">←</button>
+          <button class="taskbar-btn" id="pan-right" title="Pan right">→</button>
+          <button class="taskbar-btn" id="pan-up" title="Pan up">↑</button>
+          <button class="taskbar-btn" id="pan-down" title="Pan down">↓</button>
+        </div>
       </div>
     `;
   }
@@ -410,8 +412,6 @@ export class CompositorUI {
       heart: '<path d="M16 24 C8 18 5 13 9 9 C12 7 16 11 16 11 C16 11 20 7 23 9 C27 13 24 18 16 24Z" fill="currentColor" opacity="0.7"/>',
       star: '<polygon points="16,4 18.5,11 26,11 20,16 22.5,24 16,19 9.5,24 12,16 6,11 13.5,11" fill="currentColor" opacity="0.7"/>',
       hexagon: '<polygon points="16,5 26,10 26,22 16,27 6,22 6,10" fill="currentColor" opacity="0.7"/>',
-      arch: '<path d="M6 26 L6 12 Q6 6 16 6 Q26 6 26 12 L26 26 Z" fill="currentColor" opacity="0.7"/>',
-      blob: '<ellipse cx="16" cy="16" rx="10" ry="10" fill="currentColor" opacity="0.7"/>',
     };
     return icons[frameType] || icons.rectangle;
   }
@@ -462,17 +462,52 @@ export class CompositorUI {
         document.querySelectorAll('.taskbar-frame-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.customizations.frame = btn.dataset.frame;
-        this.renderPreview();
+        this.renderPreviewAndUpdateOverlay();
       });
     });
 
-    // Reset
-    document.getElementById('scale-reset')?.addEventListener('click', () => {
-      this.customizations.imageOffsetX = 0;
-      this.customizations.imageOffsetY = 0;
-      this.customizations.imageScale = 1;
-      document.getElementById('scale-value').textContent = '100%';
-      this.renderPreview();
+    // Crop zoom controls (per-page)
+    document.getElementById('crop-zoom-out')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropZoom: Math.max(0.5, crop.cropZoom - 0.1) });
+      document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
+      this.renderPreviewAndUpdateOverlay();
+    });
+
+    document.getElementById('crop-zoom-in')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropZoom: Math.min(2.0, crop.cropZoom + 0.1) });
+      document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
+      this.renderPreviewAndUpdateOverlay();
+    });
+
+    document.getElementById('crop-reset')?.addEventListener('click', () => {
+      this.pageCropSettings[this.currentPageIndex] = { cropZoom: 1.0, cropX: 0.5, cropY: 0.5 };
+      document.getElementById('crop-zoom-value').textContent = '100%';
+      this.renderPreviewAndUpdateOverlay();
+    });
+
+    // Pan controls (per-page)
+    const panStep = 0.05;
+    document.getElementById('pan-left')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropX: Math.max(0, crop.cropX - panStep) });
+      this.renderPreviewAndUpdateOverlay();
+    });
+    document.getElementById('pan-right')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropX: Math.min(1, crop.cropX + panStep) });
+      this.renderPreviewAndUpdateOverlay();
+    });
+    document.getElementById('pan-up')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropY: Math.max(0, crop.cropY - panStep) });
+      this.renderPreviewAndUpdateOverlay();
+    });
+    document.getElementById('pan-down')?.addEventListener('click', () => {
+      const crop = this.getCurrentCrop();
+      this.setCurrentCrop({ cropY: Math.min(1, crop.cropY + panStep) });
+      this.renderPreviewAndUpdateOverlay();
     });
   }
 
@@ -480,19 +515,19 @@ export class CompositorUI {
     document.getElementById('taskbar-font')?.addEventListener('change', (e) => {
       this.customizations.fontFamily = e.target.value;
       this.preloadFonts([e.target.value]);
-      this.renderPreview();
+      this.renderPreviewAndUpdateOverlay();
     });
 
     document.getElementById('fontsize-down')?.addEventListener('click', () => {
       this.customizations.fontSize = Math.max(12, (this.customizations.fontSize || 18) - 2);
       document.getElementById('fontsize-value').textContent = `${this.customizations.fontSize}px`;
-      this.renderPreview();
+      this.renderPreviewAndUpdateOverlay();
     });
 
     document.getElementById('fontsize-up')?.addEventListener('click', () => {
       this.customizations.fontSize = Math.min(36, (this.customizations.fontSize || 18) + 2);
       document.getElementById('fontsize-value').textContent = `${this.customizations.fontSize}px`;
-      this.renderPreview();
+      this.renderPreviewAndUpdateOverlay();
     });
 
     document.querySelectorAll('.taskbar-color-btn').forEach(btn => {
@@ -500,10 +535,16 @@ export class CompositorUI {
         document.querySelectorAll('.taskbar-color-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.customizations.colorTheme = btn.dataset.theme;
-        this.renderPreview();
+        this.renderPreviewAndUpdateOverlay();
         this.renderThumbnails();
       });
     });
+  }
+
+  async renderPreviewAndUpdateOverlay() {
+    await this.renderPreview();
+    // Update overlay position after render
+    setTimeout(() => this.updateSelectionOverlay(), 50);
   }
 
   async renderPreview() {
@@ -536,29 +577,27 @@ export class CompositorUI {
     if (!svg) return;
 
     const imageEl = svg.querySelector('image');
-    const textGroup = svg.querySelectorAll('g')[0]; // First g is usually text
+    const textGroups = svg.querySelectorAll('g');
+    const textGroup = Array.from(textGroups).find(g => g.querySelector('text'));
 
-    // Click on image
     if (imageEl) {
-      imageEl.style.cursor = 'move';
+      imageEl.style.cursor = 'pointer';
       imageEl.addEventListener('mousedown', (e) => {
         e.stopPropagation();
         this.selectElement('image', imageEl);
       });
     }
 
-    // Click on text
-    if (textGroup && textGroup.querySelector('text')) {
-      textGroup.style.cursor = 'move';
+    if (textGroup) {
+      textGroup.style.cursor = 'pointer';
       textGroup.addEventListener('mousedown', (e) => {
         e.stopPropagation();
         this.selectElement('text', textGroup);
       });
     }
 
-    // Click on background to deselect
     svg.addEventListener('click', (e) => {
-      if (e.target === svg || e.target.tagName === 'rect' && !e.target.closest('clipPath')) {
+      if (e.target === svg || (e.target.tagName === 'rect' && !e.target.closest('clipPath') && !e.target.closest('g'))) {
         this.hideTaskbar();
       }
     });
@@ -566,65 +605,66 @@ export class CompositorUI {
 
   selectElement(type, element) {
     this.selectedElement = type;
-    
-    // Get element bounds relative to preview
     const rect = element.getBoundingClientRect();
     this.showSelectionOverlay(type, rect);
     this.showTaskbar(type);
     
-    // Setup drag
-    this.setupDragForElement(type, element);
+    if (type === 'image') {
+      this.setupImageDrag();
+    }
+    // Text doesn't have drag-to-resize/move - only taskbar controls
   }
 
-  setupDragForElement(type, element) {
+  setupImageDrag() {
     const overlay = document.getElementById('selection-overlay');
     if (!overlay) return;
 
-    // Drag to move
+    // Drag overlay to pan image
     overlay.onmousedown = (e) => {
       if (e.target.classList.contains('resize-handle')) return;
       
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
-      this.dragStartOffset = {
-        x: type === 'image' ? (this.customizations.imageOffsetX || 0) : 0,
-        y: type === 'image' ? (this.customizations.imageOffsetY || 0) : 0,
-      };
-      
+      const crop = this.getCurrentCrop();
+      this.dragStartValues = { cropX: crop.cropX, cropY: crop.cropY };
       e.preventDefault();
     };
 
-    // Resize handles
+    // Resize handles for crop zoom
     overlay.querySelectorAll('.resize-handle').forEach(handle => {
       handle.onmousedown = (e) => {
         e.stopPropagation();
         this.isResizing = true;
         this.dragStart = { x: e.clientX, y: e.clientY };
-        this.dragStartScale = this.customizations.imageScale || 1;
+        this.dragStartValues = { cropZoom: this.getCurrentCrop().cropZoom };
         e.preventDefault();
       };
     });
 
-    // Mouse move/up handlers
     document.onmousemove = (e) => {
-      if (this.isDragging && type === 'image') {
-        const dx = (e.clientX - this.dragStart.x) / 500; // Scale factor
-        const dy = (e.clientY - this.dragStart.y) / 500;
+      if (this.isDragging) {
+        // Pan within image
+        const dx = (e.clientX - this.dragStart.x) / 300;
+        const dy = (e.clientY - this.dragStart.y) / 300;
         
-        this.customizations.imageOffsetX = this.dragStartOffset.x + dx;
-        this.customizations.imageOffsetY = this.dragStartOffset.y + dy;
+        this.setCurrentCrop({
+          cropX: Math.max(0, Math.min(1, this.dragStartValues.cropX - dx)),
+          cropY: Math.max(0, Math.min(1, this.dragStartValues.cropY - dy)),
+        });
         
-        this.renderPreview();
+        this.renderPreviewAndUpdateOverlay();
       }
       
-      if (this.isResizing && type === 'image') {
-        const dy = (e.clientY - this.dragStart.y) / 200;
-        const newScale = Math.max(0.3, Math.min(1.5, this.dragStartScale + dy));
+      if (this.isResizing) {
+        // Resize = crop zoom
+        const dy = (this.dragStart.y - e.clientY) / 150;
+        const newZoom = Math.max(0.5, Math.min(2.0, this.dragStartValues.cropZoom + dy));
         
-        this.customizations.imageScale = newScale;
-        document.getElementById('scale-value').textContent = `${Math.round(newScale * 100)}%`;
+        this.setCurrentCrop({ cropZoom: newZoom });
+        const zoomDisplay = document.getElementById('crop-zoom-value');
+        if (zoomDisplay) zoomDisplay.textContent = `${Math.round(newZoom * 100)}%`;
         
-        this.renderPreview();
+        this.renderPreviewAndUpdateOverlay();
       }
     };
 
@@ -646,7 +686,7 @@ export class CompositorUI {
         <div class="thumbnail-inner">
           ${page.imageUrl 
             ? `<img src="${page.imageUrl}" alt="Page ${page.page}">`
-            : `<div class="thumbnail-placeholder" style="background:${config.colors?.background || '#fff'}"><span>${page.page}</span></div>`
+            : `<div class="thumbnail-placeholder"><span>${page.page}</span></div>`
           }
         </div>
         <span class="thumbnail-number">${page.page}</span>
@@ -678,11 +718,9 @@ export class CompositorUI {
 
   selectTemplate(templateId) {
     this.selectedTemplate = templateId;
-    this.customizations = { imageScale: 1.0, imageOffsetX: 0, imageOffsetY: 0 };
     this.renderPreview();
     this.renderThumbnails();
     this.hideTaskbar();
-    
     if (this.onTemplateChange) this.onTemplateChange(templateId);
   }
 
@@ -709,28 +747,13 @@ export class CompositorUI {
       config.layout.image.frame = this.customizations.frame;
     }
 
-    // Image scale and position
-    if (this.customizations.imageScale !== 1 || this.customizations.imageOffsetX || this.customizations.imageOffsetY) {
-      config.layout = config.layout || {};
-      config.layout.image = config.layout.image || {};
-      const pos = config.layout.image.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
-      
-      const scale = this.customizations.imageScale || 1;
-      const newWidth = pos.width * scale;
-      const newHeight = pos.height * scale;
-      const xOffset = (pos.width - newWidth) / 2;
-      const yOffset = (pos.height - newHeight) / 2;
-      
-      config.layout.image.position = {
-        ...config.layout.image.position,
-        region: {
-          x: pos.x + xOffset + (this.customizations.imageOffsetX || 0),
-          y: pos.y + yOffset + (this.customizations.imageOffsetY || 0),
-          width: newWidth,
-          height: newHeight,
-        }
-      };
-    }
+    // Apply per-page crop settings
+    const crop = this.getCurrentCrop();
+    config.cropSettings = {
+      zoom: crop.cropZoom,
+      x: crop.cropX,
+      y: crop.cropY,
+    };
 
     return config;
   }
@@ -755,6 +778,7 @@ export class CompositorUI {
     });
 
     document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
       if (e.key === 'ArrowLeft') document.getElementById('prev-page')?.click();
       else if (e.key === 'ArrowRight') document.getElementById('next-page')?.click();
       else if (e.key === 'Escape') this.hideTaskbar();
@@ -780,6 +804,13 @@ export class CompositorUI {
     document.querySelectorAll('.export-option').forEach(opt => {
       opt.addEventListener('click', () => this.handleExport(opt.dataset.format));
     });
+
+    // Click outside canvas to deselect
+    document.getElementById('canvas-area')?.addEventListener('click', (e) => {
+      if (!e.target.closest('.page-preview') && !e.target.closest('.floating-taskbar') && !e.target.closest('.selection-overlay')) {
+        this.hideTaskbar();
+      }
+    });
   }
 
   async handleExport(format = 'pdf') {
@@ -803,6 +834,7 @@ export class CompositorUI {
         pageSize,
         quality,
         overrides: this.customizations,
+        pageCropSettings: this.pageCropSettings,
         filename: `${this.bookData.title || 'my-book'}.pdf`,
         onProgress: (progress) => {
           if (progressFill) progressFill.style.width = `${progress.percent}%`;
