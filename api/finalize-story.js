@@ -54,17 +54,31 @@ async function extractUnifiedRegistry(storyPages, kidInterests, kidName, existin
 You are extracting a UNIFIED STORY REGISTRY for a children's picture book.
 This registry contains ALL information needed for consistent illustration generation.
 
-ORIGINAL USER INPUT (AUTHORITATIVE - use exact details):
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: ORIGINAL USER INPUT - THIS IS THE SOURCE OF TRUTH
+═══════════════════════════════════════════════════════════════════════════════
 Child's name: "${kidName || 'Unknown'}"
-User specified: "${kidInterests || 'None provided'}"
+User's description: "${kidInterests || 'None provided'}"
 
-If the user specified a breed, color, name, or any specific detail, you MUST use that EXACT information.
-Example: "golden retriever named Max" → breed MUST be "golden retriever", name MUST be "Max"
+THE USER'S DESCRIPTION ABOVE CONTAINS AUTHORITATIVE DETAILS ABOUT:
+- Pet breeds (e.g., "miniature dachshund", "golden retriever", "tabby cat")
+- Pet names (e.g., "named Max", "called Fluffy")
+- Pet colors (e.g., "brown", "black and white")
+- Other specific details
+
+YOU MUST EXTRACT AND USE THESE EXACT DETAILS. DO NOT INVENT DIFFERENT BREEDS OR NAMES.
+
+Example: If user says "brown miniature dachshund named Abby"
+- breed MUST be "miniature dachshund" (NOT "terrier-mix", NOT "labrador")
+- colors MUST include "brown"
+- name MUST be "Abby"
+- type MUST be "dog"
+═══════════════════════════════════════════════════════════════════════════════
 
 CHARACTERS WITH UPLOADED PHOTO MODELS (mark these with visual_source: "user", has_model: true):
 ${JSON.stringify(modeledCharacters, null, 2)}
 
-STORY TEXT:
+STORY TEXT (use this to understand the narrative, but user input overrides for specific details):
 ${fullText}
 
 Return ONLY JSON in this exact format:
@@ -76,7 +90,7 @@ Return ONLY JSON in this exact format:
       "role": "protagonist | sibling | friend | parent | pet | other",
       "type": "human | dog | cat | etc",
       "gender": "boy | girl | male | female | unspecified",
-      "breed": "specific breed if pet, from user input if specified",
+      "breed": "EXACT breed from user input if pet",
       "traits": ["personality trait 1", "trait 2"],
       "relationship": "relationship to protagonist if not protagonist",
       "visual": {
@@ -85,7 +99,7 @@ Return ONLY JSON in this exact format:
         "skin_tone": "skin tone (humans)",
         "build": "body type",
         "size": "small | medium | large (for pets)",
-        "colors": "fur/feather colors (for pets)",
+        "colors": "fur/feather colors - USE USER INPUT",
         "distinctive_features": "unique identifying features",
         "typical_clothing": "usual outfit (humans)"
       },
@@ -117,14 +131,15 @@ Return ONLY JSON in this exact format:
 CRITICAL RULES:
 
 CHARACTERS:
-• The protagonist (main character) should have role: "protagonist"
+• First, parse the USER'S DESCRIPTION to identify any pets, their breeds, names, and colors
+• The protagonist (main character, the child) should have role: "protagonist" and key based on their name
+• If user mentioned a pet with specific breed/name/color, USE THOSE EXACT DETAILS
+• Do NOT invent breeds - if user says "dachshund", it's a dachshund, not a "terrier-mix"
+• Do NOT invent extra characters that aren't in the story or user input
 • Characters with uploaded models: set has_model: true, visual_source: "user", visual: null
-• Characters WITHOUT models: set has_model: false, visual_source: "auto", generate full visual description
-• Do NOT include generic groups like "friends", "family", "everyone" as characters
-• Only include NAMED individuals or specific roles (Mom, Dad, Grandma, specific friend names)
-• For pets: include type, breed (from user input!), size, colors, distinctive_features
-• For humans: include age_range, hair, skin_tone, build, typical_clothing, distinctive_features
-• Use character_key as lowercase underscore version of name (e.g., "grandma_rose")
+• Characters WITHOUT models: set has_model: false, visual_source: "auto", generate visual
+• Only include characters that are ACTUALLY IN THE STORY or USER INPUT
+• Use character_key as lowercase underscore version of name (e.g., "hannah", "abby")
 
 PROPS:
 • Only include significant props that appear multiple times or are important to the story
@@ -132,18 +147,21 @@ PROPS:
 • Include enough visual detail to maintain consistency across illustrations
 
 ENVIRONMENTS:
-• Include locations that appear in the story
+• Include locations mentioned or implied in the story
 • Provide enough style detail to maintain visual consistency
 • Note the owner if it's someone's home/yard/room
 
 VISUAL CONSISTENCY:
 • All descriptions should be specific enough to reproduce consistently
 • Use concrete details, not vague descriptions
-• For pets especially: be very specific about breed, size, colors, markings
-
-STORY TEXT TO ANALYZE:
-${fullText}
+• For pets especially: USE THE EXACT BREED FROM USER INPUT
 `;
+
+  console.log("=== FINALIZE PROMPT DEBUG ===");
+  console.log("Kid name:", kidName);
+  console.log("Kid interests:", kidInterests);
+  console.log("Story pages:", storyPages.length);
+  console.log("=============================");
 
   const response = await client.responses.create({
     model: "gpt-4.1",
