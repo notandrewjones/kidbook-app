@@ -137,7 +137,7 @@ export async function finalizeStory(storyPages) {
   const projectId = getProjectId();
   if (!projectId) return;
 
-  showLoader("Finalizing story and extracting characters...");
+  showLoader("Finalizing story and extracting details...");
 
   try {
     const res = await fetch("/api/finalize-story", {
@@ -155,11 +155,12 @@ export async function finalizeStory(storyPages) {
     }
 
     // Update cached project with full data
+    // Now using unified registry (stored in props_registry)
     if (state.cachedProject) {
       state.cachedProject.story_json = data.story_json;
       state.cachedProject.story_locked = true;
-      state.cachedProject.context_registry = data.context_registry;
-      state.cachedProject.props_registry = data.props_registry;
+      state.cachedProject.props_registry = data.props_registry;  // Unified registry
+      state.cachedProject.story_registry = data.story_registry;  // Also available as story_registry
       state.cachedProject.character_models = data.character_models || [];
     }
     setLastStoryPages(data.story_json);

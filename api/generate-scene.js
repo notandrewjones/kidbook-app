@@ -1,5 +1,6 @@
 // api/generate-scene.js
-// Multi-character scene generation with smart shot composition
+// Scene generation using unified story registry
+// Simplified to use single registry for all data
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
@@ -13,27 +14,51 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Maximum character models to include in a single scene
-// GPT-4.1 handles ~4-6 reference images well; beyond that quality degrades
+// Maximum character models per scene (quality degrades beyond 4)
 const MAX_CHARACTER_MODELS_PER_SCENE = 4;
 
 // -------------------------------------------------------
-// Helper: Extract props (objects) from page text via GPT
+// Helper: Extract location from page text
 // -------------------------------------------------------
-async function extractPropsUsingAI(pageText) {
-  console.log("=== PROP EXTRACTION — INPUT TEXT ===");
-  console.log(pageText);
-
+async function extractLocationUsingAI(pageText) {
   const extraction = await client.responses.create({
     model: "gpt-4.1-mini",
     input: `
-Extract ALL physical objects or props mentioned in this page text.
-These are things that could appear visually in an illustration.
+Extract the primary LOCATION or SETTING from this text.
+Return ONLY JSON: { "location": "..." }
+If none mentioned, infer from context (e.g., "backyard", "bedroom").
 
-Return ONLY JSON in this exact format:
+Text: "${pageText}"
+`,
+  });
+
+  const raw = extraction.output_text ?? extraction.output?.[0]?.content?.[0]?.text;
+  if (!raw) return null;
+
+  try {
+    const obj = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    return obj.location || null;
+  } catch {
+    return null;
+  }
+}
+
+// -------------------------------------------------------
+// Helper: Extract new props from page text
+// -------------------------------------------------------
+async function extractPropsUsingAI(pageText, existingProps) {
+  const existingKeys = Object.keys(existingProps || {});
+  
+  const extraction = await client.responses.create({
+    model: "gpt-4.1-mini",
+    input: `
+Extract physical objects/props from this text that could appear in an illustration.
+EXCLUDE these already-known props: ${existingKeys.join(", ") || "none"}
+
+Return ONLY JSON:
 {
   "props": [
-    { "name": "object-name", "context": "short reason or how it appears" }
+    { "name": "object-name", "description": "brief visual description" }
   ]
 }
 
@@ -41,219 +66,71 @@ Text: "${pageText}"
 `,
   });
 
-  const raw =
-    extraction.output_text ??
-    extraction.output?.[0]?.content?.[0]?.text;
-
+  const raw = extraction.output_text ?? extraction.output?.[0]?.content?.[0]?.text;
   if (!raw) return [];
 
   try {
-    const cleaned = raw.replace(/```json|```/g, "").trim();
-    const obj = JSON.parse(cleaned);
+    const obj = JSON.parse(raw.replace(/```json|```/g, "").trim());
     return obj.props || [];
-  } catch (err) {
-    console.error("PROP EXTRACTION PARSE ERROR:", err);
+  } catch {
     return [];
   }
 }
 
 // -------------------------------------------------------
-// Helper: Extract location/setting from page text via GPT
+// Helper: Analyze which characters appear in this scene
 // -------------------------------------------------------
-async function extractLocationUsingAI(pageText) {
-  const extraction = await client.responses.create({
-    model: "gpt-4.1-mini",
-    input: `
-Extract the primary LOCATION or SETTING described or implied in this page text.
-Examples: "park", "bedroom", "zoo", "kitchen", "forest", "beach", "school", "backyard".
-
-Return ONLY JSON:
-{
-  "location": "..."
-}
-
-If no location is directly mentioned, infer a simple, neutral setting
-based on the activity (e.g., "backyard", "playground", "bedroom").
-
-Text: "${pageText}"
-`,
-  });
-
-  const raw =
-    extraction.output_text ??
-    extraction.output?.[0]?.content?.[0]?.text;
-
-  if (!raw) return null;
-
-  try {
-    const cleaned = raw.replace(/```json|```/g, "").trim();
-    const obj = JSON.parse(cleaned);
-    return obj.location || null;
-  } catch (err) {
-    console.error("LOCATION EXTRACTION PARSE ERROR:", err);
-    return null;
-  }
-}
-
-// -------------------------------------------------------
-// Helper: Infer implicit scene state from full story
-// -------------------------------------------------------
-async function inferSceneState(allPages, currentPageNumber) {
-  if (!Array.isArray(allPages) || allPages.length === 0) {
-    return { assumed_actions: [], assumed_positions: [], notes: "" };
-  }
-
-  const pagesText = allPages
-    .map(p => `Page ${p.page}: ${p.text}`)
-    .join("\n");
-
-  const prompt = `
-You are analyzing narrative continuity for a children's picture book.
-
-Determine what MUST be true on the CURRENT PAGE for the story to make logical sense.
-
-Return ONLY JSON:
-{
-  "assumed_actions": [],
-  "assumed_positions": [],
-  "notes": ""
-}
-
-Rules:
-• Use future pages to infer intent
-• Do NOT invent new actions
-• Only include assumptions REQUIRED for continuity
-
-CURRENT PAGE: ${currentPageNumber}
-
-STORY:
-${pagesText}
-`;
-
-  const response = await client.responses.create({
-    model: "gpt-4.1-mini",
-    input: prompt,
-  });
-
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
-
-  if (!raw) {
-    return { assumed_actions: [], assumed_positions: [], notes: "" };
-  }
-
-  try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch {
-    return { assumed_actions: [], assumed_positions: [], notes: "" };
-  }
-}
-
-// -------------------------------------------------------
-// NEW: Analyze which characters appear in this scene
-// Enhanced to track implicit presence through story flow
-// -------------------------------------------------------
-async function analyzeSceneComposition(pageText, contextRegistry, characterModels, allPages, currentPage) {
-  // Build character list from available models
-  const availableCharacters = (characterModels || []).map(cm => ({
-    key: cm.character_key,
-    name: cm.name,
-    role: cm.role,
-    is_protagonist: cm.is_protagonist,
+async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage) {
+  // Build character list from registry
+  const knownCharacters = Object.entries(registry.characters || {}).map(([key, char]) => ({
+    key,
+    name: char.name,
+    role: char.role,
+    type: char.type,
+    has_model: char.has_model,
   }));
 
-  // Also include characters from context registry that may not have models
-  const contextCharacters = [];
-  if (contextRegistry?.child?.name) {
-    contextCharacters.push({ 
-      name: contextRegistry.child.name, 
-      role: "protagonist",
-      key: contextRegistry.child.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")
-    });
-  }
-  if (contextRegistry?.additional_children) {
-    for (const [key, child] of Object.entries(contextRegistry.additional_children)) {
-      contextCharacters.push({ 
-        name: child.name || key, 
-        role: child.relationship || "friend",
-        key: key
-      });
-    }
-  }
-  if (contextRegistry?.pets) {
-    for (const [key, pet] of Object.entries(contextRegistry.pets)) {
-      contextCharacters.push({ 
-        name: pet.name || key, 
-        role: "pet", 
-        type: pet.type || pet.species,
-        key: key
-      });
-    }
-  }
-  if (contextRegistry?.people) {
-    for (const [key, person] of Object.entries(contextRegistry.people)) {
-      contextCharacters.push({ 
-        name: person.name || key, 
-        role: person.relationship || "person",
-        key: key
-      });
-    }
-  }
-
-  // Build story context up to and including current page
-  // This helps track who is "present" in the scene based on narrative flow
-  const storyContextUpToPage = (allPages || [])
+  // Story context up to current page
+  const storyContext = (allPages || [])
     .filter(p => Number(p.page) <= Number(currentPage))
     .map(p => `Page ${p.page}: ${p.text}`)
     .join("\n");
 
   const prompt = `
-You are a children's book illustrator analyzing WHO should appear in an illustration.
+Analyze WHO should appear in this illustration.
 
-CRITICAL: Track character presence through the NARRATIVE FLOW, not just explicit mentions on this page.
+TRACK CHARACTER PRESENCE through narrative flow:
+- "Harley visits Gary's house" → Gary is NOW PRESENT
+- "They played together" → BOTH characters in scene
+- Plural pronouns (they, them, we) after establishing characters → ALL present
 
-For example:
-- "Harley visits Gary's house" → Gary is now PRESENT with Harley
-- "They played together" → BOTH Harley AND Gary should be in the scene
-- "She ran to the park" → Only the female character mentioned earlier
-- Plural pronouns (they, them, we) after establishing multiple characters → ALL those characters
+STORY SO FAR:
+${storyContext}
 
-STORY SO FAR (for context of who is present):
-${storyContextUpToPage}
-
-CURRENT PAGE TO ILLUSTRATE (Page ${currentPage}):
+CURRENT PAGE (Page ${currentPage}):
 "${pageText}"
 
-ALL KNOWN CHARACTERS:
-${JSON.stringify([...availableCharacters, ...contextCharacters], null, 2)}
+KNOWN CHARACTERS:
+${JSON.stringify(knownCharacters, null, 2)}
 
-Analyze and return ONLY JSON:
+Return ONLY JSON:
 {
   "characters_in_scene": [
-    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why they should appear" }
+    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why present" }
   ],
   "shot_type": "close-up|medium|wide|establishing",
-  "focal_point": "what the viewer's eye should focus on",
+  "focal_point": "what viewer should focus on",
   "show_characters": true,
   "notes": "composition notes"
 }
 
-RULES FOR CHARACTER PRESENCE:
-1. The protagonist appears unless the text explicitly excludes them
-2. If the story established Character A went to Character B's location, Character B is PRESENT
-3. Plural pronouns (they, them, their, we, us) mean ALL recently mentioned characters are present
-4. "Together", "with", "and" indicate multiple characters
-5. Going to someone's house/place means that person is there
-6. If uncertain whether a character is present, INCLUDE them rather than exclude
-7. Maximum ${MAX_CHARACTER_MODELS_PER_SCENE} characters per scene for visual clarity
-8. Characters mentioned by possessive ("Gary's yard") implies Gary owns/is at that location
-
-SHOT TYPE RULES:
-- "close-up": Focus on an object, emotion, or single detail (may exclude characters)
-- "medium": Standard scene showing characters from waist up or full body
-- "wide": Environmental shot showing characters in their setting
-- "establishing": Scene-setting shot, often at beginning of a sequence
+RULES:
+1. Protagonist appears unless explicitly excluded
+2. Going to someone's location means they're there
+3. Plural pronouns = all recently mentioned characters
+4. "Together", "with", "and" = multiple characters
+5. If uncertain, INCLUDE the character
+6. Max ${MAX_CHARACTER_MODELS_PER_SCENE} characters
 `;
 
   const response = await client.responses.create({
@@ -261,13 +138,10 @@ SHOT TYPE RULES:
     input: prompt,
   });
 
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
+  const raw = response.output_text ?? response.output?.[0]?.content?.[0]?.text;
 
   if (!raw) {
-    // Default: show protagonist if available
-    const protagonist = availableCharacters.find(c => c.is_protagonist || c.role === "protagonist");
+    const protagonist = knownCharacters.find(c => c.role === "protagonist");
     return {
       characters_in_scene: protagonist ? [{ ...protagonist, prominence: "primary" }] : [],
       shot_type: "medium",
@@ -278,17 +152,9 @@ SHOT TYPE RULES:
   }
 
   try {
-    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    
-    // Log for debugging
-    console.log("=== SCENE COMPOSITION ANALYSIS ===");
-    console.log("Page:", currentPage);
-    console.log("Characters detected:", parsed.characters_in_scene?.map(c => `${c.name} (${c.reason})`));
-    
-    return parsed;
-  } catch (err) {
-    console.error("SCENE COMPOSITION PARSE ERROR:", err);
-    const protagonist = availableCharacters.find(c => c.is_protagonist || c.role === "protagonist");
+    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch {
+    const protagonist = knownCharacters.find(c => c.role === "protagonist");
     return {
       characters_in_scene: protagonist ? [{ ...protagonist, prominence: "primary" }] : [],
       shot_type: "medium",
@@ -300,82 +166,76 @@ SHOT TYPE RULES:
 }
 
 // -------------------------------------------------------
-// NEW: Build character visual rules for prompt
+// Helper: Build character visual rules for the prompt
 // -------------------------------------------------------
-function buildCharacterVisualRules(characterModels, propsRegistry, sceneComposition) {
+function buildCharacterVisualRules(registry, sceneComposition) {
   const rules = [];
   const charactersInScene = sceneComposition.characters_in_scene || [];
 
   for (const sceneChar of charactersInScene) {
-    // Find the character model
-    const model = (characterModels || []).find(
-      cm => cm.character_key === sceneChar.key || 
-            cm.name?.toLowerCase() === sceneChar.name?.toLowerCase()
-    );
+    const char = registry.characters?.[sceneChar.key];
+    
+    if (!char) {
+      rules.push(`• ${sceneChar.name}: No registry data. Depict consistently with story context.`);
+      continue;
+    }
 
-    // Find character in props registry for additional visual info
-    const registryChar = propsRegistry?.characters?.[sceneChar.key];
-
-    if (model) {
-      // Character has an uploaded model - STRICT visual match required
-      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): MUST match the uploaded character model EXACTLY. Reference image #${sceneChar.key} provided. Do NOT change appearance, proportions, or colors.`);
-    } else if (registryChar?.visual) {
-      // Character has AI-generated visual description
-      const v = registryChar.visual;
-      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): Use consistent visual:
-      - Species: ${v.species || 'human'}
-      - Appearance: ${v.colors || 'unspecified'}
-      - Size: ${v.size || 'unspecified'}
-      - Features: ${v.distinctive_features || 'none specified'}`);
+    if (char.has_model && char.visual_source === "user") {
+      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): MUST match uploaded reference image EXACTLY.`);
+    } else if (char.visual) {
+      const v = char.visual;
+      if (char.type === "human") {
+        rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): ${v.age_range || ''} ${char.gender || ''}.
+  Hair: ${v.hair || 'unspecified'}
+  Skin: ${v.skin_tone || 'unspecified'}
+  Build: ${v.build || 'unspecified'}
+  Clothing: ${v.typical_clothing || 'casual children\'s clothes'}
+  Features: ${v.distinctive_features || 'none'}`);
+      } else {
+        // Pet or animal
+        rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): ${char.breed || char.type || 'animal'}.
+  Size: ${v.size || 'medium'}
+  Colors: ${v.colors || 'unspecified'}
+  Features: ${v.distinctive_features || 'none'}`);
+      }
     } else {
-      // Character has no locked visual - provide guidance
-      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): No locked visual. Depict in a style consistent with other characters.`);
+      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): ${char.type || 'character'}. Depict consistently.`);
     }
   }
 
-  if (!sceneComposition.show_characters) {
-    rules.push("\n• NOTE: This scene should NOT prominently feature characters. Focus on the focal point instead.");
-  }
-
-  return rules.join("\n");
+  return rules.join("\n\n");
 }
 
 // -------------------------------------------------------
-// NEW: Prepare character model images for the API call
+// Helper: Load character model images
 // -------------------------------------------------------
-async function prepareCharacterModelImages(characterModels, sceneComposition) {
+async function prepareCharacterModelImages(registry, sceneComposition) {
   const images = [];
   const charactersInScene = sceneComposition.characters_in_scene || [];
 
-  // Sort by prominence (primary first) and limit to MAX
-  const sortedCharacters = [...charactersInScene].sort((a, b) => {
+  // Sort by prominence and limit
+  const sorted = [...charactersInScene].sort((a, b) => {
     const order = { primary: 0, secondary: 1, background: 2 };
     return (order[a.prominence] || 2) - (order[b.prominence] || 2);
-  });
+  }).slice(0, MAX_CHARACTER_MODELS_PER_SCENE);
 
-  const limitedCharacters = sortedCharacters.slice(0, MAX_CHARACTER_MODELS_PER_SCENE);
-
-  for (const sceneChar of limitedCharacters) {
-    const model = (characterModels || []).find(
-      cm => cm.character_key === sceneChar.key ||
-            cm.name?.toLowerCase() === sceneChar.name?.toLowerCase()
-    );
-
-    if (model?.model_url) {
+  for (const sceneChar of sorted) {
+    const char = registry.characters?.[sceneChar.key];
+    
+    if (char?.has_model && char?.model_url) {
       try {
-        const modelResp = await fetch(model.model_url);
-        const arrayBuffer = await modelResp.arrayBuffer();
-        const base64Image = Buffer.from(arrayBuffer).toString("base64");
-
+        const resp = await fetch(char.model_url);
+        const buffer = await resp.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        
         images.push({
-          character_key: model.character_key,
-          name: model.name,
-          data_url: `data:image/png;base64,${base64Image}`,
+          key: sceneChar.key,
+          name: char.name,
+          data_url: `data:image/png;base64,${base64}`,
         });
-
-        console.log(`📷 Loaded character model: ${model.name} (${model.character_key})`);
+        console.log(`📷 Loaded model: ${char.name}`);
       } catch (err) {
-        console.error(`Failed to load character model for ${model.name}:`, err);
+        console.error(`Failed to load model for ${char.name}:`, err.message);
       }
     }
   }
@@ -394,356 +254,250 @@ async function handler(req, res) {
   const { projectId, page, pageText, isRegeneration, allPages } = req.body || {};
 
   if (!projectId || !page || !pageText) {
-    return res
-      .status(400)
-      .json({ error: "Missing projectId, page, or pageText" });
+    return res.status(400).json({ error: "Missing projectId, page, or pageText" });
   }
 
   try {
-    // 1. Load project with all character data
+    // 1. Load project
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
-      .select(
-        "character_model_url, character_models, illustrations, props_registry, context_registry"
-      )
+      .select("character_model_url, character_models, illustrations, props_registry")
       .eq("id", projectId)
       .single();
-
-    console.log("=== PROJECT LOADED ===");
-    console.log("Character models count:", project?.character_models?.length || 0);
 
     if (projectError) {
       console.error("Project fetch error:", projectError);
       return res.status(500).json({ error: "Could not load project." });
     }
 
-    // Normalize props_registry
+    // 2. Get unified registry
     let registry;
     if (Array.isArray(project.props_registry) && project.props_registry.length > 0) {
       registry = project.props_registry[0];
     } else if (project.props_registry && typeof project.props_registry === "object") {
       registry = project.props_registry;
     } else {
-      registry = { characters: {}, props: {}, environments: {}, notes: "" };
+      registry = { characters: {}, props: {}, environments: {} };
     }
 
-    const characterRegistry = registry.characters || {};
-    const contextRegistry = project.context_registry || {};
-    const characterModels = project.character_models || [];
+    // Ensure registry has all sections
+    if (!registry.characters) registry.characters = {};
+    if (!registry.props) registry.props = {};
+    if (!registry.environments) registry.environments = {};
 
-    // Handle legacy: if only character_model_url exists, treat as protagonist model
-    if (project.character_model_url && characterModels.length === 0) {
-      const protagonistName = contextRegistry?.child?.name || "Child";
-      characterModels.push({
-        character_key: "protagonist",
-        name: protagonistName,
+    // Handle legacy character_model_url
+    if (project.character_model_url && Object.keys(registry.characters).length === 0) {
+      registry.characters.protagonist = {
+        name: "Child",
         role: "protagonist",
-        model_url: project.character_model_url,
-        is_protagonist: true,
+        type: "human",
+        has_model: true,
         visual_source: "user",
-      });
+        model_url: project.character_model_url,
+      };
     }
 
-    const existingIllustrations = Array.isArray(project.illustrations)
-      ? project.illustrations
-      : [];
+    // Merge character_models into registry if needed
+    for (const cm of (project.character_models || [])) {
+      if (!registry.characters[cm.character_key]) {
+        registry.characters[cm.character_key] = {
+          name: cm.name,
+          role: cm.role,
+          type: cm.role === "pet" ? "animal" : "human",
+          has_model: true,
+          visual_source: "user",
+          model_url: cm.model_url,
+        };
+      } else if (cm.model_url) {
+        registry.characters[cm.character_key].has_model = true;
+        registry.characters[cm.character_key].model_url = cm.model_url;
+        registry.characters[cm.character_key].visual_source = "user";
+      }
+    }
 
-    const existingForPage = existingIllustrations.find(
-      (i) => Number(i.page) === Number(page)
-    );
-    const previousRevisions =
-      existingForPage && typeof existingForPage.revisions === "number"
-        ? existingForPage.revisions
-        : 0;
+    const existingIllustrations = Array.isArray(project.illustrations) ? project.illustrations : [];
+    const existingForPage = existingIllustrations.find(i => Number(i.page) === Number(page));
+    const previousRevisions = existingForPage?.revisions || 0;
     const existingHistory = existingForPage?.revision_history || [];
     const isRegen = !!isRegeneration;
 
-    // 2. Analyze scene composition - which characters appear?
-    console.log("=== ANALYZING SCENE COMPOSITION ===");
+    // 3. Analyze scene composition
+    console.log("=== ANALYZING SCENE ===");
     const sceneComposition = await analyzeSceneComposition(
-      pageText,
-      contextRegistry,
-      characterModels,
-      allPages,
-      page
+      pageText, registry, project.character_models, allPages, page
     );
-    console.log("Scene composition:", JSON.stringify(sceneComposition, null, 2));
+    console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
 
-    // 3. Prepare character model images for this scene
-    const characterImages = await prepareCharacterModelImages(characterModels, sceneComposition);
-    console.log(`=== ${characterImages.length} CHARACTER MODELS FOR SCENE ===`);
+    // 4. Prepare character images
+    const characterImages = await prepareCharacterModelImages(registry, sceneComposition);
 
-    // 4. Extract props + location
-    const [aiProps, detectedLocation] = await Promise.all([
-      extractPropsUsingAI(pageText),
+    // 5. Extract location and new props
+    const [detectedLocation, newProps] = await Promise.all([
       extractLocationUsingAI(pageText),
+      extractPropsUsingAI(pageText, registry.props),
     ]);
 
-    // 5. Infer scene state for continuity
-    const sceneState = await inferSceneState(allPages, page);
-
-    // 6. Build the generation prompt
-    const environmentsJson = JSON.stringify(registry.environments || {}, null, 2);
-    const propsJson = JSON.stringify(registry.props || {}, null, 2);
-    const contextJson = JSON.stringify(contextRegistry || {}, null, 2);
+    // 6. Build the prompt
+    const characterRules = buildCharacterVisualRules(registry, sceneComposition);
     
-    // Extract character presence notes if available
-    const presenceNotes = contextRegistry?.character_presence_notes || "";
-
-    // Build character visual rules based on scene composition
-    const characterVisualRules = buildCharacterVisualRules(
-      characterModels,
-      registry,
-      sceneComposition
-    );
-
-    // Build character reference instructions
-    const characterReferenceInstructions = characterImages.length > 0
-      ? `
-CHARACTER REFERENCE IMAGES PROVIDED:
-${characterImages.map((img, idx) => `• Image ${idx + 1}: ${img.name} (${img.character_key})`).join("\n")}
-
-You MUST use these reference images to ensure visual consistency.
-Each character with a reference image must match that image EXACTLY.
-`
-      : `
-NO CHARACTER REFERENCE IMAGES PROVIDED.
-Generate characters based on the visual descriptions in CHARACTER VISUAL RULES.
-`;
-
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
-DO NOT respond with normal text.
-
 Return ONLY a tool call.
 
-SCENE COMPOSITION ANALYSIS:
+=== SCENE INFO ===
+Page text: "${pageText}"
+Location: ${detectedLocation || "infer from context"}
 Shot type: ${sceneComposition.shot_type}
 Focal point: ${sceneComposition.focal_point}
-Show characters: ${sceneComposition.show_characters}
-Characters in scene: ${sceneComposition.characters_in_scene.map(c => `${c.name} (${c.prominence}${c.reason ? ': ' + c.reason : ''})`).join(", ") || "None"}
-Composition notes: ${sceneComposition.notes || "None"}
 
-PAGE TEXT:
-"${pageText}"
+=== CHARACTERS IN SCENE ===
+${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): ${c.reason || ''}`).join("\n") || "None specified"}
 
-LOCATION DETECTED:
-${detectedLocation || "Infer a simple, neutral setting that fits the action."}
+=== CHARACTER VISUAL RULES ===
+${characterRules}
 
-${presenceNotes ? `
-CHARACTER PRESENCE NOTES (from story analysis):
-${presenceNotes}
+${characterImages.length > 0 ? `
+=== REFERENCE IMAGES PROVIDED ===
+${characterImages.map((img, i) => `Image ${i + 1}: ${img.name}`).join("\n")}
+Characters with reference images MUST match them EXACTLY.
 ` : ''}
 
-${characterReferenceInstructions}
+=== ENVIRONMENT STYLE ===
+${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-friendly, bright, simple"}
 
-CHARACTER VISUAL RULES:
-${characterVisualRules}
+=== PROPS TO INCLUDE ===
+${Object.entries(registry.props || {}).slice(0, 5).map(([k, v]) => `${k}: ${v.description || v.visual || v.context}`).join("\n") || "None specified"}
 
-CONTEXT REGISTRY (world facts - child, pets, people, locations, items):
-${contextJson}
+=== STYLE REQUIREMENTS ===
+• Soft pastel children's-book illustration
+• Clean rounded outlines, gentle shading
+• Warm daylight colors (5000-5500K)
+• Simple uncluttered backgrounds
+• Full-body characters, never awkwardly cropped
+• No text in image
+• 1024×1024 PNG
 
-ENVIRONMENT REGISTRY (location continuity):
-${environmentsJson}
+=== STRICT RULES ===
+• Match reference images EXACTLY for characters with models
+• Keep characters visually consistent with their descriptions
+• Include ALL characters listed in "Characters in Scene"
+• Props should match their registry descriptions
+• Environments should be consistent across pages
 
-PROP REGISTRY (prop continuity):
-${propsJson}
-
-IMPLICIT SCENE STATE:
-${JSON.stringify(sceneState, null, 2)}
-
-STRICT RULES:
-• Do NOT invent new characters not in the story
-• Characters with reference images MUST match those images exactly
-• If show_characters is false, focus on the focal_point without prominent characters
-• Respect shot_type: close-up = tight framing, wide = environmental context
-• Primary characters should be visually prominent; background characters smaller/less detailed
-• If multiple characters are listed in "Characters in scene", draw ALL of them
-
-CONTEXT CONTINUITY RULES:
-• If context registry defines a specific pet/person/item, use those exact details
-• Generic references ("her dog") should match specific registry entries ("Cricket the beagle")
-• If at a character's location (e.g., "Gary's house"), that character should typically be present
-
-STYLE REQUIREMENTS:
-• Soft pastel children's-book illustration style
-• Clean rounded outlines
-• Gentle shading, simple shapes
-• Warm daylight color palette (5000–5500K)
-• Simple, uncluttered backgrounds
-• Full-body characters when shown, never cropped awkwardly
-• No text inside the image
-• Output: 1024×1024 PNG
-
-Now call the image_generation tool.
+Generate the illustration now.
 `;
 
-    console.log("=== FINAL GENERATION PROMPT ===");
-    console.log(prompt.substring(0, 500) + "...[truncated]");
-
-    // 7. Build input content array with character model images
-    const inputContent = [
-      { type: "input_text", text: prompt },
-    ];
-
-    // Add character reference images
-    for (const charImg of characterImages) {
-      inputContent.push({
-        type: "input_image",
-        image_url: charImg.data_url,
-      });
+    // 7. Build input with images
+    const inputContent = [{ type: "input_text", text: prompt }];
+    for (const img of characterImages) {
+      inputContent.push({ type: "input_image", image_url: img.data_url });
     }
 
-    // 8. Call GPT-4.1 with image_generation tool
+    // 8. Generate image
     const response = await client.responses.create({
       model: "gpt-4.1",
-      input: [
-        {
-          role: "user",
-          content: inputContent,
-        },
-      ],
-      tools: [
-        {
-          type: "image_generation",
-          model: "gpt-image-1",
-          size: "1024x1024",
-          quality: "low",
-          background: "opaque",
-          output_format: "png",
-          output_compression: 100,
-          moderation: "auto",
-        },
-      ],
+      input: [{ role: "user", content: inputContent }],
+      tools: [{
+        type: "image_generation",
+        model: "gpt-image-1",
+        size: "1024x1024",
+        quality: "low",  // Change to "high" for production
+        background: "opaque",
+        output_format: "png",
+        output_compression: 100,
+        moderation: "auto",
+      }],
     });
 
-    console.log("=== IMAGE GENERATION RESPONSE RECEIVED ===");
-
-    const imgCall = response.output.find(
-      (o) => o.type === "image_generation_call"
-    );
-
-    if (!imgCall || !imgCall.result) {
-      console.log("=== ERROR: NO IMAGE GENERATED ===");
-      return res.status(500).json({ error: "Model produced no scene." });
+    const imgCall = response.output.find(o => o.type === "image_generation_call");
+    if (!imgCall?.result) {
+      return res.status(500).json({ error: "Model produced no image." });
     }
 
-    const base64Scene = imgCall.result;
-    const sceneBuffer = Buffer.from(base64Scene, "base64");
+    const sceneBuffer = Buffer.from(imgCall.result, "base64");
 
-    // 9. Upload scene image
+    // 9. Upload image
     const newRevisions = isRegen ? previousRevisions + 1 : 0;
     const filePath = `illustrations/${projectId}-page-${page}-r${newRevisions}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("book_images")
-      .upload(filePath, sceneBuffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
+      .upload(filePath, sceneBuffer, { contentType: "image/png", upsert: true });
 
     if (uploadError) {
-      console.error("UPLOAD ERROR:", uploadError);
+      console.error("Upload error:", uploadError);
       return res.status(500).json({ error: "Failed to upload illustration." });
     }
 
-    const { data: urlData } = supabase.storage
-      .from("book_images")
-      .getPublicUrl(filePath);
+    const { data: urlData } = supabase.storage.from("book_images").getPublicUrl(filePath);
 
-    // 10. Update registries
-    const updatedRegistry = { ...registry };
-
-    if (!updatedRegistry.props) updatedRegistry.props = {};
-    if (!updatedRegistry.environments) updatedRegistry.environments = {};
-
+    // 10. Update registry with new props/environments
     if (detectedLocation) {
       const envKey = detectedLocation.toLowerCase().trim();
-      if (!updatedRegistry.environments[envKey]) {
-        updatedRegistry.environments[envKey] = {
-          style: `Consistent depiction of a ${envKey}`,
+      if (!registry.environments[envKey]) {
+        registry.environments[envKey] = {
+          name: detectedLocation,
+          style: `Consistent ${detectedLocation} setting`,
           first_seen_page: page,
         };
       }
     }
 
-    for (const p of aiProps) {
-      const key = (p.name || "").toLowerCase().trim();
-      if (!key) continue;
-      if (characterRegistry[key]) continue;
-      if (!updatedRegistry.props[key]) {
-        updatedRegistry.props[key] = {
-          context: p.context || "Appears in this scene",
+    for (const p of newProps) {
+      const key = (p.name || "").toLowerCase().trim().replace(/\s+/g, "_");
+      if (key && !registry.props[key] && !registry.characters[key]) {
+        registry.props[key] = {
+          name: p.name,
+          description: p.description,
           first_seen_page: page,
         };
       }
     }
 
-    const { error: registryUpdateError } = await supabase
+    await supabase
       .from("book_projects")
-      .update({ props_registry: [updatedRegistry] })
+      .update({ props_registry: [registry] })
       .eq("id", projectId);
 
-    if (registryUpdateError) {
-      console.error("REGISTRY UPDATE ERROR:", registryUpdateError);
-    }
-
-    // 11. Build revision history
+    // 11. Update illustrations
     let newHistory = [...existingHistory];
     if (isRegen && existingForPage?.image_url) {
       newHistory.push({
         revision: previousRevisions,
         image_url: existingForPage.image_url,
         created_at: existingForPage.last_updated || new Date().toISOString(),
-        notes: existingForPage.revision_notes || null,
       });
-      if (newHistory.length > 2) {
-        newHistory = newHistory.slice(-2);
-      }
+      if (newHistory.length > 2) newHistory = newHistory.slice(-2);
     }
 
-    // 12. Save illustration metadata
-    let updatedIllustrations = existingIllustrations.filter(
-      (i) => Number(i.page) !== Number(page)
-    );
-
+    const updatedIllustrations = existingIllustrations.filter(i => Number(i.page) !== Number(page));
     updatedIllustrations.push({
       page,
       image_url: urlData.publicUrl,
       revisions: newRevisions,
       last_updated: new Date().toISOString(),
       revision_history: newHistory,
-      scene_composition: sceneComposition, // Store composition for reference
+      scene_composition: sceneComposition,
     });
 
-    const { error: illusUpdateError } = await supabase
+    await supabase
       .from("book_projects")
       .update({ illustrations: updatedIllustrations })
       .eq("id", projectId);
 
-    if (illusUpdateError) {
-      console.error("ILLUSTRATIONS UPDATE ERROR:", illusUpdateError);
-    }
-
-    // 13. Done
+    // 12. Done
     return res.status(200).json({
       page,
       image_url: urlData.publicUrl,
-      props_registry: updatedRegistry,
-      context_registry: contextRegistry,
       revisions: newRevisions,
-      revision_history: newHistory,
       scene_composition: sceneComposition,
     });
 
   } catch (err) {
-    console.error("❌ Illustration generation error:");
-    console.error("Message:", err?.message);
-    console.error("Stack:", err?.stack);
-
+    console.error("Generation error:", err?.message, err?.stack);
     return res.status(500).json({
       error: "Failed to generate illustration.",
-      details: err?.message || String(err),
+      details: err?.message,
     });
   }
 }

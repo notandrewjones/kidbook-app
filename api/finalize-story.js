@@ -1,6 +1,6 @@
 // api/finalize-story.js (CommonJS)
-// Locks the story, extracts context registry, and generates character visuals
-// Updated to support multiple character models
+// Locks the story and extracts unified story registry
+// Single API call for all narrative + visual data
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
@@ -36,88 +36,112 @@ function cleanJsonOutput(text) {
 }
 
 /**
- * Extract canonical narrative context
- * Enhanced to capture multiple characters properly and their relationships
+ * Extract unified story registry - ALL data in ONE call
+ * Combines narrative facts + visual descriptions + props + environments
  */
-async function extractContextFromStory(storyPages, kidInterests) {
+async function extractUnifiedRegistry(storyPages, kidInterests, kidName, existingCharacterModels) {
   const fullText = storyPages.map(p => p.text).join("\n");
+  
+  // Build list of characters that have uploaded models
+  const modeledCharacters = (existingCharacterModels || []).map(cm => ({
+    key: cm.character_key,
+    name: cm.name,
+    role: cm.role,
+    is_protagonist: cm.is_protagonist,
+  }));
 
   const prompt = `
-Extract canonical world facts from the following children's picture-book story.
+You are extracting a UNIFIED STORY REGISTRY for a children's picture book.
+This registry contains ALL information needed for consistent illustration generation.
 
-IMPORTANT: Only extract NAMED characters - not generic groups like "friends", "everyone", "family".
-A named character is someone with a specific name (Gary, Mom, Fluffy) or a specific role that's addressed directly.
+ORIGINAL USER INPUT (AUTHORITATIVE - use exact details):
+Child's name: "${kidName || 'Unknown'}"
+User specified: "${kidInterests || 'None provided'}"
 
-CRITICAL - ORIGINAL USER INPUT:
-The user provided these details when creating the book: "${kidInterests || 'None provided'}"
-These details are AUTHORITATIVE. If the user specified a specific breed, name, color, or detail,
-you MUST use that EXACT information, even if the story text is more generic.
+If the user specified a breed, color, name, or any specific detail, you MUST use that EXACT information.
+Example: "golden retriever named Max" → breed MUST be "golden retriever", name MUST be "Max"
 
-For example:
-- User input: "golden retriever named Max" → breed MUST be "golden retriever", name MUST be "Max"
-- User input: "black labrador" → breed MUST be "black labrador"
-- User input: "tabby cat called Whiskers" → type MUST be "tabby cat", name MUST be "Whiskers"
+CHARACTERS WITH UPLOADED PHOTO MODELS (mark these with visual_source: "user", has_model: true):
+${JSON.stringify(modeledCharacters, null, 2)}
+
+STORY TEXT:
+${fullText}
 
 Return ONLY JSON in this exact format:
 
 {
-  "child": {
-    "name": "protagonist name",
-    "gender": "boy/girl/unspecified",
-    "traits": []
-  },
-  "additional_children": {
+  "characters": {
     "character_key": {
-      "name": "specific name like Gary, Emma, etc - NOT generic terms like 'friends'",
-      "relationship": "friend/sibling/cousin/neighbor",
-      "traits": [],
-      "appears_with_protagonist": true
+      "name": "Character Name",
+      "role": "protagonist | sibling | friend | parent | pet | other",
+      "type": "human | dog | cat | etc",
+      "gender": "boy | girl | male | female | unspecified",
+      "breed": "specific breed if pet, from user input if specified",
+      "traits": ["personality trait 1", "trait 2"],
+      "relationship": "relationship to protagonist if not protagonist",
+      "visual": {
+        "age_range": "child | adult | elderly (for humans)",
+        "hair": "hair description (humans)",
+        "skin_tone": "skin tone (humans)",
+        "build": "body type",
+        "size": "small | medium | large (for pets)",
+        "colors": "fur/feather colors (for pets)",
+        "distinctive_features": "unique identifying features",
+        "typical_clothing": "usual outfit (humans)"
+      },
+      "has_model": false,
+      "visual_source": "user | auto",
+      "first_seen_page": 1
     }
   },
-  "pets": {
-    "pet_key": {
-      "name": "",
-      "type": "dog/cat/etc",
-      "breed": "EXACT breed from user input if specified",
-      "traits": []
+  "props": {
+    "prop_key": {
+      "name": "Prop Name",
+      "description": "what it looks like and its purpose",
+      "visual": "specific visual description for consistency",
+      "first_seen_page": 1
     }
   },
-  "people": {
-    "person_key": {
-      "name": "specific name or role like Mom, Grandpa Joe, Teacher Mrs. Smith",
-      "relationship": "mom/dad/grandma/teacher/etc",
-      "traits": [],
-      "location": "where they are typically found in the story"
+  "environments": {
+    "environment_key": {
+      "name": "Location Name",
+      "description": "what this place is",
+      "owner": "who this belongs to, if applicable",
+      "style": "visual style description - colors, mood, key elements",
+      "first_seen_page": 1
     }
   },
-  "items": {
-    "item_key": {
-      "name": "",
-      "description": ""
-    }
-  },
-  "locations": {
-    "location_key": {
-      "name": "",
-      "description": "",
-      "owner": "who this location belongs to, if mentioned (e.g., 'Gary' for 'Gary's house')"
-    }
-  },
-  "character_presence_notes": "Notes about which characters appear together, e.g., 'When at Gary's house, Gary is present with protagonist'",
-  "notes": ""
+  "presence_notes": "Notes about which characters appear together and when"
 }
 
 CRITICAL RULES:
-• "child" is the protagonist (main character the story is about)
-• Do NOT include generic terms like "friends", "family", "everyone", "kids" as characters
-• Only include NAMED individuals or specific roles (Mom, Dad, Grandma, etc.)
-• "additional_children" are OTHER named children (siblings, specific friends with names)
-• If the story says "visits Gary's house", Gary should be extracted as a character
-• Track location ownership - "Gary's yard" means Gary is associated with that location
-• Note when characters appear together (for illustration purposes)
-• ALWAYS prefer specific details from ORIGINAL USER INPUT over generic story text
 
-STORY TEXT:
+CHARACTERS:
+• The protagonist (main character) should have role: "protagonist"
+• Characters with uploaded models: set has_model: true, visual_source: "user", visual: null
+• Characters WITHOUT models: set has_model: false, visual_source: "auto", generate full visual description
+• Do NOT include generic groups like "friends", "family", "everyone" as characters
+• Only include NAMED individuals or specific roles (Mom, Dad, Grandma, specific friend names)
+• For pets: include type, breed (from user input!), size, colors, distinctive_features
+• For humans: include age_range, hair, skin_tone, build, typical_clothing, distinctive_features
+• Use character_key as lowercase underscore version of name (e.g., "grandma_rose")
+
+PROPS:
+• Only include significant props that appear multiple times or are important to the story
+• Do NOT include characters as props
+• Include enough visual detail to maintain consistency across illustrations
+
+ENVIRONMENTS:
+• Include locations that appear in the story
+• Provide enough style detail to maintain visual consistency
+• Note the owner if it's someone's home/yard/room
+
+VISUAL CONSISTENCY:
+• All descriptions should be specific enough to reproduce consistently
+• Use concrete details, not vague descriptions
+• For pets especially: be very specific about breed, size, colors, markings
+
+STORY TEXT TO ANALYZE:
 ${fullText}
 `;
 
@@ -130,86 +154,35 @@ ${fullText}
     response.output_text ??
     response.output?.[0]?.content?.[0]?.text;
 
-  return JSON.parse(cleanJsonOutput(raw));
-}
-
-/**
- * Extract visual character profiles
- * Enhanced to handle multiple characters with proper model linking
- */
-async function extractCharacterVisuals(storyPages, contextRegistry, characterModels) {
-  const storyText = storyPages.map(p => p.text).join("\n");
-
-  // Build a list of characters that already have uploaded models
-  const modeledCharacters = (characterModels || []).map(cm => ({
-    key: cm.character_key,
-    name: cm.name,
-    role: cm.role,
-    is_protagonist: cm.is_protagonist,
-  }));
-
-  const prompt = `
-You are defining VISUAL CONSISTENCY for illustrated characters
-in a children's picture book.
-
-CHARACTERS WITH UPLOADED MODELS (do NOT generate visuals for these):
-${JSON.stringify(modeledCharacters, null, 2)}
-
-For characters with uploaded models, set:
-- visual_source: "user"
-- visual: null
-
-For characters WITHOUT models, generate consistent visual descriptions.
-
-Return ONLY JSON in this exact format:
-
-{
-  "characters": {
-    "character_key": {
-      "name": "",
-      "role": "protagonist | sibling | friend | parent | pet | other",
-      "visual_source": "user | auto",
-      "has_model": true | false,
-      "visual": null | {
-        "species": "",
-        "age_range": "child | adult | elderly",
-        "hair": "",
-        "skin_tone": "",
-        "build": "",
-        "distinctive_features": "",
-        "typical_clothing": ""
+  const registry = JSON.parse(cleanJsonOutput(raw));
+  
+  // Post-process: ensure characters with models have correct flags
+  for (const modelChar of existingCharacterModels) {
+    const key = modelChar.character_key;
+    if (registry.characters[key]) {
+      registry.characters[key].has_model = true;
+      registry.characters[key].visual_source = "user";
+      registry.characters[key].model_url = modelChar.model_url;
+      // Keep visual null for user-uploaded models - we use the image directly
+      if (modelChar.visual_source === "user") {
+        registry.characters[key].visual = null;
       }
+    } else {
+      // Model exists but wasn't extracted - add it
+      registry.characters[key] = {
+        name: modelChar.name,
+        role: modelChar.role || "other",
+        type: modelChar.role === "pet" ? "unknown" : "human",
+        has_model: true,
+        visual_source: "user",
+        model_url: modelChar.model_url,
+        visual: null,
+        first_seen_page: 1,
+      };
     }
   }
-}
 
-Rules:
-• Match character keys to context registry keys where possible
-• Characters with uploaded models: visual_source = "user", visual = null, has_model = true
-• Characters without models: visual_source = "auto", has_model = false, generate visual
-• For pets: use species, breed, size, colors, distinctive_features instead of human attributes
-• Be consistent and specific enough to reuse across all illustrations
-• Do NOT invent new characters not in the story
-
-STORY TEXT:
-${storyText}
-
-WORLD CONTEXT:
-${JSON.stringify(contextRegistry, null, 2)}
-`;
-
-  const response = await client.responses.create({
-    model: "gpt-4.1",
-    input: prompt,
-  });
-
-  const raw =
-    response.output_text ??
-    response.output?.[0]?.content?.[0]?.text;
-
-  if (!raw) throw new Error("Character visual extraction returned no output");
-
-  return JSON.parse(cleanJsonOutput(raw));
+  return registry;
 }
 
 /* -------------------------------------------------
@@ -237,7 +210,7 @@ async function handler(req, res) {
     --------------------------------------------- */
     const { data: project, error: projectError } = await supabase
       .from("book_projects")
-      .select("kid_name, kid_interests, props_registry, character_models, character_model_url")
+      .select("kid_name, kid_interests, character_models, character_model_url")
       .eq("id", projectId)
       .single();
 
@@ -263,76 +236,32 @@ async function handler(req, res) {
     }
 
     /* ---------------------------------------------
-       2. Extract context + visuals from final story
+       2. Extract unified registry (SINGLE API CALL)
     --------------------------------------------- */
-    console.log("Extracting context from finalized story...");
-    const contextRegistry = await extractContextFromStory(storyPages, kid_interests);
-    
-    console.log("Extracting character visuals...");
-    const visualCharacters = await extractCharacterVisuals(
+    console.log("Extracting unified story registry...");
+    const storyRegistry = await extractUnifiedRegistry(
       storyPages,
-      contextRegistry,
+      kid_interests,
+      kid_name,
       existingCharacterModels
     );
 
-    /* ---------------------------------------------
-       3. Merge into props_registry SAFELY
-    --------------------------------------------- */
-    let propsRegistry =
-      project?.props_registry?.[0] || {
-        notes: "",
-        characters: {},
-        props: {},
-        environments: {},
-      };
-
-    // Merge characters WITHOUT overwriting locked/user visuals
-    for (const [key, character] of Object.entries(
-      visualCharacters.characters || {}
-    )) {
-      const existing = propsRegistry.characters[key];
-
-      // HARD PROTECTION: never overwrite user or locked visuals
-      if (
-        existing &&
-        (existing.visual_source === "user" ||
-         existing.visual_source === "locked")
-      ) {
-        // But DO update non-visual fields
-        propsRegistry.characters[key] = {
-          ...existing,
-          name: character.name || existing.name,
-          role: character.role || existing.role,
-        };
-        continue;
-      }
-
-      // Check if this character has an uploaded model
-      const hasModel = existingCharacterModels.some(
-        cm => cm.character_key === key || 
-              cm.name?.toLowerCase() === character.name?.toLowerCase()
-      );
-
-      propsRegistry.characters[key] = {
-        ...existing,
-        ...character,
-        has_model: hasModel || character.has_model,
-        visual_source: hasModel ? "user" : (character.visual_source || "auto"),
-        first_seen_page:
-          existing?.first_seen_page ?? character.first_seen_page ?? 1,
-      };
-    }
+    console.log("=== UNIFIED REGISTRY EXTRACTED ===");
+    console.log(JSON.stringify(storyRegistry, null, 2));
+    console.log("==================================");
 
     /* ---------------------------------------------
-       4. Persist everything with story_locked = true
+       3. Persist everything with story_locked = true
+       Store in props_registry for backward compatibility
+       Clear context_registry (no longer needed separately)
     --------------------------------------------- */
     const { data: updated, error: updateError } = await supabase
       .from("book_projects")
       .update({
         story_json: storyPages,
         story_locked: true,
-        context_registry: contextRegistry,
-        props_registry: [propsRegistry],
+        props_registry: [storyRegistry],  // Unified registry stored here
+        context_registry: null,            // Deprecated - clear it
         character_models: existingCharacterModels,
       })
       .eq("id", projectId)
@@ -345,14 +274,14 @@ async function handler(req, res) {
     }
 
     /* ---------------------------------------------
-       5. Respond with full project data
+       4. Respond with full project data
     --------------------------------------------- */
     return res.status(200).json({
       projectId: updated.id,
       story_json: updated.story_json,
       story_locked: true,
-      context_registry: updated.context_registry,
-      props_registry: updated.props_registry,
+      story_registry: storyRegistry,       // New unified name
+      props_registry: updated.props_registry, // For backward compat
       character_models: updated.character_models,
     });
 

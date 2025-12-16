@@ -151,7 +151,18 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
 // Get characters detected in story that don't have models
 function getDetectedCharactersNeedingModels(project, existingModels) {
   const detected = [];
-  const context = project.context_registry || {};
+  
+  // Get unified registry (stored in props_registry)
+  let registry = {};
+  if (Array.isArray(project.props_registry) && project.props_registry.length > 0) {
+    registry = project.props_registry[0];
+  } else if (project.props_registry && typeof project.props_registry === "object") {
+    registry = project.props_registry;
+  }
+  
+  // Characters are now in registry.characters
+  const characters = registry.characters || {};
+  
   const existingKeys = new Set(existingModels.map(cm => cm.character_key));
   const existingNames = new Set(existingModels.map(cm => cm.name?.toLowerCase()));
 
@@ -176,62 +187,35 @@ function getDetectedCharactersNeedingModels(project, existingModels) {
     if (lowerName.length < 2) return false;
     
     // A proper name typically starts with uppercase in the original
-    // and is a specific identifier, not a role
     const isCapitalized = name[0] === name[0].toUpperCase();
     
     // Check if it looks like a proper noun (specific name)
-    // Names like "Gary", "Mom", "Grandma" are fine
-    // But "the friends", "some kids" are not
     return isCapitalized || 
            ['mom', 'dad', 'grandma', 'grandpa', 'grandmother', 'grandfather', 
             'mommy', 'daddy', 'nana', 'papa', 'granny', 'uncle', 'aunt',
             'teacher', 'coach'].includes(lowerName);
   }
 
-  // Check additional_children (siblings, friends)
-  for (const [key, child] of Object.entries(context.additional_children || {})) {
-    const name = child.name || key;
-    if (!existingKeys.has(key) && 
-        !existingNames.has(name?.toLowerCase()) &&
-        isProperCharacterName(name)) {
-      detected.push({
-        character_key: key,
-        name: name,
-        role: child.relationship || "sibling",
-        source: "story",
-      });
-    }
-  }
-
-  // Check pets - pets almost always have specific names
-  for (const [key, pet] of Object.entries(context.pets || {})) {
-    const name = pet.name || key;
-    if (!existingKeys.has(key) && 
-        !existingNames.has(name?.toLowerCase()) &&
-        isProperCharacterName(name)) {
-      detected.push({
-        character_key: key,
-        name: name,
-        role: "pet",
-        type: pet.type || pet.species,
-        source: "story",
-      });
-    }
-  }
-
-  // Check people (parents, grandparents, teachers, etc.)
-  for (const [key, person] of Object.entries(context.people || {})) {
-    const name = person.name || key;
-    if (!existingKeys.has(key) && 
-        !existingNames.has(name?.toLowerCase()) &&
-        isProperCharacterName(name)) {
-      detected.push({
-        character_key: key,
-        name: name,
-        role: person.relationship || "other",
-        source: "story",
-      });
-    }
+  // Check all characters in unified registry
+  for (const [key, char] of Object.entries(characters)) {
+    const name = char.name || key;
+    
+    // Skip if already has a model
+    if (char.has_model) continue;
+    if (existingKeys.has(key)) continue;
+    if (existingNames.has(name?.toLowerCase())) continue;
+    if (!isProperCharacterName(name)) continue;
+    
+    // Skip protagonist - they're handled separately
+    if (char.role === "protagonist") continue;
+    
+    detected.push({
+      character_key: key,
+      name: name,
+      role: char.role || char.relationship || "other",
+      type: char.type,
+      source: "story",
+    });
   }
 
   return detected;
