@@ -303,6 +303,19 @@ function hasProtagonistModel(project) {
   return characterModels.some(cm => cm.is_protagonist || cm.role === "protagonist");
 }
 
+// Check if project is ready for composition (has enough illustrations)
+function isProjectReadyForComposition(project) {
+  if (!project) return false;
+  if (!project.story_json?.length) return false;
+  if (!project.illustrations?.length) return false;
+  
+  // Check if at least 50% of pages have illustrations
+  const pageCount = project.story_json.length;
+  const illustratedCount = project.illustrations.filter(i => i.image_url).length;
+  
+  return illustratedCount >= Math.ceil(pageCount / 2);
+}
+
 // Render the storyboard
 export function renderStoryboard(project) {
   renderCharacterPanel(project);
@@ -316,6 +329,9 @@ export function renderStoryboard(project) {
 
   // Check if protagonist model exists - required for generation
   const hasProtagonist = hasProtagonistModel(project);
+  
+  // Check if ready for book layout/export
+  const isReadyForComposition = isProjectReadyForComposition(project);
 
   // Header actions - conditionally enable based on protagonist
   const topActions = `
@@ -328,6 +344,16 @@ export function renderStoryboard(project) {
         </button>
         <span class="warning-text">← Add main character image first</span>
       `}
+      
+      <!-- Layout & Export button -->
+      <button 
+        id="open-compositor-btn" 
+        class="btn ${isReadyForComposition ? 'btn-secondary' : 'btn-ghost'}"
+        ${!isReadyForComposition ? 'disabled title="Generate more illustrations first"' : ''}
+      >
+        <span>📖</span>
+        <span>Layout & Export</span>
+      </button>
     </div>
     ${!hasProtagonist ? `
       <div class="protagonist-required-notice">
@@ -459,6 +485,42 @@ export function renderStoryboard(project) {
 
   $("add-protagonist-inline")?.addEventListener("click", () => {
     openAddCharacterModal(true);
+  });
+
+  // Wire compositor button
+  $("open-compositor-btn")?.addEventListener("click", async () => {
+    if (!isReadyForComposition) {
+      showToast("Not ready", "Generate more illustrations first", "warn");
+      return;
+    }
+    
+    // Dynamic import the compositor to avoid loading it until needed
+    const { CompositorUI, projectToBookData } = await import('../compositor/index.js');
+    
+    // Convert project to book data format
+    const bookData = projectToBookData(project);
+    
+    // Create compositor and initialize
+    const compositor = new CompositorUI("results");
+    compositor.initialize(bookData);
+    
+    // Set up callbacks
+    compositor.onExportComplete = (format) => {
+      showToast("Export complete", `Your book has been exported as ${format.toUpperCase()}`, "success");
+    };
+    
+    compositor.onTemplateChange = (templateId) => {
+      console.log("Template changed to:", templateId);
+    };
+    
+    // Update phase
+    document.body.dataset.phase = "compositor";
+    
+    // Update workspace title
+    const title = $("workspace-title");
+    const subtitle = $("workspace-subtitle");
+    if (title) title.textContent = "Book Layout";
+    if (subtitle) subtitle.textContent = "Choose a template and export your book";
   });
 
   initUploadModal();

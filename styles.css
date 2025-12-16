@@ -1659,3 +1659,27 @@ body[data-phase="edit-story"] #results {
   object-fit: contain;
   border-radius: 12px;
 }
+/* =============================================
+   COMPOSITOR PHASE LAYOUT
+   ============================================= */
+body[data-phase="compositor"] .main {
+  grid-template-columns: 1fr;
+}
+
+body[data-phase="compositor"] .panel {
+  display: none;
+}
+
+body[data-phase="compositor"] .workspace-body {
+  display: block;
+  height: 100%;
+}
+
+body[data-phase="compositor"] .character-panel {
+  display: none;
+}
+
+body[data-phase="compositor"] #results {
+  padding: 0;
+  height: calc(100vh - 120px);
+}
