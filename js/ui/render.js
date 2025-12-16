@@ -323,10 +323,10 @@ export function renderStoryboard(project) {
       ${hasProtagonist ? `
         <button id="generate-illustrations-btn" class="btn btn-primary">Generate All Illustrations</button>
       ` : `
-        <button id="generate-illustrations-btn" class="btn btn-primary" disabled title="Add protagonist first">
+        <button id="generate-illustrations-btn" class="btn btn-primary" disabled title="Add main character image first">
           Generate All Illustrations
         </button>
-        <span class="warning-text">← Add protagonist photo first</span>
+        <span class="warning-text">← Add main character image first</span>
       `}
     </div>
     ${!hasProtagonist ? `

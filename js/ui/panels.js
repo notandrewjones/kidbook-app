@@ -64,7 +64,7 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
             <span class="panel-section-count">${detectedCharacters.length}</span>
           </div>
           <p class="panel-section-desc">
-            These characters appear in your story. Add photos for visual consistency, or let AI generate them.
+            These characters appear in your story. Add a photo reference or let AI generate them.
           </p>
           <div class="detected-characters-list">
             ${detectedCharacters.map(dc => renderDetectedCharacterCard(dc)).join("")}

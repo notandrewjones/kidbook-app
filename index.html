@@ -18,8 +18,8 @@
         <a href="/dashboard" id="brand-link" class="brand">
           <div class="brand-mark">KB</div>
           <div class="brand-text">
-            <div class="brand-name">Kids Book Creator</div>
-            <div class="brand-sub">Story → Character → Scenes</div>
+            <div class="brand-name">Business Name</div>
+            <div class="brand-sub">Business Tagline</div>
           </div>
         </a>
 
@@ -68,10 +68,10 @@
           <div class="panel-title">Create a new book</div>
 
           <form id="kid-form" class="form">
-            <label class="label">Child's Name</label>
+            <label class="label">Main Character's Name</label>
             <input id="kid-name" class="input" type="text" placeholder="e.g., Hannah" required />
 
-            <label class="label">Child's Interests</label>
+            <label class="label">Story Topic</label>
             <input id="kid-interests" class="input" type="text" placeholder="e.g., space, puppies, soccer" />
 
             <button type="submit" class="btn btn-primary">
@@ -81,17 +81,15 @@
           </form>
 
           <div class="panel-actions">
-            <button id="reset-session" class="btn btn-ghost">Start New Book</button>
-            <button id="go-dashboard" class="btn btn-secondary">My Books</button>
+            <button id="reset-session" class="btn btn-ghost">Start New Story</button>
+            <button id="go-dashboard" class="btn btn-secondary">My Stories</button>
           </div>
         </div>
 
         <div class="panel-card subtle">
           <div class="panel-title">Tips</div>
           <ul class="tips">
-            <li>Keep interests short (3–6 words).</li>
-            <li>Regenerate scenes with "Artist revision notes".</li>
-            <li>Use storyboard grid to spot inconsistencies fast.</li>
+            <li>If you have a specific vision for your story, include as much detail as your can in your 'topic' submission.</li>
           </ul>
         </div>
       </aside>
@@ -166,16 +164,20 @@
             </button>
             
             <label class="label">Revision notes</label>
-            <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add a red kite..."></textarea>
+            <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
 
             <button id="regen-btn" class="btn btn-primary">
               <span>Regenerate</span>
               <span class="pill">max 2</span>
             </button>
 
-            <div class="modal-help">
-              Add notes after "Artist revision notes:" is automatically appended.
+            <!---
+            
+             <div class="modal-help">
+              THIS TEXT WOULD APPEAR AS A TOOL TIP IN THE REGENERATION WINDOW IF UNCOMMENTED
             </div>
+            
+            -->
           </div>
         </div>
       </div>
