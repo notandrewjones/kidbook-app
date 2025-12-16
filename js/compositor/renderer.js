@@ -51,23 +51,32 @@ export class PageRenderer {
    * This solves CORS issues and ensures images render properly
    */
   async loadImageAsDataUrl(url) {
-    if (!url) return null;
+    console.log('[Renderer] loadImageAsDataUrl called with:', url ? url.substring(0, 80) + '...' : 'null');
+    
+    if (!url) {
+      console.log('[Renderer] No URL provided, returning null');
+      return null;
+    }
     
     // Return cached version
     if (imageCache.has(url)) {
+      console.log('[Renderer] Returning cached data URL');
       return imageCache.get(url);
     }
     
     // Already a data URL
     if (url.startsWith('data:')) {
+      console.log('[Renderer] Already a data URL, returning as-is');
       return url;
     }
 
+    console.log('[Renderer] Loading image from URL...');
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       
       img.onload = () => {
+        console.log('[Renderer] Image loaded successfully, dimensions:', img.naturalWidth, 'x', img.naturalHeight);
         try {
           // Draw to canvas and convert to data URL
           const canvas = document.createElement('canvas');
@@ -76,17 +85,19 @@ export class PageRenderer {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
           const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          console.log('[Renderer] Converted to data URL, length:', dataUrl.length);
           imageCache.set(url, dataUrl);
           resolve(dataUrl);
         } catch (err) {
           // CORS error on canvas - fall back to original URL
-          console.warn('Canvas tainted, using original URL:', err.message);
+          console.warn('[Renderer] Canvas tainted, using original URL:', err.message);
           resolve(url);
         }
       };
       
-      img.onerror = () => {
-        console.warn('Image load failed, using original URL');
+      img.onerror = (err) => {
+        console.warn('[Renderer] Image load failed:', err);
+        console.log('[Renderer] Falling back to original URL');
         resolve(url);
       };
       
@@ -102,10 +113,14 @@ export class PageRenderer {
    * @returns {Promise<SVGElement>} - The rendered SVG element
    */
   async render(pageData, template, overrides = {}) {
+    console.log('[Renderer] render() called for page:', pageData.page);
+    console.log('[Renderer] pageData.imageUrl:', pageData.imageUrl ? 'present' : 'missing');
+    
     const tmpl = typeof template === 'string' ? getTemplate(template) : template;
     const config = this.mergeConfig(tmpl, overrides);
     
     const { width, height } = this.dimensions;
+    console.log('[Renderer] Page dimensions:', width, 'x', height);
     
     // Create SVG element
     const svg = this.createSvgElement(width, height);
@@ -116,7 +131,11 @@ export class PageRenderer {
     // Convert image to data URL before rendering
     let imageUrl = pageData.imageUrl;
     if (imageUrl) {
+      console.log('[Renderer] Converting image to data URL...');
       imageUrl = await this.loadImageAsDataUrl(imageUrl);
+      console.log('[Renderer] Image URL after conversion:', imageUrl ? imageUrl.substring(0, 50) + '...' : 'null');
+    } else {
+      console.log('[Renderer] No imageUrl in pageData, skipping image');
     }
     
     this.renderImage(svg, imageUrl, config, width, height);
@@ -124,6 +143,7 @@ export class PageRenderer {
     this.renderPageNumber(svg, pageData.page, config, width, height);
     this.renderEffects(svg, config, width, height);
     
+    console.log('[Renderer] render() complete');
     return svg;
   }
 
@@ -230,12 +250,20 @@ export class PageRenderer {
   }
 
   renderImage(svg, imageUrl, config, pageWidth, pageHeight) {
-    if (!imageUrl) return;
+    console.log('[Renderer] renderImage() called');
+    console.log('[Renderer] imageUrl:', imageUrl ? imageUrl.substring(0, 50) + '...' : 'null/undefined');
+    
+    if (!imageUrl) {
+      console.log('[Renderer] No imageUrl, returning early');
+      return;
+    }
 
     const imgConfig = config.layout?.image || {};
     const position = imgConfig.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
     const frameType = imgConfig.frame || 'rectangle';
     const padding = imgConfig.padding || 0;
+
+    console.log('[Renderer] Image config:', { frameType, padding, position });
 
     // Calculate actual pixel positions
     const x = position.x * pageWidth;
@@ -248,6 +276,8 @@ export class PageRenderer {
     const paddedY = y + (padding * pageHeight);
     const paddedW = w - (padding * pageWidth * 2);
     const paddedH = h - (padding * pageHeight * 2);
+
+    console.log('[Renderer] Image position:', { paddedX, paddedY, paddedW, paddedH });
 
     // Create defs for clip path and filters
     const clipId = this.generateUniqueId('image-clip');
@@ -296,6 +326,7 @@ export class PageRenderer {
     }
 
     svg.appendChild(image);
+    console.log('[Renderer] Image element appended to SVG');
 
     // Add border if configured
     if (imgConfig.border) {
