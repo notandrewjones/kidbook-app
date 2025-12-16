@@ -286,6 +286,18 @@ export class PageRenderer {
       svg.insertBefore(defs, svg.firstChild);
     }
 
+    // Create clip path
+    const clipId = this.generateUniqueId('image-clip');
+    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    clipPath.setAttribute('id', clipId);
+    
+    // Create the clip shape based on frame type
+    const clipShape = this.createClipShape(frameType, paddedX, paddedY, paddedW, paddedH);
+    clipPath.appendChild(clipShape);
+    defs.appendChild(clipPath);
+    
+    console.log('[Renderer] Created clip path with frame type:', frameType);
+
     // Create image element
     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
     image.setAttribute('x', paddedX);
@@ -298,32 +310,7 @@ export class PageRenderer {
     image.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', imageUrl);
     
     image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-    
-    // Add clip-path for frame shape (using simple rect clip for now)
-    const clipId = this.generateUniqueId('image-clip');
-    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-    clipPath.setAttribute('id', clipId);
-    
-    // Use simple rect for clipping
-    const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    clipRect.setAttribute('x', paddedX);
-    clipRect.setAttribute('y', paddedY);
-    clipRect.setAttribute('width', paddedW);
-    clipRect.setAttribute('height', paddedH);
-    
-    // Add rounded corners if frame type is rounded
-    if (frameType === 'rounded') {
-      const radius = Math.min(paddedW, paddedH) * 0.05;
-      clipRect.setAttribute('rx', radius);
-      clipRect.setAttribute('ry', radius);
-    }
-    
-    clipPath.appendChild(clipRect);
-    defs.appendChild(clipPath);
-    
     image.setAttribute('clip-path', `url(#${clipId})`);
-    
-    console.log('[Renderer] Clip path ID:', clipId);
 
     // Add drop shadow if enabled
     if (config.effects?.imageDropShadow) {
@@ -335,15 +322,219 @@ export class PageRenderer {
 
     svg.appendChild(image);
     console.log('[Renderer] Image element appended to SVG');
-    
-    // Log the actual image element for debugging
-    console.log('[Renderer] Image element:', image);
-    console.log('[Renderer] Image href:', image.getAttribute('href')?.substring(0, 50));
 
     // Add border if configured
     if (imgConfig.border) {
       this.renderImageBorder(svg, paddedX, paddedY, paddedW, paddedH, frameType, imgConfig.border, config);
     }
+  }
+
+  /**
+   * Create a clip shape element for the given frame type
+   * All coordinates are absolute (not relative to a transform)
+   */
+  createClipShape(frameType, x, y, width, height) {
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+    
+    switch (frameType) {
+      case 'rectangle':
+        return this.createRect(x, y, width, height, 0);
+        
+      case 'rounded': {
+        const radius = Math.min(width, height) * 0.08;
+        return this.createRect(x, y, width, height, radius);
+      }
+      
+      case 'circle': {
+        const r = Math.min(width, height) / 2;
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', cx);
+        circle.setAttribute('cy', cy);
+        circle.setAttribute('r', r);
+        return circle;
+      }
+      
+      case 'oval': {
+        const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        ellipse.setAttribute('cx', cx);
+        ellipse.setAttribute('cy', cy);
+        ellipse.setAttribute('rx', width / 2);
+        ellipse.setAttribute('ry', height / 2);
+        return ellipse;
+      }
+      
+      case 'cloud': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x + w*0.15} ${y + h*0.7}
+          Q ${x + w*0.05} ${y + h*0.7} ${x + w*0.05} ${y + h*0.55}
+          Q ${x + w*0.05} ${y + h*0.35} ${x + w*0.2} ${y + h*0.3}
+          Q ${x + w*0.15} ${y + h*0.15} ${x + w*0.35} ${y + h*0.15}
+          Q ${x + w*0.45} ${y + h*0.05} ${x + w*0.6} ${y + h*0.12}
+          Q ${x + w*0.8} ${y + h*0.08} ${x + w*0.85} ${y + h*0.3}
+          Q ${x + w*0.95} ${y + h*0.35} ${x + w*0.95} ${y + h*0.55}
+          Q ${x + w*0.95} ${y + h*0.75} ${x + w*0.8} ${y + h*0.78}
+          Q ${x + w*0.75} ${y + h*0.88} ${x + w*0.55} ${y + h*0.85}
+          Q ${x + w*0.4} ${y + h*0.92} ${x + w*0.25} ${y + h*0.82}
+          Q ${x + w*0.15} ${y + h*0.85} ${x + w*0.15} ${y + h*0.7}
+          Z
+        `);
+        return path;
+      }
+      
+      case 'heart': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x + w*0.5} ${y + h*0.85}
+          C ${x + w*0.15} ${y + h*0.55} ${x + w*0.05} ${y + h*0.35} ${x + w*0.25} ${y + h*0.2}
+          C ${x + w*0.4} ${y + h*0.1} ${x + w*0.5} ${y + h*0.25} ${x + w*0.5} ${y + h*0.3}
+          C ${x + w*0.5} ${y + h*0.25} ${x + w*0.6} ${y + h*0.1} ${x + w*0.75} ${y + h*0.2}
+          C ${x + w*0.95} ${y + h*0.35} ${x + w*0.85} ${y + h*0.55} ${x + w*0.5} ${y + h*0.85}
+          Z
+        `);
+        return path;
+      }
+      
+      case 'star': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const outerR = Math.min(width, height) / 2;
+        const innerR = outerR * 0.4;
+        const points = 5;
+        let d = '';
+        
+        for (let i = 0; i < points * 2; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const angle = (i * Math.PI / points) - Math.PI / 2;
+          const px = cx + r * Math.cos(angle);
+          const py = cy + r * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + ` ${px} ${py} `;
+        }
+        d += 'Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+      
+      case 'hexagon': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const r = Math.min(width, height) / 2;
+        let d = '';
+        
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI / 3) - Math.PI / 2;
+          const px = cx + r * Math.cos(angle);
+          const py = cy + r * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + ` ${px} ${py} `;
+        }
+        d += 'Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+      
+      case 'arch': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x} ${y + h}
+          L ${x} ${y + h*0.4}
+          Q ${x} ${y} ${x + w*0.5} ${y}
+          Q ${x + w} ${y} ${x + w} ${y + h*0.4}
+          L ${x + w} ${y + h}
+          Z
+        `);
+        return path;
+      }
+      
+      case 'blob': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x + w*0.5} ${y + h*0.05}
+          Q ${x + w*0.85} ${y + h*0.08} ${x + w*0.92} ${y + h*0.35}
+          Q ${x + w*0.98} ${y + h*0.6} ${x + w*0.82} ${y + h*0.82}
+          Q ${x + w*0.65} ${y + h*0.98} ${x + w*0.4} ${y + h*0.92}
+          Q ${x + w*0.12} ${y + h*0.88} ${x + w*0.08} ${y + h*0.58}
+          Q ${x + w*0.02} ${y + h*0.28} ${x + w*0.22} ${y + h*0.12}
+          Q ${x + w*0.35} ${y + h*0.02} ${x + w*0.5} ${y + h*0.05}
+          Z
+        `);
+        return path;
+      }
+      
+      case 'scallop': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const scallops = 8;
+        const scW = w / scallops;
+        const scH = h / scallops;
+        const depth = 0.12;
+        
+        let d = `M ${x} ${y + h * depth}`;
+        
+        // Top edge
+        for (let i = 0; i < scallops; i++) {
+          const x1 = x + i * scW;
+          const x2 = x + (i + 0.5) * scW;
+          const x3 = x + (i + 1) * scW;
+          d += ` Q ${x2} ${y} ${x3} ${y + h * depth}`;
+        }
+        
+        // Right edge
+        for (let i = 0; i < scallops; i++) {
+          const y1 = y + i * scH;
+          const y2 = y + (i + 0.5) * scH;
+          const y3 = y + (i + 1) * scH;
+          d += ` Q ${x + w} ${y2} ${x + w - w * depth} ${y3}`;
+        }
+        
+        // Bottom edge
+        for (let i = scallops; i > 0; i--) {
+          const x1 = x + i * scW;
+          const x2 = x + (i - 0.5) * scW;
+          const x3 = x + (i - 1) * scW;
+          d += ` Q ${x2} ${y + h} ${x3} ${y + h - h * depth}`;
+        }
+        
+        // Left edge
+        for (let i = scallops; i > 0; i--) {
+          const y1 = y + i * scH;
+          const y2 = y + (i - 0.5) * scH;
+          const y3 = y + (i - 1) * scH;
+          d += ` Q ${x} ${y2} ${x + w * depth} ${y3}`;
+        }
+        
+        d += ' Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+      
+      default:
+        // Default to rectangle
+        return this.createRect(x, y, width, height, 0);
+    }
+  }
+
+  /**
+   * Helper to create a rect element
+   */
+  createRect(x, y, width, height, radius = 0) {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', x);
+    rect.setAttribute('y', y);
+    rect.setAttribute('width', width);
+    rect.setAttribute('height', height);
+    if (radius > 0) {
+      rect.setAttribute('rx', radius);
+      rect.setAttribute('ry', radius);
+    }
+    return rect;
   }
 
   renderImageBorder(svg, x, y, w, h, frameType, borderConfig, config) {
@@ -352,21 +543,13 @@ export class PageRenderer {
       : borderConfig.color;
     const borderWidth = borderConfig.width || 2;
 
-    const frameShape = FRAME_SHAPES[frameType];
-    if (frameShape) {
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', `translate(${x}, ${y})`);
-      g.innerHTML = frameShape.svg(w, h);
-      
-      const path = g.querySelector('path, rect, circle, ellipse');
-      if (path) {
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', borderColor);
-        path.setAttribute('stroke-width', borderWidth);
-      }
-      
-      svg.appendChild(g);
-    }
+    // Create a border shape matching the frame
+    const borderShape = this.createClipShape(frameType, x, y, w, h);
+    borderShape.setAttribute('fill', 'none');
+    borderShape.setAttribute('stroke', borderColor);
+    borderShape.setAttribute('stroke-width', borderWidth);
+    
+    svg.appendChild(borderShape);
   }
 
   renderText(svg, text, config, pageWidth, pageHeight) {
