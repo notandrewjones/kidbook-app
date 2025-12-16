@@ -32,6 +32,9 @@ export class CompositorUI {
     // Per-page crop settings: { [pageIndex]: { cropZoom, cropX, cropY } }
     this.pageCropSettings = {};
     
+    // Per-page frame settings: { [pageIndex]: { scale, offsetX, offsetY } }
+    this.pageFrameSettings = {};
+    
     this.currentPageIndex = 0;
     this.isExporting = false;
     this.isRendering = false;
@@ -48,11 +51,28 @@ export class CompositorUI {
     this.onTemplateChange = null;
   }
 
-  // Get crop settings for current page
+  // Get frame settings for current page (size and position of the frame)
+  getCurrentFrameSettings() {
+    return this.pageFrameSettings[this.currentPageIndex] || {
+      scale: 1.0,
+      offsetX: 0,
+      offsetY: 0,
+    };
+  }
+
+  // Set frame settings for current page
+  setCurrentFrameSettings(settings) {
+    this.pageFrameSettings[this.currentPageIndex] = {
+      ...this.getCurrentFrameSettings(),
+      ...settings,
+    };
+  }
+
+  // Get crop settings for current page (zoom/pan within the image)
   getCurrentCrop() {
     return this.pageCropSettings[this.currentPageIndex] || {
       cropZoom: 1.0,
-      cropX: 0.5,  // 0-1, center of image visible in frame
+      cropX: 0.5,
       cropY: 0.5,
     };
   }
@@ -365,6 +385,7 @@ export class CompositorUI {
   renderImageTaskbar() {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFrame = this.customizations.frame || tmpl.layout?.image?.frame || 'rounded';
+    const frameSettings = this.getCurrentFrameSettings();
     const crop = this.getCurrentCrop();
     
     return `
@@ -381,23 +402,21 @@ export class CompositorUI {
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Crop (this page)</label>
-        <div class="taskbar-crop">
-          <button class="taskbar-btn" id="crop-zoom-out" title="Zoom out">−</button>
-          <span class="taskbar-value" id="crop-zoom-value">${Math.round(crop.cropZoom * 100)}%</span>
-          <button class="taskbar-btn" id="crop-zoom-in" title="Zoom in">+</button>
-        </div>
-        <button class="taskbar-btn-icon" id="crop-reset" title="Reset crop">⟲</button>
+        <label class="taskbar-label">Frame Size</label>
+        <span class="taskbar-value" id="frame-scale-value">${Math.round(frameSettings.scale * 100)}%</span>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Pan</label>
-        <div class="taskbar-pan">
-          <button class="taskbar-btn" id="pan-left" title="Pan left">←</button>
-          <button class="taskbar-btn" id="pan-right" title="Pan right">→</button>
-          <button class="taskbar-btn" id="pan-up" title="Pan up">↑</button>
-          <button class="taskbar-btn" id="pan-down" title="Pan down">↓</button>
+        <label class="taskbar-label">Crop</label>
+        <div class="taskbar-crop">
+          <button class="taskbar-btn" id="crop-zoom-out" title="Show more of image">−</button>
+          <span class="taskbar-value" id="crop-zoom-value">${Math.round(crop.cropZoom * 100)}%</span>
+          <button class="taskbar-btn" id="crop-zoom-in" title="Zoom into image">+</button>
         </div>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <button class="taskbar-btn-icon" id="frame-reset" title="Reset all">⟲</button>
       </div>
     `;
   }
@@ -456,7 +475,7 @@ export class CompositorUI {
   }
 
   bindImageTaskbarEvents() {
-    // Frame selection
+    // Frame shape selection
     document.querySelectorAll('.taskbar-frame-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.taskbar-frame-btn').forEach(b => b.classList.remove('active'));
@@ -466,47 +485,27 @@ export class CompositorUI {
       });
     });
 
-    // Crop zoom controls (per-page)
+    // Crop zoom controls (zoom within image, affects what part of image is visible)
     document.getElementById('crop-zoom-out')?.addEventListener('click', () => {
       const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropZoom: Math.max(0.5, crop.cropZoom - 0.1) });
+      this.setCurrentCrop({ cropZoom: Math.max(1.0, crop.cropZoom - 0.1) });
       document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
       this.renderPreviewAndUpdateOverlay();
     });
 
     document.getElementById('crop-zoom-in')?.addEventListener('click', () => {
       const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropZoom: Math.min(2.0, crop.cropZoom + 0.1) });
+      this.setCurrentCrop({ cropZoom: Math.min(3.0, crop.cropZoom + 0.1) });
       document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
       this.renderPreviewAndUpdateOverlay();
     });
 
-    document.getElementById('crop-reset')?.addEventListener('click', () => {
+    // Reset all
+    document.getElementById('frame-reset')?.addEventListener('click', () => {
+      this.pageFrameSettings[this.currentPageIndex] = { scale: 1.0, offsetX: 0, offsetY: 0 };
       this.pageCropSettings[this.currentPageIndex] = { cropZoom: 1.0, cropX: 0.5, cropY: 0.5 };
+      document.getElementById('frame-scale-value').textContent = '100%';
       document.getElementById('crop-zoom-value').textContent = '100%';
-      this.renderPreviewAndUpdateOverlay();
-    });
-
-    // Pan controls (per-page)
-    const panStep = 0.05;
-    document.getElementById('pan-left')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropX: Math.max(0, crop.cropX - panStep) });
-      this.renderPreviewAndUpdateOverlay();
-    });
-    document.getElementById('pan-right')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropX: Math.min(1, crop.cropX + panStep) });
-      this.renderPreviewAndUpdateOverlay();
-    });
-    document.getElementById('pan-up')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropY: Math.max(0, crop.cropY - panStep) });
-      this.renderPreviewAndUpdateOverlay();
-    });
-    document.getElementById('pan-down')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropY: Math.min(1, crop.cropY + panStep) });
       this.renderPreviewAndUpdateOverlay();
     });
   }
@@ -655,6 +654,11 @@ export class CompositorUI {
   }
 
   selectElement(type, element) {
+    console.log('[UI] selectElement:', type);
+    
+    // Clear any existing drag handlers first
+    this.cleanupDragHandlers();
+    
     this.selectedElement = type;
     const rect = element.getBoundingClientRect();
     this.showSelectionOverlay(type, rect);
@@ -662,15 +666,40 @@ export class CompositorUI {
     
     if (type === 'image') {
       this.setupImageDrag();
+    } else {
+      // For text, disable drag/resize on overlay
+      const overlay = document.getElementById('selection-overlay');
+      if (overlay) {
+        overlay.onmousedown = null;
+        overlay.querySelectorAll('.resize-handle').forEach(h => {
+          h.style.display = 'none';
+        });
+      }
     }
-    // Text doesn't have drag-to-resize/move - only taskbar controls
+  }
+  
+  // Show resize handles (for image) or hide them (for text)
+  updateResizeHandles(show) {
+    const overlay = document.getElementById('selection-overlay');
+    if (overlay) {
+      overlay.querySelectorAll('.resize-handle').forEach(h => {
+        h.style.display = show ? 'block' : 'none';
+      });
+    }
   }
 
   setupImageDrag() {
     const overlay = document.getElementById('selection-overlay');
     if (!overlay) return;
 
-    // Drag overlay to pan image
+    console.log('[UI] Setting up image drag handlers');
+    
+    // Show resize handles for image
+    overlay.querySelectorAll('.resize-handle').forEach(h => {
+      h.style.display = 'block';
+    });
+
+    // Drag overlay to pan the crop (which part of image is visible)
     overlay.onmousedown = (e) => {
       if (e.target.classList.contains('resize-handle')) return;
       
@@ -681,22 +710,28 @@ export class CompositorUI {
       e.preventDefault();
     };
 
-    // Resize handles for crop zoom
+    // Resize handles - resize the FRAME on the page
     overlay.querySelectorAll('.resize-handle').forEach(handle => {
       handle.onmousedown = (e) => {
         e.stopPropagation();
         this.isResizing = true;
+        this.resizeHandle = handle.dataset.handle;
         this.dragStart = { x: e.clientX, y: e.clientY };
-        this.dragStartValues = { cropZoom: this.getCurrentCrop().cropZoom };
+        const frame = this.getCurrentFrameSettings();
+        this.dragStartValues = { 
+          scale: frame.scale,
+          offsetX: frame.offsetX,
+          offsetY: frame.offsetY,
+        };
         e.preventDefault();
       };
     });
 
     document.onmousemove = (e) => {
       if (this.isDragging) {
-        // Pan within image
-        const dx = (e.clientX - this.dragStart.x) / 300;
-        const dy = (e.clientY - this.dragStart.y) / 300;
+        // Pan within image (move which part of image is visible in frame)
+        const dx = (e.clientX - this.dragStart.x) / 200;
+        const dy = (e.clientY - this.dragStart.y) / 200;
         
         this.setCurrentCrop({
           cropX: Math.max(0, Math.min(1, this.dragStartValues.cropX - dx)),
@@ -707,13 +742,32 @@ export class CompositorUI {
       }
       
       if (this.isResizing) {
-        // Resize = crop zoom
-        const dy = (this.dragStart.y - e.clientY) / 150;
-        const newZoom = Math.max(0.5, Math.min(2.0, this.dragStartValues.cropZoom + dy));
+        // Resize frame - calculate based on which corner is being dragged
+        const handle = this.resizeHandle;
+        let dx = e.clientX - this.dragStart.x;
+        let dy = e.clientY - this.dragStart.y;
         
-        this.setCurrentCrop({ cropZoom: newZoom });
-        const zoomDisplay = document.getElementById('crop-zoom-value');
-        if (zoomDisplay) zoomDisplay.textContent = `${Math.round(newZoom * 100)}%`;
+        // Dragging outward should increase size
+        // For NW corner: moving left/up = larger
+        // For SE corner: moving right/down = larger
+        if (handle === 'nw') {
+          dx = -dx;
+          dy = -dy;
+        } else if (handle === 'ne') {
+          dy = -dy;
+        } else if (handle === 'sw') {
+          dx = -dx;
+        }
+        // SE is already correct (right/down = positive = larger)
+        
+        // Average movement for uniform scaling
+        const delta = (dx + dy) / 2 / 100;
+        const newScale = Math.max(0.3, Math.min(1.5, this.dragStartValues.scale + delta));
+        
+        this.setCurrentFrameSettings({ scale: newScale });
+        
+        const scaleDisplay = document.getElementById('frame-scale-value');
+        if (scaleDisplay) scaleDisplay.textContent = `${Math.round(newScale * 100)}%`;
         
         this.renderPreviewAndUpdateOverlay();
       }
@@ -722,6 +776,7 @@ export class CompositorUI {
     document.onmouseup = () => {
       this.isDragging = false;
       this.isResizing = false;
+      this.resizeHandle = null;
     };
   }
 
@@ -798,7 +853,34 @@ export class CompositorUI {
       config.layout.image.frame = this.customizations.frame;
     }
 
-    // Apply per-page crop settings
+    // Apply per-page frame settings (size and position of frame on page)
+    const frame = this.getCurrentFrameSettings();
+    if (frame.scale !== 1 || frame.offsetX !== 0 || frame.offsetY !== 0) {
+      config.layout = config.layout || {};
+      config.layout.image = config.layout.image || {};
+      const pos = config.layout.image.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
+      
+      // Scale the frame size
+      const scale = frame.scale;
+      const newWidth = pos.width * scale;
+      const newHeight = pos.height * scale;
+      
+      // Center the scaled frame (adjust x,y to keep centered)
+      const xOffset = (pos.width - newWidth) / 2;
+      const yOffset = (pos.height - newHeight) / 2;
+      
+      config.layout.image.position = {
+        ...config.layout.image.position,
+        region: {
+          x: pos.x + xOffset + frame.offsetX,
+          y: pos.y + yOffset + frame.offsetY,
+          width: newWidth,
+          height: newHeight,
+        }
+      };
+    }
+
+    // Apply per-page crop settings (zoom/pan within the image)
     const crop = this.getCurrentCrop();
     config.cropSettings = {
       zoom: crop.cropZoom,
