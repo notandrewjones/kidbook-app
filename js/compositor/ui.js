@@ -1,5 +1,5 @@
 // js/compositor/ui.js
-// Canva-style UI for book compositor
+// Canva-style UI for book compositor - v2
 
 import { 
   getAllTemplates, 
@@ -12,9 +12,6 @@ import {
 import { PageRenderer, PAGE_DIMENSIONS } from './renderer.js';
 import { bookExporter, EXPORT_FORMATS } from './exporter.js';
 
-/**
- * CompositorUI - Canva-style book composition interface
- */
 export class CompositorUI {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
@@ -32,8 +29,13 @@ export class CompositorUI {
     this.isExporting = false;
     this.isRendering = false;
     
-    // Selection state for taskbar
+    // Selection & drag state
     this.selectedElement = null; // 'text' | 'image' | null
+    this.isDragging = false;
+    this.isResizing = false;
+    this.dragStart = { x: 0, y: 0 };
+    this.dragStartOffset = { x: 0, y: 0 };
+    this.dragStartScale = 1;
     
     // Callbacks
     this.onExportComplete = null;
@@ -100,21 +102,27 @@ export class CompositorUI {
 
         <!-- Main Layout -->
         <div class="compositor-main">
-          <!-- Left Sidebar - Templates Only -->
+          <!-- Left Sidebar - All Templates -->
           <aside class="compositor-sidebar">
             <div class="sidebar-header">
               <h3>Templates</h3>
             </div>
-            <div id="template-categories" class="template-categories"></div>
             <div id="template-gallery" class="template-gallery"></div>
           </aside>
 
           <!-- Center - Canvas/Preview Area -->
           <main class="compositor-canvas-area">
             <div class="canvas-container">
-              <div id="page-preview" class="page-preview" data-selected="">
-                <div class="preview-loading">
-                  <div class="spinner"></div>
+              <div id="preview-wrapper" class="preview-wrapper">
+                <div id="page-preview" class="page-preview">
+                  <div class="preview-loading"><div class="spinner"></div></div>
+                </div>
+                <!-- Selection overlay with resize handles -->
+                <div id="selection-overlay" class="selection-overlay hidden">
+                  <div class="resize-handle nw" data-handle="nw"></div>
+                  <div class="resize-handle ne" data-handle="ne"></div>
+                  <div class="resize-handle sw" data-handle="sw"></div>
+                  <div class="resize-handle se" data-handle="se"></div>
                 </div>
               </div>
             </div>
@@ -128,9 +136,7 @@ export class CompositorUI {
 
         <!-- Floating Bottom Taskbar -->
         <div id="floating-taskbar" class="floating-taskbar hidden">
-          <div id="taskbar-content" class="taskbar-content">
-            <!-- Content populated based on selection -->
-          </div>
+          <div id="taskbar-content" class="taskbar-content"></div>
         </div>
 
         <!-- Export Modal -->
@@ -182,64 +188,53 @@ export class CompositorUI {
   }
 
   /**
-   * Render template gallery with visual previews
+   * Render all templates grouped by category in one scrollable list
    */
   renderTemplateGallery() {
     const categories = getCategories();
-    const categoriesContainer = document.getElementById('template-categories');
-    const galleryContainer = document.getElementById('template-gallery');
-
-    // Category tabs
-    categoriesContainer.innerHTML = categories.map(cat => `
-      <button class="category-tab ${cat === 'classic' ? 'active' : ''}" data-category="${cat}">
-        ${cat.charAt(0).toUpperCase() + cat.slice(1)}
-      </button>
-    `).join('');
-
-    this.renderTemplatesByCategory('classic', galleryContainer);
-
-    categoriesContainer.querySelectorAll('.category-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        categoriesContainer.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        this.renderTemplatesByCategory(tab.dataset.category, galleryContainer);
-      });
-    });
-  }
-
-  /**
-   * Render templates with visual mini-previews
-   */
-  renderTemplatesByCategory(category, container) {
-    const templates = getAllTemplates().filter(t => t.category === category);
-
-    container.innerHTML = templates.map(tmpl => `
-      <div class="template-card ${tmpl.id === this.selectedTemplate ? 'selected' : ''}" 
-           data-template="${tmpl.id}">
-        <div class="template-preview-visual" style="background: ${tmpl.colors?.background || '#fff'}">
-          ${this.generateTemplateMiniPreview(tmpl)}
+    const gallery = document.getElementById('template-gallery');
+    
+    let html = '';
+    
+    for (const category of categories) {
+      const templates = getAllTemplates().filter(t => t.category === category);
+      
+      html += `
+        <div class="template-category-section">
+          <div class="template-category-header">${category.charAt(0).toUpperCase() + category.slice(1)}</div>
+          <div class="template-category-grid">
+            ${templates.map(tmpl => `
+              <div class="template-card ${tmpl.id === this.selectedTemplate ? 'selected' : ''}" 
+                   data-template="${tmpl.id}">
+                <div class="template-preview-visual" style="background: ${tmpl.colors?.background || '#fff'}">
+                  ${this.generateTemplateMiniPreview(tmpl)}
+                </div>
+                <div class="template-name">${tmpl.name}</div>
+              </div>
+            `).join('')}
+          </div>
         </div>
-        <div class="template-info">
-          <span class="template-name">${tmpl.name}</span>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }
+    
+    gallery.innerHTML = html;
 
-    container.querySelectorAll('.template-card').forEach(card => {
+    // Bind click events
+    gallery.querySelectorAll('.template-card').forEach(card => {
       card.addEventListener('click', () => {
         this.selectTemplate(card.dataset.template);
-        container.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+        gallery.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
       });
     });
   }
 
   /**
-   * Generate a mini SVG preview of a template
+   * Generate mini SVG preview with properly scaled frames
    */
   generateTemplateMiniPreview(template) {
-    const w = 120;
-    const h = 120;
+    const w = 100;
+    const h = 100;
     const imgConfig = template.layout?.image || {};
     const textConfig = template.layout?.text || {};
     const imgPos = imgConfig.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
@@ -255,54 +250,87 @@ export class CompositorUI {
     const textX = textPos.x * w;
     const textY = textPos.y * h;
     const textW = textPos.width * w;
-    const textH = textPos.height * h;
-
-    // Generate frame shape path
-    let framePath = '';
-    const colors = template.colors || {};
     
-    switch (frameType) {
-      case 'circle':
-        const r = Math.min(imgW, imgH) / 2;
-        framePath = `<circle cx="${imgX + imgW/2}" cy="${imgY + imgH/2}" r="${r}" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      case 'oval':
-        framePath = `<ellipse cx="${imgX + imgW/2}" cy="${imgY + imgH/2}" rx="${imgW/2}" ry="${imgH/2}" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      case 'rounded':
-        const rad = Math.min(imgW, imgH) * 0.1;
-        framePath = `<rect x="${imgX}" y="${imgY}" width="${imgW}" height="${imgH}" rx="${rad}" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      case 'cloud':
-        framePath = `<ellipse cx="${imgX + imgW/2}" cy="${imgY + imgH/2}" rx="${imgW/2}" ry="${imgH/2.2}" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      case 'heart':
-        framePath = `<path d="M${imgX + imgW/2} ${imgY + imgH*0.85} C${imgX + imgW*0.15} ${imgY + imgH*0.5} ${imgX + imgW*0.15} ${imgY + imgH*0.2} ${imgX + imgW/2} ${imgY + imgH*0.35} C${imgX + imgW*0.85} ${imgY + imgH*0.2} ${imgX + imgW*0.85} ${imgY + imgH*0.5} ${imgX + imgW/2} ${imgY + imgH*0.85}Z" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      case 'star':
-        framePath = `<polygon points="${imgX + imgW/2},${imgY} ${imgX + imgW*0.62},${imgY + imgH*0.38} ${imgX + imgW},${imgY + imgH*0.38} ${imgX + imgW*0.69},${imgY + imgH*0.62} ${imgX + imgW*0.81},${imgY + imgH} ${imgX + imgW/2},${imgY + imgH*0.77} ${imgX + imgW*0.19},${imgY + imgH} ${imgX + imgW*0.31},${imgY + imgH*0.62} ${imgX},${imgY + imgH*0.38} ${imgX + imgW*0.38},${imgY + imgH*0.38}" fill="${colors.accent || '#ddd'}"/>`;
-        break;
-      default:
-        framePath = `<rect x="${imgX}" y="${imgY}" width="${imgW}" height="${imgH}" fill="${colors.accent || '#ddd'}"/>`;
-    }
+    const colors = template.colors || {};
+    const accentColor = colors.accent || '#a855f7';
+    
+    // Generate frame shape
+    const framePath = this.getFrameSVGForPreview(frameType, imgX, imgY, imgW, imgH, accentColor);
 
     // Text lines representation
     const textLines = `
-      <rect x="${textX + textW*0.1}" y="${textY + textH*0.2}" width="${textW*0.8}" height="4" rx="2" fill="${colors.text || '#333'}" opacity="0.6"/>
-      <rect x="${textX + textW*0.2}" y="${textY + textH*0.5}" width="${textW*0.6}" height="4" rx="2" fill="${colors.text || '#333'}" opacity="0.4"/>
+      <rect x="${textX + textW*0.1}" y="${textY + 4}" width="${textW*0.8}" height="3" rx="1.5" fill="${colors.text || '#333'}" opacity="0.5"/>
+      <rect x="${textX + textW*0.2}" y="${textY + 10}" width="${textW*0.6}" height="3" rx="1.5" fill="${colors.text || '#333'}" opacity="0.3"/>
     `;
 
-    return `
-      <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%">
-        ${framePath}
-        ${textLines}
-      </svg>
-    `;
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%">${framePath}${textLines}</svg>`;
   }
 
   /**
-   * Show floating taskbar with context-specific controls
+   * Get frame SVG for preview thumbnails - properly scaled for each shape
    */
+  getFrameSVGForPreview(frameType, x, y, w, h, color) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    
+    switch (frameType) {
+      case 'circle': {
+        const r = Math.min(w, h) / 2 * 0.95;
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'oval': {
+        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.95}" ry="${h/2 * 0.95}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'rounded': {
+        const rad = Math.min(w, h) * 0.12;
+        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rad}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'cloud': {
+        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.9}" ry="${h/2 * 0.85}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'heart': {
+        const scale = 0.9;
+        const hw = w * scale / 2;
+        const hh = h * scale;
+        return `<path d="M${cx} ${y + hh*0.9} C${cx - hw*0.7} ${y + hh*0.55} ${cx - hw*0.9} ${y + hh*0.2} ${cx} ${y + hh*0.35} C${cx + hw*0.9} ${y + hh*0.2} ${cx + hw*0.7} ${y + hh*0.55} ${cx} ${y + hh*0.9}Z" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'star': {
+        const r = Math.min(w, h) / 2 * 0.9;
+        const innerR = r * 0.4;
+        let d = '';
+        for (let i = 0; i < 10; i++) {
+          const radius = i % 2 === 0 ? r : innerR;
+          const angle = (i * Math.PI / 5) - Math.PI / 2;
+          const px = cx + radius * Math.cos(angle);
+          const py = cy + radius * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + `${px} ${py} `;
+        }
+        d += 'Z';
+        return `<path d="${d}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'hexagon': {
+        const r = Math.min(w, h) / 2 * 0.9;
+        let d = '';
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI / 3) - Math.PI / 2;
+          const px = cx + r * Math.cos(angle);
+          const py = cy + r * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + `${px} ${py} `;
+        }
+        d += 'Z';
+        return `<path d="${d}" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'arch': {
+        return `<path d="M${x} ${y+h} L${x} ${y+h*0.35} Q${x} ${y} ${cx} ${y} Q${x+w} ${y} ${x+w} ${y+h*0.35} L${x+w} ${y+h} Z" fill="${color}" opacity="0.7"/>`;
+      }
+      case 'blob': {
+        return `<ellipse cx="${cx}" cy="${cy}" rx="${w/2 * 0.88}" ry="${h/2 * 0.88}" fill="${color}" opacity="0.7"/>`;
+      }
+      default:
+        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}" opacity="0.7"/>`;
+    }
+  }
+
   showTaskbar(elementType) {
     const taskbar = document.getElementById('floating-taskbar');
     const content = document.getElementById('taskbar-content');
@@ -321,27 +349,43 @@ export class CompositorUI {
   }
 
   hideTaskbar() {
-    const taskbar = document.getElementById('floating-taskbar');
-    taskbar.classList.add('hidden');
+    document.getElementById('floating-taskbar')?.classList.add('hidden');
+    document.getElementById('selection-overlay')?.classList.add('hidden');
     this.selectedElement = null;
   }
 
   /**
-   * Render image/frame taskbar controls
+   * Show selection overlay with resize handles
    */
+  showSelectionOverlay(element, bounds) {
+    const overlay = document.getElementById('selection-overlay');
+    const wrapper = document.getElementById('preview-wrapper');
+    
+    if (!overlay || !wrapper) return;
+    
+    const wrapperRect = wrapper.getBoundingClientRect();
+    
+    overlay.style.left = `${bounds.left - wrapperRect.left}px`;
+    overlay.style.top = `${bounds.top - wrapperRect.top}px`;
+    overlay.style.width = `${bounds.width}px`;
+    overlay.style.height = `${bounds.height}px`;
+    overlay.classList.remove('hidden');
+    overlay.dataset.element = element;
+  }
+
   renderImageTaskbar() {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFrame = this.customizations.frame || tmpl.layout?.image?.frame || 'rounded';
     
     return `
       <div class="taskbar-section">
-        <label class="taskbar-label">Frame</label>
+        <label class="taskbar-label">Frame Shape</label>
         <div class="taskbar-frames">
-          ${Object.values(FRAME_SHAPES).slice(0, 8).map(frame => `
-            <button class="taskbar-frame-btn ${frame.id === currentFrame ? 'active' : ''}" 
-                    data-frame="${frame.id}" title="${frame.name}">
+          ${Object.keys(FRAME_SHAPES).slice(0, 10).map(frameId => `
+            <button class="taskbar-frame-btn ${frameId === currentFrame ? 'active' : ''}" 
+                    data-frame="${frameId}" title="${FRAME_SHAPES[frameId].name}">
               <svg viewBox="0 0 32 32" width="24" height="24">
-                ${this.getFrameIconSVG(frame.id)}
+                ${this.getFrameIconSVG(frameId)}
               </svg>
             </button>
           `).join('')}
@@ -349,56 +393,29 @@ export class CompositorUI {
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Size</label>
-        <div class="taskbar-scale">
-          <button class="taskbar-btn" id="scale-down" title="Smaller">−</button>
-          <span class="taskbar-scale-value" id="scale-value">${Math.round((this.customizations.imageScale || 1) * 100)}%</span>
-          <button class="taskbar-btn" id="scale-up" title="Larger">+</button>
-        </div>
-      </div>
-      <div class="taskbar-divider"></div>
-      <div class="taskbar-section">
-        <label class="taskbar-label">Position</label>
-        <div class="taskbar-position">
-          <button class="taskbar-btn" id="pos-up" title="Move up">↑</button>
-          <button class="taskbar-btn" id="pos-down" title="Move down">↓</button>
-          <button class="taskbar-btn" id="pos-left" title="Move left">←</button>
-          <button class="taskbar-btn" id="pos-right" title="Move right">→</button>
-          <button class="taskbar-btn" id="pos-reset" title="Reset position">⟲</button>
-        </div>
+        <label class="taskbar-label">Scale</label>
+        <span class="taskbar-value" id="scale-value">${Math.round((this.customizations.imageScale || 1) * 100)}%</span>
+        <button class="taskbar-btn-small" id="scale-reset" title="Reset">⟲</button>
       </div>
     `;
   }
 
-  /**
-   * Get simplified SVG icon for frame type
-   */
   getFrameIconSVG(frameType) {
-    switch (frameType) {
-      case 'rectangle':
-        return '<rect x="4" y="6" width="24" height="20" fill="currentColor" opacity="0.6"/>';
-      case 'rounded':
-        return '<rect x="4" y="6" width="24" height="20" rx="4" fill="currentColor" opacity="0.6"/>';
-      case 'circle':
-        return '<circle cx="16" cy="16" r="12" fill="currentColor" opacity="0.6"/>';
-      case 'oval':
-        return '<ellipse cx="16" cy="16" rx="14" ry="10" fill="currentColor" opacity="0.6"/>';
-      case 'cloud':
-        return '<path d="M8 20 Q4 20 4 16 Q4 12 8 12 Q8 8 14 8 Q20 6 24 12 Q28 12 28 16 Q28 20 24 20 Z" fill="currentColor" opacity="0.6"/>';
-      case 'heart':
-        return '<path d="M16 26 C6 18 4 12 10 8 C14 6 16 10 16 10 C16 10 18 6 22 8 C28 12 26 18 16 26Z" fill="currentColor" opacity="0.6"/>';
-      case 'star':
-        return '<polygon points="16,4 19,12 28,12 21,18 24,28 16,22 8,28 11,18 4,12 13,12" fill="currentColor" opacity="0.6"/>';
-      case 'hexagon':
-        return '<polygon points="16,4 28,10 28,22 16,28 4,22 4,10" fill="currentColor" opacity="0.6"/>';
-      default:
-        return '<rect x="4" y="6" width="24" height="20" fill="currentColor" opacity="0.6"/>';
-    }
+    const icons = {
+      rectangle: '<rect x="4" y="8" width="24" height="16" fill="currentColor" opacity="0.7"/>',
+      rounded: '<rect x="4" y="8" width="24" height="16" rx="3" fill="currentColor" opacity="0.7"/>',
+      circle: '<circle cx="16" cy="16" r="10" fill="currentColor" opacity="0.7"/>',
+      oval: '<ellipse cx="16" cy="16" rx="12" ry="8" fill="currentColor" opacity="0.7"/>',
+      cloud: '<ellipse cx="16" cy="16" rx="11" ry="9" fill="currentColor" opacity="0.7"/>',
+      heart: '<path d="M16 24 C8 18 5 13 9 9 C12 7 16 11 16 11 C16 11 20 7 23 9 C27 13 24 18 16 24Z" fill="currentColor" opacity="0.7"/>',
+      star: '<polygon points="16,4 18.5,11 26,11 20,16 22.5,24 16,19 9.5,24 12,16 6,11 13.5,11" fill="currentColor" opacity="0.7"/>',
+      hexagon: '<polygon points="16,5 26,10 26,22 16,27 6,22 6,10" fill="currentColor" opacity="0.7"/>',
+      arch: '<path d="M6 26 L6 12 Q6 6 16 6 Q26 6 26 12 L26 26 Z" fill="currentColor" opacity="0.7"/>',
+      blob: '<ellipse cx="16" cy="16" rx="10" ry="10" fill="currentColor" opacity="0.7"/>',
+    };
+    return icons[frameType] || icons.rectangle;
   }
 
-  /**
-   * Render text taskbar controls
-   */
   renderTextTaskbar() {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFont = this.customizations.fontFamily || tmpl.typography?.fontFamily || 'Merriweather';
@@ -418,15 +435,15 @@ export class CompositorUI {
         <label class="taskbar-label">Size</label>
         <div class="taskbar-fontsize">
           <button class="taskbar-btn" id="fontsize-down">−</button>
-          <span class="taskbar-size-value" id="fontsize-value">${currentSize}px</span>
+          <span class="taskbar-value" id="fontsize-value">${currentSize}px</span>
           <button class="taskbar-btn" id="fontsize-up">+</button>
         </div>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Color Theme</label>
+        <label class="taskbar-label">Theme</label>
         <div class="taskbar-colors">
-          ${Object.values(COLOR_THEMES).slice(0, 6).map(theme => `
+          ${Object.values(COLOR_THEMES).slice(0, 8).map(theme => `
             <button class="taskbar-color-btn ${theme.id === (this.customizations.colorTheme || 'cream') ? 'active' : ''}"
                     data-theme="${theme.id}"
                     style="background: ${theme.background}; border-color: ${theme.accent}"
@@ -449,38 +466,8 @@ export class CompositorUI {
       });
     });
 
-    // Scale controls
-    document.getElementById('scale-down')?.addEventListener('click', () => {
-      this.customizations.imageScale = Math.max(0.5, (this.customizations.imageScale || 1) - 0.1);
-      document.getElementById('scale-value').textContent = `${Math.round(this.customizations.imageScale * 100)}%`;
-      this.renderPreview();
-    });
-
-    document.getElementById('scale-up')?.addEventListener('click', () => {
-      this.customizations.imageScale = Math.min(1.5, (this.customizations.imageScale || 1) + 0.1);
-      document.getElementById('scale-value').textContent = `${Math.round(this.customizations.imageScale * 100)}%`;
-      this.renderPreview();
-    });
-
-    // Position controls
-    const posStep = 0.02;
-    document.getElementById('pos-up')?.addEventListener('click', () => {
-      this.customizations.imageOffsetY = (this.customizations.imageOffsetY || 0) - posStep;
-      this.renderPreview();
-    });
-    document.getElementById('pos-down')?.addEventListener('click', () => {
-      this.customizations.imageOffsetY = (this.customizations.imageOffsetY || 0) + posStep;
-      this.renderPreview();
-    });
-    document.getElementById('pos-left')?.addEventListener('click', () => {
-      this.customizations.imageOffsetX = (this.customizations.imageOffsetX || 0) - posStep;
-      this.renderPreview();
-    });
-    document.getElementById('pos-right')?.addEventListener('click', () => {
-      this.customizations.imageOffsetX = (this.customizations.imageOffsetX || 0) + posStep;
-      this.renderPreview();
-    });
-    document.getElementById('pos-reset')?.addEventListener('click', () => {
+    // Reset
+    document.getElementById('scale-reset')?.addEventListener('click', () => {
       this.customizations.imageOffsetX = 0;
       this.customizations.imageOffsetY = 0;
       this.customizations.imageScale = 1;
@@ -490,14 +477,12 @@ export class CompositorUI {
   }
 
   bindTextTaskbarEvents() {
-    // Font selection
     document.getElementById('taskbar-font')?.addEventListener('change', (e) => {
       this.customizations.fontFamily = e.target.value;
       this.preloadFonts([e.target.value]);
       this.renderPreview();
     });
 
-    // Font size
     document.getElementById('fontsize-down')?.addEventListener('click', () => {
       this.customizations.fontSize = Math.max(12, (this.customizations.fontSize || 18) - 2);
       document.getElementById('fontsize-value').textContent = `${this.customizations.fontSize}px`;
@@ -510,7 +495,6 @@ export class CompositorUI {
       this.renderPreview();
     });
 
-    // Color theme
     document.querySelectorAll('.taskbar-color-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.taskbar-color-btn').forEach(b => b.classList.remove('active'));
@@ -537,8 +521,6 @@ export class CompositorUI {
 
     try {
       await this.renderer.renderToContainer(container, pageData, config, this.customizations);
-      
-      // Add click handlers to SVG elements for selection
       this.setupPreviewInteraction(container);
     } catch (error) {
       console.error('Failed to render preview:', error);
@@ -553,36 +535,103 @@ export class CompositorUI {
     const svg = container.querySelector('svg');
     if (!svg) return;
 
-    // Make the preview clickable
-    svg.style.cursor = 'pointer';
-    
-    // Click on image area
     const imageEl = svg.querySelector('image');
+    const textGroup = svg.querySelectorAll('g')[0]; // First g is usually text
+
+    // Click on image
     if (imageEl) {
-      imageEl.style.cursor = 'pointer';
-      imageEl.addEventListener('click', (e) => {
+      imageEl.style.cursor = 'move';
+      imageEl.addEventListener('mousedown', (e) => {
         e.stopPropagation();
-        this.showTaskbar('image');
-        container.dataset.selected = 'image';
+        this.selectElement('image', imageEl);
       });
     }
 
-    // Click on text area
-    const textGroup = svg.querySelector('g');
-    if (textGroup) {
-      textGroup.style.cursor = 'pointer';
-      textGroup.addEventListener('click', (e) => {
+    // Click on text
+    if (textGroup && textGroup.querySelector('text')) {
+      textGroup.style.cursor = 'move';
+      textGroup.addEventListener('mousedown', (e) => {
         e.stopPropagation();
-        this.showTaskbar('text');
-        container.dataset.selected = 'text';
+        this.selectElement('text', textGroup);
       });
     }
 
-    // Click outside to deselect
-    svg.addEventListener('click', () => {
-      this.hideTaskbar();
-      container.dataset.selected = '';
+    // Click on background to deselect
+    svg.addEventListener('click', (e) => {
+      if (e.target === svg || e.target.tagName === 'rect' && !e.target.closest('clipPath')) {
+        this.hideTaskbar();
+      }
     });
+  }
+
+  selectElement(type, element) {
+    this.selectedElement = type;
+    
+    // Get element bounds relative to preview
+    const rect = element.getBoundingClientRect();
+    this.showSelectionOverlay(type, rect);
+    this.showTaskbar(type);
+    
+    // Setup drag
+    this.setupDragForElement(type, element);
+  }
+
+  setupDragForElement(type, element) {
+    const overlay = document.getElementById('selection-overlay');
+    if (!overlay) return;
+
+    // Drag to move
+    overlay.onmousedown = (e) => {
+      if (e.target.classList.contains('resize-handle')) return;
+      
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX, y: e.clientY };
+      this.dragStartOffset = {
+        x: type === 'image' ? (this.customizations.imageOffsetX || 0) : 0,
+        y: type === 'image' ? (this.customizations.imageOffsetY || 0) : 0,
+      };
+      
+      e.preventDefault();
+    };
+
+    // Resize handles
+    overlay.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.onmousedown = (e) => {
+        e.stopPropagation();
+        this.isResizing = true;
+        this.dragStart = { x: e.clientX, y: e.clientY };
+        this.dragStartScale = this.customizations.imageScale || 1;
+        e.preventDefault();
+      };
+    });
+
+    // Mouse move/up handlers
+    document.onmousemove = (e) => {
+      if (this.isDragging && type === 'image') {
+        const dx = (e.clientX - this.dragStart.x) / 500; // Scale factor
+        const dy = (e.clientY - this.dragStart.y) / 500;
+        
+        this.customizations.imageOffsetX = this.dragStartOffset.x + dx;
+        this.customizations.imageOffsetY = this.dragStartOffset.y + dy;
+        
+        this.renderPreview();
+      }
+      
+      if (this.isResizing && type === 'image') {
+        const dy = (e.clientY - this.dragStart.y) / 200;
+        const newScale = Math.max(0.3, Math.min(1.5, this.dragStartScale + dy));
+        
+        this.customizations.imageScale = newScale;
+        document.getElementById('scale-value').textContent = `${Math.round(newScale * 100)}%`;
+        
+        this.renderPreview();
+      }
+    };
+
+    document.onmouseup = () => {
+      this.isDragging = false;
+      this.isResizing = false;
+    };
   }
 
   renderThumbnails() {
@@ -597,9 +646,7 @@ export class CompositorUI {
         <div class="thumbnail-inner">
           ${page.imageUrl 
             ? `<img src="${page.imageUrl}" alt="Page ${page.page}">`
-            : `<div class="thumbnail-placeholder" style="background:${config.colors?.background || '#fff'}">
-                <span>${page.page}</span>
-              </div>`
+            : `<div class="thumbnail-placeholder" style="background:${config.colors?.background || '#fff'}"><span>${page.page}</span></div>`
           }
         </div>
         <span class="thumbnail-number">${page.page}</span>
@@ -631,42 +678,31 @@ export class CompositorUI {
 
   selectTemplate(templateId) {
     this.selectedTemplate = templateId;
-    // Reset customizations when changing templates
-    this.customizations = {
-      imageScale: 1.0,
-      imageOffsetX: 0,
-      imageOffsetY: 0,
-    };
+    this.customizations = { imageScale: 1.0, imageOffsetX: 0, imageOffsetY: 0 };
     this.renderPreview();
     this.renderThumbnails();
     this.hideTaskbar();
     
-    if (this.onTemplateChange) {
-      this.onTemplateChange(templateId);
-    }
+    if (this.onTemplateChange) this.onTemplateChange(templateId);
   }
 
   applyCustomizations(template) {
     const config = JSON.parse(JSON.stringify(template));
 
-    // Font
     if (this.customizations.fontFamily) {
       config.typography = config.typography || {};
       config.typography.fontFamily = this.customizations.fontFamily;
     }
 
-    // Font size
     if (this.customizations.fontSize) {
       config.typography = config.typography || {};
       config.typography.baseFontSize = this.customizations.fontSize;
     }
 
-    // Color theme
     if (this.customizations.colorTheme) {
       config.colors = COLOR_THEMES[this.customizations.colorTheme] || config.colors;
     }
 
-    // Frame shape
     if (this.customizations.frame) {
       config.layout = config.layout || {};
       config.layout.image = config.layout.image || {};
@@ -679,7 +715,6 @@ export class CompositorUI {
       config.layout.image = config.layout.image || {};
       const pos = config.layout.image.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
       
-      // Apply scale (shrink from center)
       const scale = this.customizations.imageScale || 1;
       const newWidth = pos.width * scale;
       const newHeight = pos.height * scale;
@@ -701,7 +736,6 @@ export class CompositorUI {
   }
 
   bindEvents() {
-    // Page navigation
     document.getElementById('prev-page')?.addEventListener('click', () => {
       if (this.currentPageIndex > 0) {
         this.currentPageIndex--;
@@ -720,25 +754,21 @@ export class CompositorUI {
       }
     });
 
-    // Keyboard navigation
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft') document.getElementById('prev-page')?.click();
       else if (e.key === 'ArrowRight') document.getElementById('next-page')?.click();
       else if (e.key === 'Escape') this.hideTaskbar();
     });
 
-    // Page size
     document.getElementById('page-size-select')?.addEventListener('change', (e) => {
       this.renderer = new PageRenderer({ pageSize: e.target.value });
       this.renderPreview();
     });
 
-    // Export button
     document.getElementById('export-btn')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.remove('hidden');
     });
 
-    // Close export modal
     document.getElementById('close-export-modal')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.add('hidden');
     });
@@ -747,17 +777,8 @@ export class CompositorUI {
       document.getElementById('export-modal')?.classList.add('hidden');
     });
 
-    // Export options
     document.querySelectorAll('.export-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        this.handleExport(opt.dataset.format);
-      });
-    });
-
-    // Click outside preview to deselect
-    document.querySelector('.compositor-canvas-area')?.addEventListener('click', (e) => {
-      if (e.target.closest('.page-preview')) return;
-      this.hideTaskbar();
+      opt.addEventListener('click', () => this.handleExport(opt.dataset.format));
     });
   }
 
@@ -785,7 +806,7 @@ export class CompositorUI {
         filename: `${this.bookData.title || 'my-book'}.pdf`,
         onProgress: (progress) => {
           if (progressFill) progressFill.style.width = `${progress.percent}%`;
-          if (progressText) progressText.textContent = `Rendering page ${progress.current} of ${progress.total}...`;
+          if (progressText) progressText.textContent = `Page ${progress.current} of ${progress.total}...`;
         },
       };
 
@@ -795,19 +816,18 @@ export class CompositorUI {
         await bookExporter.downloadImagesZip(this.bookData, config, { ...options, format });
       }
 
-      if (progressText) progressText.textContent = 'Export complete!';
-      
+      if (progressText) progressText.textContent = 'Complete!';
       if (this.onExportComplete) this.onExportComplete(format);
 
       setTimeout(() => {
         document.getElementById('export-modal')?.classList.add('hidden');
         progressContainer?.classList.add('hidden');
         if (progressFill) progressFill.style.width = '0%';
-      }, 1500);
+      }, 1000);
 
     } catch (error) {
       console.error('Export failed:', error);
-      if (progressText) progressText.textContent = `Export failed: ${error.message}`;
+      if (progressText) progressText.textContent = `Failed: ${error.message}`;
     } finally {
       this.isExporting = false;
     }
