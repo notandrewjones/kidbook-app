@@ -35,6 +35,9 @@ export class CompositorUI {
     // Per-page frame settings: { [pageIndex]: { scale, offsetX, offsetY } }
     this.pageFrameSettings = {};
     
+    // Crop mode state
+    this.cropMode = false;
+    
     this.currentPageIndex = 0;
     this.isExporting = false;
     this.isRendering = false;
@@ -339,6 +342,12 @@ export class CompositorUI {
     document.getElementById('selection-overlay')?.classList.add('hidden');
     this.selectedElement = null;
     this.cleanupDragHandlers();
+    
+    // Exit crop mode if active
+    if (this.cropMode) {
+      this.cropMode = false;
+      document.getElementById('page-preview')?.classList.remove('crop-mode');
+    }
   }
 
   cleanupDragHandlers() {
@@ -386,7 +395,7 @@ export class CompositorUI {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFrame = this.customizations.frame || tmpl.layout?.image?.frame || 'rounded';
     const frameSettings = this.getCurrentFrameSettings();
-    const crop = this.getCurrentCrop();
+    const isCropMode = this.cropMode === true;
     
     return `
       <div class="taskbar-section">
@@ -402,17 +411,17 @@ export class CompositorUI {
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Frame Size</label>
+        <label class="taskbar-label">Size</label>
         <span class="taskbar-value" id="frame-scale-value">${Math.round(frameSettings.scale * 100)}%</span>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
-        <label class="taskbar-label">Crop</label>
-        <div class="taskbar-crop">
-          <button class="taskbar-btn" id="crop-zoom-out" title="Show more of image">−</button>
-          <span class="taskbar-value" id="crop-zoom-value">${Math.round(crop.cropZoom * 100)}%</span>
-          <button class="taskbar-btn" id="crop-zoom-in" title="Zoom into image">+</button>
-        </div>
+        <button class="taskbar-btn-mode ${isCropMode ? 'active' : ''}" id="crop-mode-btn" title="Crop & reposition image within frame">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2v14a2 2 0 002 2h14M6 6H2M18 22v-4"/>
+          </svg>
+          <span>Crop</span>
+        </button>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
@@ -485,19 +494,9 @@ export class CompositorUI {
       });
     });
 
-    // Crop zoom controls (zoom within image, affects what part of image is visible)
-    document.getElementById('crop-zoom-out')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropZoom: Math.max(1.0, crop.cropZoom - 0.1) });
-      document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
-      this.renderPreviewAndUpdateOverlay();
-    });
-
-    document.getElementById('crop-zoom-in')?.addEventListener('click', () => {
-      const crop = this.getCurrentCrop();
-      this.setCurrentCrop({ cropZoom: Math.min(3.0, crop.cropZoom + 0.1) });
-      document.getElementById('crop-zoom-value').textContent = `${Math.round(this.getCurrentCrop().cropZoom * 100)}%`;
-      this.renderPreviewAndUpdateOverlay();
+    // Crop mode toggle
+    document.getElementById('crop-mode-btn')?.addEventListener('click', () => {
+      this.toggleCropMode();
     });
 
     // Reset all
@@ -505,9 +504,152 @@ export class CompositorUI {
       this.pageFrameSettings[this.currentPageIndex] = { scale: 1.0, offsetX: 0, offsetY: 0 };
       this.pageCropSettings[this.currentPageIndex] = { cropZoom: 1.0, cropX: 0.5, cropY: 0.5 };
       document.getElementById('frame-scale-value').textContent = '100%';
-      document.getElementById('crop-zoom-value').textContent = '100%';
       this.renderPreviewAndUpdateOverlay();
     });
+  }
+  
+  toggleCropMode() {
+    this.cropMode = !this.cropMode;
+    
+    const btn = document.getElementById('crop-mode-btn');
+    if (btn) {
+      btn.classList.toggle('active', this.cropMode);
+    }
+    
+    if (this.cropMode) {
+      this.enterCropMode();
+    } else {
+      this.exitCropMode();
+    }
+  }
+  
+  enterCropMode() {
+    console.log('[UI] Entering crop mode');
+    
+    // Add crop mode class to preview for styling
+    const preview = document.getElementById('page-preview');
+    preview?.classList.add('crop-mode');
+    
+    // Re-render with crop overlay visible
+    this.renderPreviewWithCropOverlay();
+    
+    // Update drag handlers for crop mode
+    this.setupCropModeDrag();
+  }
+  
+  exitCropMode() {
+    console.log('[UI] Exiting crop mode');
+    
+    const preview = document.getElementById('page-preview');
+    preview?.classList.remove('crop-mode');
+    
+    // Re-render normally
+    this.renderPreviewAndUpdateOverlay();
+    
+    // Restore normal drag handlers
+    if (this.selectedElement === 'image') {
+      this.setupImageDrag();
+    }
+  }
+  
+  async renderPreviewWithCropOverlay() {
+    if (!this.bookData?.pages?.length) return;
+    
+    const container = document.getElementById('page-preview');
+    const pageData = this.bookData.pages[this.currentPageIndex];
+    const tmpl = getTemplate(this.selectedTemplate);
+    const config = this.applyCustomizations(tmpl);
+    
+    // Render with crop overlay flag
+    config.showCropOverlay = true;
+    
+    try {
+      await this.renderer.renderToContainer(container, pageData, config, this.customizations);
+      this.setupPreviewInteraction(container);
+      
+      // Update selection overlay
+      const svg = container.querySelector('svg');
+      const imageEl = svg?.querySelector('image');
+      if (imageEl) {
+        const rect = imageEl.getBoundingClientRect();
+        this.showSelectionOverlay('image', rect);
+      }
+    } catch (error) {
+      console.error('Failed to render crop preview:', error);
+    }
+  }
+  
+  setupCropModeDrag() {
+    const overlay = document.getElementById('selection-overlay');
+    if (!overlay) return;
+    
+    console.log('[UI] Setting up crop mode drag handlers');
+    
+    // Hide resize handles in crop mode - we're only panning/zooming within the image
+    overlay.querySelectorAll('.resize-handle').forEach(h => {
+      h.style.display = 'block'; // Still show for zoom
+    });
+    
+    // Drag to pan the image within the frame
+    overlay.onmousedown = (e) => {
+      if (e.target.classList.contains('resize-handle')) return;
+      
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX, y: e.clientY };
+      const crop = this.getCurrentCrop();
+      this.dragStartValues = { cropX: crop.cropX, cropY: crop.cropY };
+      e.preventDefault();
+    };
+    
+    // Corner handles for crop zoom (how much of image is visible)
+    overlay.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.onmousedown = (e) => {
+        e.stopPropagation();
+        this.isResizing = true;
+        this.resizeHandle = handle.dataset.handle;
+        this.dragStart = { x: e.clientX, y: e.clientY };
+        this.dragStartValues = { cropZoom: this.getCurrentCrop().cropZoom };
+        e.preventDefault();
+      };
+    });
+    
+    document.onmousemove = (e) => {
+      if (this.isDragging) {
+        // Pan the image within the frame
+        const dx = (e.clientX - this.dragStart.x) / 150;
+        const dy = (e.clientY - this.dragStart.y) / 150;
+        
+        this.setCurrentCrop({
+          cropX: Math.max(0, Math.min(1, this.dragStartValues.cropX - dx)),
+          cropY: Math.max(0, Math.min(1, this.dragStartValues.cropY - dy)),
+        });
+        
+        this.renderPreviewWithCropOverlay();
+      }
+      
+      if (this.isResizing) {
+        // Zoom - dragging outward = show less (zoom in), inward = show more (zoom out)
+        const handle = this.resizeHandle;
+        let dx = e.clientX - this.dragStart.x;
+        let dy = e.clientY - this.dragStart.y;
+        
+        if (handle === 'nw') { dx = -dx; dy = -dy; }
+        else if (handle === 'ne') { dy = -dy; }
+        else if (handle === 'sw') { dx = -dx; }
+        
+        const delta = (dx + dy) / 2 / 100;
+        const newZoom = Math.max(1.0, Math.min(3.0, this.dragStartValues.cropZoom + delta));
+        
+        this.setCurrentCrop({ cropZoom: newZoom });
+        this.renderPreviewWithCropOverlay();
+      }
+    };
+    
+    document.onmouseup = () => {
+      this.isDragging = false;
+      this.isResizing = false;
+      this.resizeHandle = null;
+    };
   }
 
   bindTextTaskbarEvents() {

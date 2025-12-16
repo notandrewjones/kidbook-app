@@ -547,6 +547,46 @@
   box-shadow: 0 0 0 2px var(--comp-taskbar-bg), 0 0 0 4px var(--comp-primary);
 }
 
+/* Crop Mode Button */
+.taskbar-btn-mode {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: var(--comp-surface-hover);
+  border: 1px solid var(--comp-border);
+  border-radius: 4px;
+  color: var(--comp-text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.taskbar-btn-mode:hover {
+  background: var(--comp-primary);
+  border-color: var(--comp-primary);
+}
+
+.taskbar-btn-mode.active {
+  background: var(--comp-primary);
+  border-color: var(--comp-primary);
+  color: white;
+}
+
+/* Crop Mode Preview Styling */
+.page-preview.crop-mode {
+  box-shadow: 0 0 0 3px var(--comp-primary), 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.crop-overlay-image {
+  pointer-events: none;
+}
+
+.crop-frame-border {
+  pointer-events: none;
+}
+
 /* ============================================
    Modal
    ============================================ */

@@ -265,8 +265,9 @@ export class PageRenderer {
 
     // Get crop settings (per-page zoom/pan within image)
     const cropSettings = config.cropSettings || { zoom: 1.0, x: 0.5, y: 0.5 };
+    const showCropOverlay = config.showCropOverlay === true;
 
-    console.log('[Renderer] Image config:', { frameType, padding, position, cropSettings });
+    console.log('[Renderer] Image config:', { frameType, padding, position, cropSettings, showCropOverlay });
 
     // Calculate actual pixel positions for the FRAME
     const x = position.x * pageWidth;
@@ -301,18 +302,15 @@ export class PageRenderer {
     console.log('[Renderer] Created clip path with frame type:', frameType);
 
     // Calculate image size and position based on crop settings
-    // zoom > 1 means image is larger (zoomed in), showing less of the image
-    // zoom < 1 means image is smaller (zoomed out), showing more
     const zoom = cropSettings.zoom || 1.0;
-    const cropX = cropSettings.x ?? 0.5; // 0-1, where in image to center
+    const cropX = cropSettings.x ?? 0.5;
     const cropY = cropSettings.y ?? 0.5;
     
-    // Image dimensions after zoom (larger = more zoomed in)
+    // Image dimensions after zoom
     const imgW = paddedW * zoom;
     const imgH = paddedH * zoom;
     
     // Calculate offset to pan within the image
-    // cropX/Y of 0.5 = centered, 0 = show left/top edge, 1 = show right/bottom edge
     const maxOffsetX = Math.max(0, imgW - paddedW);
     const maxOffsetY = Math.max(0, imgH - paddedH);
     
@@ -321,7 +319,22 @@ export class PageRenderer {
 
     console.log('[Renderer] Image actual size:', { imgX, imgY, imgW, imgH, zoom });
 
-    // Create image element
+    // If in crop mode, show the full image at reduced opacity first
+    if (showCropOverlay) {
+      const overlayImage = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+      overlayImage.setAttribute('x', imgX);
+      overlayImage.setAttribute('y', imgY);
+      overlayImage.setAttribute('width', imgW);
+      overlayImage.setAttribute('height', imgH);
+      overlayImage.setAttribute('href', imageUrl);
+      overlayImage.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', imageUrl);
+      overlayImage.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+      overlayImage.setAttribute('opacity', '0.3');
+      overlayImage.setAttribute('class', 'crop-overlay-image');
+      svg.appendChild(overlayImage);
+    }
+
+    // Create the main clipped image element
     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
     image.setAttribute('x', imgX);
     image.setAttribute('y', imgY);
@@ -345,6 +358,17 @@ export class PageRenderer {
 
     svg.appendChild(image);
     console.log('[Renderer] Image element appended to SVG');
+
+    // If in crop mode, add a frame border overlay to show the crop boundary
+    if (showCropOverlay) {
+      const frameBorder = this.createClipShape(frameType, paddedX, paddedY, paddedW, paddedH);
+      frameBorder.setAttribute('fill', 'none');
+      frameBorder.setAttribute('stroke', '#8b5cf6');
+      frameBorder.setAttribute('stroke-width', '3');
+      frameBorder.setAttribute('stroke-dasharray', '8,4');
+      frameBorder.setAttribute('class', 'crop-frame-border');
+      svg.appendChild(frameBorder);
+    }
 
     // Add border if configured
     if (imgConfig.border) {
