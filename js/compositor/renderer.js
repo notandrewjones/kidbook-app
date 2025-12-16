@@ -27,7 +27,7 @@ export const PAGE_DIMENSIONS = {
   'standard': { width: 612, height: 792, name: '8.5" × 11"' },
 };
 
-// Image cache for converted data URLs
+// Image cache for data URLs
 const imageCache = new Map();
 
 export class PageRenderer {
@@ -40,52 +40,62 @@ export class PageRenderer {
   }
 
   /**
-   * Generate unique clip ID to avoid collisions
+   * Generate unique ID for clip paths to avoid collisions
    */
-  generateClipId() {
-    return `clip-${Date.now()}-${++this.clipIdCounter}`;
+  generateUniqueId(prefix = 'clip') {
+    return `${prefix}-${Date.now()}-${++this.clipIdCounter}`;
   }
 
   /**
-   * Convert image URL to data URL for reliable SVG embedding
+   * Convert external image URL to data URL for reliable SVG embedding
+   * This solves CORS issues and ensures images render properly
    */
-  async imageToDataUrl(url) {
+  async loadImageAsDataUrl(url) {
     if (!url) return null;
     
-    // Return cached version if available
+    // Return cached version
     if (imageCache.has(url)) {
       return imageCache.get(url);
     }
     
-    // If already a data URL, return as-is
+    // Already a data URL
     if (url.startsWith('data:')) {
       return url;
     }
-    
-    try {
-      // Fetch and convert to data URL
-      const response = await fetch(url, { mode: 'cors' });
-      const blob = await response.blob();
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
       
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result;
+      img.onload = () => {
+        try {
+          // Draw to canvas and convert to data URL
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
           imageCache.set(url, dataUrl);
           resolve(dataUrl);
-        };
-        reader.onerror = () => reject(new Error('Failed to read image'));
-        reader.readAsDataURL(blob);
-      });
-    } catch (error) {
-      console.warn('Failed to convert image to data URL:', error);
-      // Return original URL as fallback
-      return url;
-    }
+        } catch (err) {
+          // CORS error on canvas - fall back to original URL
+          console.warn('Canvas tainted, using original URL:', err.message);
+          resolve(url);
+        }
+      };
+      
+      img.onerror = () => {
+        console.warn('Image load failed, using original URL');
+        resolve(url);
+      };
+      
+      img.src = url;
+    });
   }
 
   /**
-   * Render a single page (async to handle image loading)
+   * Render a single page (ASYNC version - converts images to data URLs)
    * @param {Object} pageData - { page: number, text: string, imageUrl: string }
    * @param {string|Object} template - Template ID or template object
    * @param {Object} overrides - Custom overrides for this page
@@ -103,13 +113,13 @@ export class PageRenderer {
     // Build the page
     this.renderBackground(svg, config, width, height);
     
-    // Convert image to data URL for reliable rendering
-    let imageDataUrl = null;
-    if (pageData.imageUrl) {
-      imageDataUrl = await this.imageToDataUrl(pageData.imageUrl);
+    // Convert image to data URL before rendering
+    let imageUrl = pageData.imageUrl;
+    if (imageUrl) {
+      imageUrl = await this.loadImageAsDataUrl(imageUrl);
     }
     
-    this.renderImage(svg, imageDataUrl, config, width, height);
+    this.renderImage(svg, imageUrl, config, width, height);
     this.renderText(svg, pageData.text, config, width, height);
     this.renderPageNumber(svg, pageData.page, config, width, height);
     this.renderEffects(svg, config, width, height);
@@ -118,7 +128,8 @@ export class PageRenderer {
   }
 
   /**
-   * Synchronous render (uses original URL, may not work for all images)
+   * Synchronous render (uses URL directly - may not work with CORS)
+   * Use this only when you know the images are same-origin or data URLs
    */
   renderSync(pageData, template, overrides = {}) {
     const tmpl = typeof template === 'string' ? getTemplate(template) : template;
@@ -138,7 +149,7 @@ export class PageRenderer {
   }
 
   /**
-   * Render to a container element for preview
+   * Render to a container element for preview (ASYNC)
    */
   async renderToContainer(container, pageData, template, overrides = {}) {
     const svg = await this.render(pageData, template, overrides);
@@ -238,15 +249,13 @@ export class PageRenderer {
     const paddedW = w - (padding * pageWidth * 2);
     const paddedH = h - (padding * pageHeight * 2);
 
-    // Get or create defs
+    // Create defs for clip path and filters
+    const clipId = this.generateUniqueId('image-clip');
     let defs = svg.querySelector('defs');
     if (!defs) {
       defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
       svg.insertBefore(defs, svg.firstChild);
     }
-
-    // Create unique clip path ID
-    const clipId = this.generateClipId();
     
     // Create clip path
     const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
@@ -264,14 +273,6 @@ export class PageRenderer {
     
     defs.appendChild(clipPath);
 
-    // Add drop shadow filter if enabled
-    let filterId = null;
-    if (config.effects?.imageDropShadow) {
-      filterId = `shadow-${this.generateClipId()}`;
-      const filter = this.createDropShadowFilter(filterId);
-      defs.appendChild(filter);
-    }
-
     // Create image element
     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
     image.setAttribute('x', paddedX);
@@ -279,14 +280,18 @@ export class PageRenderer {
     image.setAttribute('width', paddedW);
     image.setAttribute('height', paddedH);
     
-    // Use both href and xlink:href for maximum compatibility
+    // Set href using both methods for compatibility
     image.setAttribute('href', imageUrl);
     image.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', imageUrl);
     
     image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
     image.setAttribute('clip-path', `url(#${clipId})`);
-    
-    if (filterId) {
+
+    // Add drop shadow if enabled
+    if (config.effects?.imageDropShadow) {
+      const filterId = this.generateUniqueId('shadow');
+      const filter = this.createDropShadowFilter(filterId);
+      defs.appendChild(filter);
       image.setAttribute('filter', `url(#${filterId})`);
     }
 
@@ -377,7 +382,7 @@ export class PageRenderer {
       const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       textEl.setAttribute('x', textX);
       textEl.setAttribute('y', startY + i * lineHeight);
-      textEl.setAttribute('font-family', `"${typography.fontFamily}", Georgia, serif`);
+      textEl.setAttribute('font-family', `"${typography.fontFamily}", sans-serif`);
       textEl.setAttribute('font-size', scaledFontSize);
       textEl.setAttribute('font-weight', typography.fontWeight || '400');
       textEl.setAttribute('fill', config.colors?.text || '#333333');
@@ -386,7 +391,7 @@ export class PageRenderer {
 
       // Add text shadow if enabled
       if (config.effects?.textShadow) {
-        textEl.setAttribute('style', 'filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3))');
+        textEl.setAttribute('style', 'text-shadow: 2px 2px 4px rgba(0,0,0,0.3)');
       }
 
       textGroup.appendChild(textEl);
@@ -440,7 +445,7 @@ export class PageRenderer {
         svg.insertBefore(defs, svg.firstChild);
       }
       
-      const glowId = `glow-${this.generateClipId()}`;
+      const glowId = this.generateUniqueId('glow');
       const glow = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
       glow.setAttribute('id', glowId);
       glow.innerHTML = `
