@@ -33,6 +33,7 @@ export class CompositorUI {
     this.customizations = {};
     this.currentPageIndex = 0;
     this.isExporting = false;
+    this.isRendering = false;
     
     // Callbacks
     this.onExportComplete = null;
@@ -113,7 +114,12 @@ export class CompositorUI {
             </div>
 
             <div id="preview-container" class="preview-container">
-              <div id="page-preview" class="page-preview"></div>
+              <div id="page-preview" class="page-preview">
+                <div class="preview-loading">
+                  <div class="spinner"></div>
+                  <span>Loading preview...</span>
+                </div>
+              </div>
             </div>
 
             <div class="preview-thumbnails-wrapper">
@@ -318,20 +324,43 @@ export class CompositorUI {
   }
 
   /**
-   * Render the main preview
+   * Render the main preview (async)
    */
-  renderPreview() {
+  async renderPreview() {
     if (!this.bookData?.pages?.length) return;
+    if (this.isRendering) return;
+    
+    this.isRendering = true;
 
     const container = document.getElementById('page-preview');
     const pageData = this.bookData.pages[this.currentPageIndex];
     const tmpl = getTemplate(this.selectedTemplate);
 
+    // Show loading state
+    container.innerHTML = `
+      <div class="preview-loading">
+        <div class="spinner"></div>
+        <span>Loading preview...</span>
+      </div>
+    `;
+
     // Apply customizations
     const config = this.applyCustomizations(tmpl);
 
-    // Render page
-    this.renderer.renderToContainer(container, pageData, config, this.customizations);
+    try {
+      // Render page (async)
+      await this.renderer.renderToContainer(container, pageData, config, this.customizations);
+    } catch (error) {
+      console.error('Failed to render preview:', error);
+      container.innerHTML = `
+        <div class="preview-error">
+          <span>Failed to load preview</span>
+          <button onclick="location.reload()" class="btn btn-secondary">Retry</button>
+        </div>
+      `;
+    }
+    
+    this.isRendering = false;
 
     // Update page indicator
     const indicator = document.getElementById('page-indicator');
@@ -355,41 +384,18 @@ export class CompositorUI {
     const tmpl = getTemplate(this.selectedTemplate);
     const config = this.applyCustomizations(tmpl);
 
-    // Create mini renderer
-    const miniRenderer = new PageRenderer({ pageSize: 'square-small' });
-
     container.innerHTML = this.bookData.pages.map((page, i) => `
       <div class="thumbnail ${i === this.currentPageIndex ? 'active' : ''}" 
            data-page-index="${i}">
-        <div class="thumbnail-inner" id="thumb-${i}"></div>
+        <div class="thumbnail-inner" id="thumb-${i}">
+          ${page.imageUrl 
+            ? `<img src="${page.imageUrl}" alt="Page ${page.page}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;">`
+            : `<div style="width:100%;height:100%;background:${config.colors.background};display:flex;align-items:center;justify-content:center;color:${config.colors.text};font-size:10px;">${page.page}</div>`
+          }
+        </div>
         <span class="thumbnail-number">${page.page}</span>
       </div>
     `).join('');
-
-    // Render each thumbnail (async for performance)
-    this.bookData.pages.forEach((page, i) => {
-      const thumbContainer = document.getElementById(`thumb-${i}`);
-      if (thumbContainer) {
-        // Simplified render for thumbnails
-        thumbContainer.innerHTML = `
-          <div style="
-            width: 100%; 
-            height: 100%; 
-            background: ${config.colors.background};
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            color: ${config.colors.text};
-            padding: 4px;
-            text-align: center;
-            overflow: hidden;
-          ">
-            ${page.imageUrl ? `<img src="${page.imageUrl}" style="max-width: 80%; max-height: 60%; object-fit: cover; border-radius: 4px;">` : ''}
-          </div>
-        `;
-      }
-    });
 
     // Thumbnail click events
     container.querySelectorAll('.thumbnail').forEach(thumb => {

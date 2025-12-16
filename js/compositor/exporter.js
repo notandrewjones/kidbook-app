@@ -82,8 +82,8 @@ export class BookExporter {
         pdf.addPage([width, height]);
       }
 
-      // Render page to SVG
-      const svg = this.renderer.render(pageData, tmpl, options.overrides || {});
+      // Render page to SVG (async to handle image conversion)
+      const svg = await this.renderer.render(pageData, tmpl, options.overrides || {});
       
       // Convert SVG to image and add to PDF
       await this.addSvgToPdf(pdf, svg, width, height, scale, imageQuality);
@@ -174,7 +174,9 @@ export class BookExporter {
 
     for (let i = 0; i < bookData.pages.length; i++) {
       const pageData = bookData.pages[i];
-      const svg = this.renderer.render(pageData, tmpl, options.overrides || {});
+      
+      // Async render
+      const svg = await this.renderer.render(pageData, tmpl, options.overrides || {});
       
       const blob = await this.svgToImageBlob(svg, width, height, scale, format);
       images.push({
