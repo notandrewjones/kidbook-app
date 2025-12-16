@@ -542,9 +542,32 @@ export class CompositorUI {
   }
 
   async renderPreviewAndUpdateOverlay() {
+    const wasSelected = this.selectedElement;
     await this.renderPreview();
-    // Update overlay position after render
-    setTimeout(() => this.updateSelectionOverlay(), 50);
+    
+    // Re-establish selection after render
+    if (wasSelected) {
+      setTimeout(() => {
+        const container = document.getElementById('page-preview');
+        const svg = container?.querySelector('svg');
+        if (!svg) return;
+        
+        let element;
+        if (wasSelected === 'image') {
+          element = svg.querySelector('image');
+        } else if (wasSelected === 'text') {
+          element = Array.from(svg.querySelectorAll('g')).find(g => g.querySelector('text'));
+        }
+        
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          this.showSelectionOverlay(wasSelected, rect);
+          if (wasSelected === 'image') {
+            this.setupImageDrag();
+          }
+        }
+      }, 50);
+    }
   }
 
   async renderPreview() {
@@ -574,33 +597,61 @@ export class CompositorUI {
 
   setupPreviewInteraction(container) {
     const svg = container.querySelector('svg');
-    if (!svg) return;
+    if (!svg) {
+      console.log('[UI] No SVG found in container');
+      return;
+    }
+
+    console.log('[UI] Setting up preview interaction');
 
     const imageEl = svg.querySelector('image');
     const textGroups = svg.querySelectorAll('g');
     const textGroup = Array.from(textGroups).find(g => g.querySelector('text'));
 
+    console.log('[UI] Found elements:', { imageEl: !!imageEl, textGroup: !!textGroup });
+
+    // Make sure SVG allows pointer events
+    svg.style.pointerEvents = 'all';
+
     if (imageEl) {
       imageEl.style.cursor = 'pointer';
-      imageEl.addEventListener('mousedown', (e) => {
+      imageEl.style.pointerEvents = 'all';
+      
+      // Use click instead of mousedown for more reliable selection
+      imageEl.onclick = (e) => {
+        console.log('[UI] Image clicked');
         e.stopPropagation();
+        e.preventDefault();
         this.selectElement('image', imageEl);
-      });
+      };
     }
 
     if (textGroup) {
       textGroup.style.cursor = 'pointer';
-      textGroup.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-        this.selectElement('text', textGroup);
+      textGroup.style.pointerEvents = 'all';
+      
+      // Also make individual text elements clickable
+      textGroup.querySelectorAll('text').forEach(t => {
+        t.style.pointerEvents = 'all';
+        t.style.cursor = 'pointer';
       });
+      
+      textGroup.onclick = (e) => {
+        console.log('[UI] Text clicked');
+        e.stopPropagation();
+        e.preventDefault();
+        this.selectElement('text', textGroup);
+      };
     }
 
-    svg.addEventListener('click', (e) => {
-      if (e.target === svg || (e.target.tagName === 'rect' && !e.target.closest('clipPath') && !e.target.closest('g'))) {
+    // Click on background/svg to deselect
+    svg.onclick = (e) => {
+      // Only deselect if clicking directly on svg or background rect
+      if (e.target === svg || (e.target.tagName === 'rect' && e.target === svg.querySelector('rect'))) {
+        console.log('[UI] Background clicked, hiding taskbar');
         this.hideTaskbar();
       }
-    });
+    };
   }
 
   selectElement(type, element) {
