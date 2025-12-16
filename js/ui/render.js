@@ -1,12 +1,13 @@
 // js/ui/render.js
 // Rendering functions for dashboard, storyboard, ideas, and story editor
 
-import { state, setLastStoryPages } from '../core/state.js';
-import { $, escapeHtml, showToast } from '../core/utils.js';
+import { state, setLastStoryPages, getProjectId } from '../core/state.js';
+import { $, escapeHtml, showToast, showLoader } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
 import { openImageModal, initUploadModal } from './modals.js';
 import { renderCharacterPanel, openAddCharacterModal } from './panels.js';
+import { finalizeStory, saveStoryEdits } from '../api/story.js';
 
 // Re-render current view without fetching (for view/filter switching)
 export function reRenderCurrentView() {
@@ -268,7 +269,6 @@ export function renderStoryEditor(project) {
     btn.textContent = "Saving...";
     
     const currentPages = collectEditedPages();
-    const { saveStoryEdits } = await import('../api/story.js');
     const result = await saveStoryEdits(currentPages);
     
     btn.disabled = false;
@@ -283,7 +283,9 @@ export function renderStoryEditor(project) {
   
   // Finalize and continue
   $("finalize-btn")?.addEventListener("click", async () => {
+    console.log("Finalize button clicked");
     const currentPages = collectEditedPages();
+    console.log("Collected pages:", currentPages.length);
     
     const emptyPages = currentPages.filter(p => !p.text.trim());
     if (emptyPages.length > 0) {
@@ -291,7 +293,6 @@ export function renderStoryEditor(project) {
       return;
     }
     
-    const { finalizeStory } = await import('../api/story.js');
     await finalizeStory(currentPages);
   });
 }
