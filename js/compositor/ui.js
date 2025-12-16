@@ -27,6 +27,7 @@ export class CompositorUI {
       fontSize: null,
       colorTheme: null,
       frame: null,
+      showPageNumbers: true,
     };
     
     // Per-page crop settings: { [pageIndex]: { cropZoom, cropX, cropY } }
@@ -130,6 +131,11 @@ export class CompositorUI {
             </button>
           </div>
           <div class="topbar-right">
+            <label class="topbar-checkbox" title="Show page numbers on pages">
+              <input type="checkbox" id="show-page-numbers" checked>
+              <span>Page #</span>
+            </label>
+            <div class="topbar-divider"></div>
             <select id="page-size-select" class="topbar-select">
               ${Object.entries(PAGE_DIMENSIONS).map(([key, dim]) => `
                 <option value="${key}" ${key === 'square-medium' ? 'selected' : ''}>
@@ -343,10 +349,13 @@ export class CompositorUI {
     this.selectedElement = null;
     this.cleanupDragHandlers();
     
-    // Exit crop mode if active
+    // Exit crop mode if active and re-render to remove overlay
     if (this.cropMode) {
       this.cropMode = false;
       document.getElementById('page-preview')?.classList.remove('crop-mode');
+      
+      // Re-render without crop overlay
+      this.renderPreview();
     }
   }
 
@@ -540,16 +549,30 @@ export class CompositorUI {
   exitCropMode() {
     console.log('[UI] Exiting crop mode');
     
+    this.cropMode = false;
+    
     const preview = document.getElementById('page-preview');
     preview?.classList.remove('crop-mode');
     
-    // Re-render normally
-    this.renderPreviewAndUpdateOverlay();
-    
-    // Restore normal drag handlers
-    if (this.selectedElement === 'image') {
-      this.setupImageDrag();
+    const btn = document.getElementById('crop-mode-btn');
+    if (btn) {
+      btn.classList.remove('active');
     }
+    
+    // Re-render WITHOUT crop overlay
+    this.renderPreview().then(() => {
+      // Re-select the image element after render
+      if (this.selectedElement === 'image') {
+        const container = document.getElementById('page-preview');
+        const svg = container?.querySelector('svg');
+        const imageEl = svg?.querySelector('image');
+        if (imageEl) {
+          const rect = imageEl.getBoundingClientRect();
+          this.showSelectionOverlay('image', rect);
+          this.setupImageDrag();
+        }
+      }
+    });
   }
   
   async renderPreviewWithCropOverlay() {
@@ -774,27 +797,31 @@ export class CompositorUI {
 
     console.log('[UI] Setting up preview interaction');
 
-    const imageEl = svg.querySelector('image');
+    // Get ALL image elements (there may be a crop overlay image too)
+    const imageEls = svg.querySelectorAll('image');
     const textGroups = svg.querySelectorAll('g');
     const textGroup = Array.from(textGroups).find(g => g.querySelector('text'));
 
-    console.log('[UI] Found elements:', { imageEl: !!imageEl, textGroup: !!textGroup });
+    console.log('[UI] Found elements:', { imageCount: imageEls.length, textGroup: !!textGroup });
 
     // Make sure SVG allows pointer events
     svg.style.pointerEvents = 'all';
 
-    if (imageEl) {
+    // Make ALL images clickable (both main image and crop overlay)
+    imageEls.forEach(imageEl => {
       imageEl.style.cursor = 'pointer';
       imageEl.style.pointerEvents = 'all';
       
-      // Use click instead of mousedown for more reliable selection
       imageEl.onclick = (e) => {
         console.log('[UI] Image clicked');
         e.stopPropagation();
         e.preventDefault();
-        this.selectElement('image', imageEl);
+        // Always select using the last (main) image element for bounds
+        const mainImage = svg.querySelectorAll('image');
+        const targetImage = mainImage[mainImage.length - 1] || imageEl;
+        this.selectElement('image', targetImage);
       };
-    }
+    });
 
     if (textGroup) {
       textGroup.style.cursor = 'pointer';
@@ -1081,6 +1108,9 @@ export class CompositorUI {
       y: crop.cropY,
     };
 
+    // Page numbers toggle
+    config.showPageNumbers = this.customizations.showPageNumbers !== false;
+
     return config;
   }
 
@@ -1112,6 +1142,12 @@ export class CompositorUI {
 
     document.getElementById('page-size-select')?.addEventListener('change', (e) => {
       this.renderer = new PageRenderer({ pageSize: e.target.value });
+      this.renderPreview();
+    });
+
+    // Page numbers toggle
+    document.getElementById('show-page-numbers')?.addEventListener('change', (e) => {
+      this.customizations.showPageNumbers = e.target.checked;
       this.renderPreview();
     });
 

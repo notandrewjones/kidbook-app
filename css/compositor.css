@@ -101,6 +101,27 @@
   cursor: pointer;
 }
 
+.topbar-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--comp-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.topbar-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--comp-primary);
+  cursor: pointer;
+}
+
+.topbar-checkbox:hover {
+  color: var(--comp-text);
+}
+
 .page-indicator {
   font-size: 12px;
   color: var(--comp-text-muted);

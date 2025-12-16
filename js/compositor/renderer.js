@@ -690,7 +690,8 @@ export class PageRenderer {
   }
 
   renderPageNumber(svg, pageNum, config, pageWidth, pageHeight) {
-    if (!pageNum || config.hidePageNumbers) return;
+    // Skip if page numbers are disabled or no page number provided
+    if (!pageNum || config.showPageNumbers === false || config.hidePageNumbers) return;
 
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     text.setAttribute('x', pageWidth / 2);
