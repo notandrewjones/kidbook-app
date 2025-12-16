@@ -585,35 +585,40 @@ export class CompositorUI {
     
     console.log('[UI] Setting up crop mode drag handlers');
     
-    // Hide resize handles in crop mode - we're only panning/zooming within the image
+    // Show resize handles for crop zoom
     overlay.querySelectorAll('.resize-handle').forEach(h => {
-      h.style.display = 'block'; // Still show for zoom
+      h.style.display = 'block';
     });
     
     // Drag to pan the image within the frame
     overlay.onmousedown = (e) => {
       if (e.target.classList.contains('resize-handle')) return;
       
+      console.log('[UI] Crop drag started');
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
       const crop = this.getCurrentCrop();
-      this.dragStartValues = { cropX: crop.cropX, cropY: crop.cropY };
+      this.dragStartValues = { cropX: crop.cropX, cropY: crop.cropY, cropZoom: crop.cropZoom };
       e.preventDefault();
     };
     
     // Corner handles for crop zoom (how much of image is visible)
     overlay.querySelectorAll('.resize-handle').forEach(handle => {
       handle.onmousedown = (e) => {
+        console.log('[UI] Crop resize started');
         e.stopPropagation();
         this.isResizing = true;
         this.resizeHandle = handle.dataset.handle;
         this.dragStart = { x: e.clientX, y: e.clientY };
-        this.dragStartValues = { cropZoom: this.getCurrentCrop().cropZoom };
+        const crop = this.getCurrentCrop();
+        this.dragStartValues = { cropZoom: crop.cropZoom, cropX: crop.cropX, cropY: crop.cropY };
         e.preventDefault();
       };
     });
     
     document.onmousemove = (e) => {
+      if (!this.isDragging && !this.isResizing) return;
+      
       if (this.isDragging) {
         // Pan the image within the frame
         const dx = (e.clientX - this.dragStart.x) / 150;
@@ -623,12 +628,10 @@ export class CompositorUI {
           cropX: Math.max(0, Math.min(1, this.dragStartValues.cropX - dx)),
           cropY: Math.max(0, Math.min(1, this.dragStartValues.cropY - dy)),
         });
-        
-        this.renderPreviewWithCropOverlay();
       }
       
       if (this.isResizing) {
-        // Zoom - dragging outward = show less (zoom in), inward = show more (zoom out)
+        // Zoom - dragging outward = zoom in (show less of image)
         const handle = this.resizeHandle;
         let dx = e.clientX - this.dragStart.x;
         let dy = e.clientY - this.dragStart.y;
@@ -641,15 +644,41 @@ export class CompositorUI {
         const newZoom = Math.max(1.0, Math.min(3.0, this.dragStartValues.cropZoom + delta));
         
         this.setCurrentCrop({ cropZoom: newZoom });
-        this.renderPreviewWithCropOverlay();
       }
+      
+      // Throttled render with crop overlay
+      this.renderCropPreviewThrottled();
     };
     
     document.onmouseup = () => {
-      this.isDragging = false;
-      this.isResizing = false;
-      this.resizeHandle = null;
+      if (this.isDragging || this.isResizing) {
+        console.log('[UI] Crop drag/resize ended');
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        // Final render
+        this.renderPreviewWithCropOverlay();
+      }
     };
+  }
+  
+  // Throttled render for crop mode
+  renderCropPreviewThrottled() {
+    if (this.cropRenderTimer) return;
+    
+    this.cropRenderTimer = setTimeout(async () => {
+      this.cropRenderTimer = null;
+      
+      if (!this.bookData?.pages?.length) return;
+      
+      const container = document.getElementById('page-preview');
+      const pageData = this.bookData.pages[this.currentPageIndex];
+      const tmpl = getTemplate(this.selectedTemplate);
+      const config = this.applyCustomizations(tmpl);
+      config.showCropOverlay = true;
+      
+      this.renderer.renderToContainer(container, pageData, config, this.customizations);
+    }, 16);
   }
 
   bindTextTaskbarEvents() {
@@ -841,20 +870,26 @@ export class CompositorUI {
       h.style.display = 'block';
     });
 
-    // Drag overlay to pan the crop (which part of image is visible)
+    // Drag overlay to move the frame position
     overlay.onmousedown = (e) => {
       if (e.target.classList.contains('resize-handle')) return;
       
+      console.log('[UI] Drag started');
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
-      const crop = this.getCurrentCrop();
-      this.dragStartValues = { cropX: crop.cropX, cropY: crop.cropY };
+      const frame = this.getCurrentFrameSettings();
+      this.dragStartValues = { 
+        offsetX: frame.offsetX, 
+        offsetY: frame.offsetY,
+        scale: frame.scale,
+      };
       e.preventDefault();
     };
 
     // Resize handles - resize the FRAME on the page
     overlay.querySelectorAll('.resize-handle').forEach(handle => {
       handle.onmousedown = (e) => {
+        console.log('[UI] Resize started', handle.dataset.handle);
         e.stopPropagation();
         this.isResizing = true;
         this.resizeHandle = handle.dataset.handle;
@@ -870,39 +905,29 @@ export class CompositorUI {
     });
 
     document.onmousemove = (e) => {
+      if (!this.isDragging && !this.isResizing) return;
+      
       if (this.isDragging) {
-        // Pan within image (move which part of image is visible in frame)
-        const dx = (e.clientX - this.dragStart.x) / 200;
-        const dy = (e.clientY - this.dragStart.y) / 200;
+        // Move the frame position on the page
+        const dx = (e.clientX - this.dragStart.x) / 500;
+        const dy = (e.clientY - this.dragStart.y) / 500;
         
-        this.setCurrentCrop({
-          cropX: Math.max(0, Math.min(1, this.dragStartValues.cropX - dx)),
-          cropY: Math.max(0, Math.min(1, this.dragStartValues.cropY - dy)),
+        this.setCurrentFrameSettings({
+          offsetX: this.dragStartValues.offsetX + dx,
+          offsetY: this.dragStartValues.offsetY + dy,
         });
-        
-        this.renderPreviewAndUpdateOverlay();
       }
       
       if (this.isResizing) {
-        // Resize frame - calculate based on which corner is being dragged
+        // Resize frame
         const handle = this.resizeHandle;
         let dx = e.clientX - this.dragStart.x;
         let dy = e.clientY - this.dragStart.y;
         
-        // Dragging outward should increase size
-        // For NW corner: moving left/up = larger
-        // For SE corner: moving right/down = larger
-        if (handle === 'nw') {
-          dx = -dx;
-          dy = -dy;
-        } else if (handle === 'ne') {
-          dy = -dy;
-        } else if (handle === 'sw') {
-          dx = -dx;
-        }
-        // SE is already correct (right/down = positive = larger)
+        if (handle === 'nw') { dx = -dx; dy = -dy; }
+        else if (handle === 'ne') { dy = -dy; }
+        else if (handle === 'sw') { dx = -dx; }
         
-        // Average movement for uniform scaling
         const delta = (dx + dy) / 2 / 100;
         const newScale = Math.max(0.3, Math.min(1.5, this.dragStartValues.scale + delta));
         
@@ -910,16 +935,42 @@ export class CompositorUI {
         
         const scaleDisplay = document.getElementById('frame-scale-value');
         if (scaleDisplay) scaleDisplay.textContent = `${Math.round(newScale * 100)}%`;
-        
-        this.renderPreviewAndUpdateOverlay();
       }
+      
+      // Render preview during drag
+      this.renderPreviewThrottled();
     };
 
     document.onmouseup = () => {
-      this.isDragging = false;
-      this.isResizing = false;
-      this.resizeHandle = null;
+      if (this.isDragging || this.isResizing) {
+        console.log('[UI] Drag/resize ended');
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        
+        // Final render and update overlay
+        this.renderPreviewAndUpdateOverlay();
+      }
     };
+  }
+  
+  // Throttled render for smooth dragging
+  renderPreviewThrottled() {
+    if (this.renderThrottleTimer) return;
+    
+    this.renderThrottleTimer = setTimeout(async () => {
+      this.renderThrottleTimer = null;
+      
+      if (!this.bookData?.pages?.length) return;
+      
+      const container = document.getElementById('page-preview');
+      const pageData = this.bookData.pages[this.currentPageIndex];
+      const tmpl = getTemplate(this.selectedTemplate);
+      const config = this.applyCustomizations(tmpl);
+      
+      // Quick render without waiting
+      this.renderer.renderToContainer(container, pageData, config, this.customizations);
+    }, 16); // ~60fps
   }
 
   renderThumbnails() {
