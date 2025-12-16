@@ -279,29 +279,12 @@ export class PageRenderer {
 
     console.log('[Renderer] Image position:', { paddedX, paddedY, paddedW, paddedH });
 
-    // Create defs for clip path and filters
-    const clipId = this.generateUniqueId('image-clip');
+    // Get or create defs
     let defs = svg.querySelector('defs');
     if (!defs) {
       defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
       svg.insertBefore(defs, svg.firstChild);
     }
-    
-    // Create clip path
-    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-    clipPath.setAttribute('id', clipId);
-    
-    // Get frame shape
-    const frameShape = FRAME_SHAPES[frameType];
-    if (frameShape) {
-      const shapeSvg = frameShape.svg(paddedW, paddedH);
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('transform', `translate(${paddedX}, ${paddedY})`);
-      g.innerHTML = shapeSvg;
-      clipPath.appendChild(g);
-    }
-    
-    defs.appendChild(clipPath);
 
     // Create image element
     const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
@@ -315,7 +298,32 @@ export class PageRenderer {
     image.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', imageUrl);
     
     image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    
+    // Add clip-path for frame shape (using simple rect clip for now)
+    const clipId = this.generateUniqueId('image-clip');
+    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    clipPath.setAttribute('id', clipId);
+    
+    // Use simple rect for clipping
+    const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    clipRect.setAttribute('x', paddedX);
+    clipRect.setAttribute('y', paddedY);
+    clipRect.setAttribute('width', paddedW);
+    clipRect.setAttribute('height', paddedH);
+    
+    // Add rounded corners if frame type is rounded
+    if (frameType === 'rounded') {
+      const radius = Math.min(paddedW, paddedH) * 0.05;
+      clipRect.setAttribute('rx', radius);
+      clipRect.setAttribute('ry', radius);
+    }
+    
+    clipPath.appendChild(clipRect);
+    defs.appendChild(clipPath);
+    
     image.setAttribute('clip-path', `url(#${clipId})`);
+    
+    console.log('[Renderer] Clip path ID:', clipId);
 
     // Add drop shadow if enabled
     if (config.effects?.imageDropShadow) {
@@ -327,6 +335,10 @@ export class PageRenderer {
 
     svg.appendChild(image);
     console.log('[Renderer] Image element appended to SVG');
+    
+    // Log the actual image element for debugging
+    console.log('[Renderer] Image element:', image);
+    console.log('[Renderer] Image href:', image.getAttribute('href')?.substring(0, 50));
 
     // Add border if configured
     if (imgConfig.border) {
