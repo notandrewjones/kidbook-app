@@ -243,8 +243,9 @@ export const FONT_FAMILIES = {
   'Arial': { category: 'system', weight: '400,700', googleFont: false },
 };
 
-// Color themes
+// Color themes - expanded with more variety
 export const COLOR_THEMES = {
+  // Warm tones
   warm: {
     id: 'warm',
     name: 'Warm Sunshine',
@@ -253,6 +254,32 @@ export const COLOR_THEMES = {
     accent: '#FF8C42',
     secondary: '#FFD166',
   },
+  peach: {
+    id: 'peach',
+    name: 'Peach Blush',
+    background: '#FFF5F0',
+    text: '#5D4037',
+    accent: '#FFAB91',
+    secondary: '#FFCCBC',
+  },
+  terracotta: {
+    id: 'terracotta',
+    name: 'Terracotta',
+    background: '#FBF0EA',
+    text: '#5D4037',
+    accent: '#D84315',
+    secondary: '#FF8A65',
+  },
+  honey: {
+    id: 'honey',
+    name: 'Honey Gold',
+    background: '#FFF9E6',
+    text: '#5D4037',
+    accent: '#F9A825',
+    secondary: '#FFD54F',
+  },
+  
+  // Cool tones
   cool: {
     id: 'cool',
     name: 'Ocean Breeze',
@@ -261,6 +288,32 @@ export const COLOR_THEMES = {
     accent: '#4A90D9',
     secondary: '#81C3F8',
   },
+  arctic: {
+    id: 'arctic',
+    name: 'Arctic Frost',
+    background: '#F5FAFE',
+    text: '#37474F',
+    accent: '#29B6F6',
+    secondary: '#81D4FA',
+  },
+  teal: {
+    id: 'teal',
+    name: 'Teal Waters',
+    background: '#E0F7FA',
+    text: '#004D40',
+    accent: '#00897B',
+    secondary: '#4DB6AC',
+  },
+  navy: {
+    id: 'navy',
+    name: 'Deep Navy',
+    background: '#E8EAF6',
+    text: '#1A237E',
+    accent: '#3949AB',
+    secondary: '#7986CB',
+  },
+  
+  // Green tones
   forest: {
     id: 'forest',
     name: 'Forest Dreams',
@@ -269,6 +322,32 @@ export const COLOR_THEMES = {
     accent: '#4CAF50',
     secondary: '#A5D6A7',
   },
+  sage: {
+    id: 'sage',
+    name: 'Sage Garden',
+    background: '#F1F8E9',
+    text: '#33691E',
+    accent: '#7CB342',
+    secondary: '#AED581',
+  },
+  mint: {
+    id: 'mint',
+    name: 'Fresh Mint',
+    background: '#E8F5E9',
+    text: '#1B5E20',
+    accent: '#66BB6A',
+    secondary: '#A5D6A7',
+  },
+  olive: {
+    id: 'olive',
+    name: 'Olive Grove',
+    background: '#F9FBE7',
+    text: '#33691E',
+    accent: '#827717',
+    secondary: '#C5E1A5',
+  },
+  
+  // Pink/Purple tones
   candy: {
     id: 'candy',
     name: 'Candy Shop',
@@ -276,22 +355,6 @@ export const COLOR_THEMES = {
     text: '#4A2D3D',
     accent: '#E91E63',
     secondary: '#F8BBD9',
-  },
-  night: {
-    id: 'night',
-    name: 'Starry Night',
-    background: '#1A1A2E',
-    text: '#EAEAEA',
-    accent: '#9D4EDD',
-    secondary: '#5A189A',
-  },
-  cream: {
-    id: 'cream',
-    name: 'Classic Cream',
-    background: '#FFFEF5',
-    text: '#333333',
-    accent: '#8B6914',
-    secondary: '#D4A84B',
   },
   lavender: {
     id: 'lavender',
@@ -301,6 +364,58 @@ export const COLOR_THEMES = {
     accent: '#805AD5',
     secondary: '#B794F4',
   },
+  rose: {
+    id: 'rose',
+    name: 'Rose Petal',
+    background: '#FDF2F8',
+    text: '#831843',
+    accent: '#DB2777',
+    secondary: '#F9A8D4',
+  },
+  plum: {
+    id: 'plum',
+    name: 'Plum Velvet',
+    background: '#F3E5F5',
+    text: '#4A148C',
+    accent: '#8E24AA',
+    secondary: '#CE93D8',
+  },
+  
+  // Neutral tones
+  cream: {
+    id: 'cream',
+    name: 'Classic Cream',
+    background: '#FFFEF5',
+    text: '#333333',
+    accent: '#8B6914',
+    secondary: '#D4A84B',
+  },
+  slate: {
+    id: 'slate',
+    name: 'Modern Slate',
+    background: '#F8FAFC',
+    text: '#334155',
+    accent: '#64748B',
+    secondary: '#94A3B8',
+  },
+  sand: {
+    id: 'sand',
+    name: 'Desert Sand',
+    background: '#FEFAF6',
+    text: '#44403C',
+    accent: '#A8A29E',
+    secondary: '#D6D3D1',
+  },
+  stone: {
+    id: 'stone',
+    name: 'Warm Stone',
+    background: '#FAF9F7',
+    text: '#3F3F46',
+    accent: '#78716C',
+    secondary: '#A8A29E',
+  },
+  
+  // Bright/Saturated
   sunset: {
     id: 'sunset',
     name: 'Sunset Glow',
@@ -308,6 +423,98 @@ export const COLOR_THEMES = {
     text: '#742A2A',
     accent: '#F56565',
     secondary: '#FC8181',
+  },
+  citrus: {
+    id: 'citrus',
+    name: 'Citrus Pop',
+    background: '#FFFBEB',
+    text: '#713F12',
+    accent: '#F59E0B',
+    secondary: '#FCD34D',
+  },
+  tropical: {
+    id: 'tropical',
+    name: 'Tropical Paradise',
+    background: '#ECFDF5',
+    text: '#065F46',
+    accent: '#10B981',
+    secondary: '#6EE7B7',
+  },
+  electric: {
+    id: 'electric',
+    name: 'Electric Blue',
+    background: '#EFF6FF',
+    text: '#1E3A8A',
+    accent: '#3B82F6',
+    secondary: '#93C5FD',
+  },
+  
+  // Muted/Soft tones
+  dustyrose: {
+    id: 'dustyrose',
+    name: 'Dusty Rose',
+    background: '#FBF4F4',
+    text: '#6B4C4C',
+    accent: '#C9A0A0',
+    secondary: '#E5D4D4',
+  },
+  seafoam: {
+    id: 'seafoam',
+    name: 'Soft Seafoam',
+    background: '#F4FBFA',
+    text: '#3D5A58',
+    accent: '#7FBFB8',
+    secondary: '#B8D8D4',
+  },
+  mauve: {
+    id: 'mauve',
+    name: 'Gentle Mauve',
+    background: '#F9F5F6',
+    text: '#5E4955',
+    accent: '#B08BA5',
+    secondary: '#D4C4CF',
+  },
+  denim: {
+    id: 'denim',
+    name: 'Soft Denim',
+    background: '#F5F7FA',
+    text: '#3E5068',
+    accent: '#6B8CAE',
+    secondary: '#A3BBD3',
+  },
+  
+  // Dark themes
+  night: {
+    id: 'night',
+    name: 'Starry Night',
+    background: '#1A1A2E',
+    text: '#EAEAEA',
+    accent: '#9D4EDD',
+    secondary: '#5A189A',
+  },
+  midnight: {
+    id: 'midnight',
+    name: 'Midnight Blue',
+    background: '#0F172A',
+    text: '#F1F5F9',
+    accent: '#38BDF8',
+    secondary: '#0EA5E9',
+  },
+  charcoal: {
+    id: 'charcoal',
+    name: 'Charcoal',
+    background: '#1C1917',
+    text: '#F5F5F4',
+    accent: '#A8A29E',
+    secondary: '#78716C',
+  },
+  forest_night: {
+    id: 'forest_night',
+    name: 'Forest Night',
+    background: '#14261C',
+    text: '#E8F5E9',
+    accent: '#4CAF50',
+    secondary: '#2E7D32',
   },
 };
 

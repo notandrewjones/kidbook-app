@@ -268,9 +268,30 @@ export class CompositorUI {
           <!-- Left Sidebar -->
           <aside class="compositor-sidebar">
             <div class="sidebar-header">
-              <h3>Templates</h3>
+              <h3>Style</h3>
             </div>
-            <div id="template-gallery" class="template-gallery"></div>
+            <div class="sidebar-content">
+              <!-- Color Themes Section -->
+              <div class="sidebar-section">
+                <div class="sidebar-section-header" id="color-section-toggle">
+                  <span>Color Theme</span>
+                  <svg class="section-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </div>
+                <div id="color-themes-grid" class="color-themes-grid">
+                  ${this.renderColorThemes()}
+                </div>
+              </div>
+              
+              <!-- Templates Section -->
+              <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                  <span>Layout Templates</span>
+                </div>
+                <div id="template-gallery" class="template-gallery"></div>
+              </div>
+            </div>
           </aside>
 
           <!-- Center - Canvas Area -->
@@ -671,6 +692,22 @@ export class CompositorUI {
     return icons[size] || icons['square-medium'];
   }
 
+  renderColorThemes() {
+    const themes = Object.values(COLOR_THEMES);
+    const currentTheme = this.customizations.colorTheme || 'cream';
+    
+    return themes.map(theme => `
+      <button class="color-theme-btn ${theme.id === currentTheme ? 'active' : ''}"
+              data-theme="${theme.id}"
+              title="${theme.name}"
+              style="--theme-bg: ${theme.background}; --theme-accent: ${theme.accent}; --theme-text: ${theme.text}">
+        <span class="color-theme-swatch" style="background: ${theme.background}; border-color: ${theme.accent}">
+          <span class="color-theme-accent" style="background: ${theme.accent}"></span>
+        </span>
+      </button>
+    `).join('');
+  }
+
   renderTextTaskbar() {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFont = this.customizations.fontFamily || tmpl.typography?.fontFamily || 'Merriweather';
@@ -757,19 +794,6 @@ export class CompositorUI {
       <div class="taskbar-section">
         <label class="taskbar-label">Scale</label>
         <span class="taskbar-value" id="text-scale-value">${Math.round(textSettings.scale * 100)}%</span>
-      </div>
-      <div class="taskbar-divider"></div>
-      <div class="taskbar-section">
-        <label class="taskbar-label">Theme</label>
-        <div class="taskbar-colors">
-          ${Object.values(COLOR_THEMES).slice(0, 8).map(theme => `
-            <button class="taskbar-color-btn ${theme.id === (this.customizations.colorTheme || 'cream') ? 'active' : ''}"
-                    data-theme="${theme.id}"
-                    style="background: ${theme.background}; border-color: ${theme.accent}"
-                    title="${theme.name}">
-            </button>
-          `).join('')}
-        </div>
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
@@ -959,6 +983,7 @@ export class CompositorUI {
       if (e.target.classList.contains('resize-handle')) return;
       
       console.log('[UI] Crop drag started');
+      this.saveUndoState(); // Save state BEFORE starting crop drag
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
       const crop = this.getCurrentCrop();
@@ -971,6 +996,7 @@ export class CompositorUI {
       handle.onmousedown = (e) => {
         console.log('[UI] Crop resize started');
         e.stopPropagation();
+        this.saveUndoState(); // Save state BEFORE starting crop resize
         this.isResizing = true;
         this.resizeHandle = handle.dataset.handle;
         this.dragStart = { x: e.clientX, y: e.clientY };
@@ -1103,17 +1129,6 @@ export class CompositorUI {
     document.getElementById('snap-top')?.addEventListener('click', () => this.snapElement('text', 'top'));
     document.getElementById('snap-center-v')?.addEventListener('click', () => this.snapElement('text', 'center-v'));
     document.getElementById('snap-bottom')?.addEventListener('click', () => this.snapElement('text', 'bottom'));
-
-    document.querySelectorAll('.taskbar-color-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.saveUndoState();
-        document.querySelectorAll('.taskbar-color-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.customizations.colorTheme = btn.dataset.theme;
-        this.renderPreviewAndUpdateOverlay();
-        this.renderThumbnails();
-      });
-    });
 
     // Reset text position/scale
     document.getElementById('text-reset')?.addEventListener('click', () => {
@@ -1324,6 +1339,7 @@ export class CompositorUI {
       if (e.target.classList.contains('resize-handle')) return;
       
       console.log('[UI] Drag started');
+      this.saveUndoState(); // Save state BEFORE starting drag
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
       const frame = this.getCurrentFrameSettings();
@@ -1340,6 +1356,7 @@ export class CompositorUI {
       handle.onmousedown = (e) => {
         console.log('[UI] Resize started', handle.dataset.handle);
         e.stopPropagation();
+        this.saveUndoState(); // Save state BEFORE starting resize
         this.isResizing = true;
         this.resizeHandle = handle.dataset.handle;
         this.dragStart = { x: e.clientX, y: e.clientY };
@@ -1419,6 +1436,7 @@ export class CompositorUI {
       if (e.target.classList.contains('resize-handle')) return;
       
       console.log('[UI] Text drag started');
+      this.saveUndoState(); // Save state BEFORE starting drag
       this.isDragging = true;
       this.dragStart = { x: e.clientX, y: e.clientY };
       const textSettings = this.getCurrentTextSettings();
@@ -1435,6 +1453,7 @@ export class CompositorUI {
       handle.onmousedown = (e) => {
         console.log('[UI] Text resize started', handle.dataset.handle);
         e.stopPropagation();
+        this.saveUndoState(); // Save state BEFORE starting resize
         this.isResizing = true;
         this.resizeHandle = handle.dataset.handle;
         this.dragStart = { x: e.clientX, y: e.clientY };
@@ -1901,6 +1920,32 @@ export class CompositorUI {
     document.getElementById('undo-btn')?.addEventListener('click', () => this.undo());
     document.getElementById('redo-btn')?.addEventListener('click', () => this.redo());
 
+    // Back to Storyboard button
+    document.getElementById('back-btn')?.addEventListener('click', () => {
+      this.goBackToStoryboard();
+    });
+
+    // Color theme buttons in sidebar
+    document.querySelectorAll('.color-theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.saveUndoState();
+        document.querySelectorAll('.color-theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.customizations.colorTheme = btn.dataset.theme;
+        this.renderViewMode();
+        this.renderThumbnails();
+      });
+    });
+
+    // Color section toggle (expand/collapse)
+    document.getElementById('color-section-toggle')?.addEventListener('click', () => {
+      const grid = document.getElementById('color-themes-grid');
+      if (grid) {
+        grid.classList.toggle('collapsed');
+        document.querySelector('.section-chevron')?.classList.toggle('rotated');
+      }
+    });
+
     // View Mode Dropdown
     document.getElementById('view-mode-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1923,6 +1968,7 @@ export class CompositorUI {
 
     document.querySelectorAll('#page-size-dropdown .dropdown-item').forEach(item => {
       item.addEventListener('click', (e) => {
+        this.saveUndoState(); // Track page size changes
         const newSize = item.dataset.size;
         this.renderer = new PageRenderer({ pageSize: newSize });
         this.updatePageSizeButton(newSize);
@@ -1937,6 +1983,7 @@ export class CompositorUI {
       if (!this.abPatternMode) {
         this.showABPatternConfirm();
       } else {
+        this.saveUndoState(); // Track A/B mode changes
         this.disableABPattern();
       }
     });
@@ -1950,6 +1997,7 @@ export class CompositorUI {
 
     // Page numbers toggle
     document.getElementById('show-page-numbers')?.addEventListener('change', (e) => {
+      this.saveUndoState(); // Track page numbers toggle
       this.customizations.showPageNumbers = e.target.checked;
       this.renderViewMode();
       this.renderThumbnails();
@@ -2623,6 +2671,7 @@ export class CompositorUI {
   }
 
   enableABPattern() {
+    this.saveUndoState(); // Track A/B mode enable
     this.abPatternMode = true;
     const btn = document.getElementById('ab-pattern-btn');
     if (btn) btn.classList.add('active');
@@ -2870,6 +2919,38 @@ export class CompositorUI {
     
     this.renderPreviewAndUpdateOverlay();
     this.renderThumbnails();
+  }
+
+  // ============================================
+  // Navigation
+  // ============================================
+  
+  goBackToStoryboard() {
+    // Restore workspace header
+    const workspaceHead = document.querySelector('.workspace-head');
+    if (workspaceHead) workspaceHead.style.display = '';
+    
+    // Reset container padding
+    if (this.container) {
+      this.container.style.padding = '';
+      this.container.style.overflow = '';
+    }
+    
+    // Change phase back to storyboard
+    document.body.dataset.phase = 'storyboard';
+    
+    // Dispatch a custom event that the main app can listen for
+    const event = new CustomEvent('compositor:back', {
+      detail: { bookData: this.bookData }
+    });
+    document.dispatchEvent(event);
+    
+    // Re-render storyboard phase
+    if (window.renderCurrentPhase) {
+      window.renderCurrentPhase();
+    } else if (window.renderStoryboard) {
+      window.renderStoryboard();
+    }
   }
 }
 
