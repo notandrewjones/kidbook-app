@@ -28,6 +28,7 @@ export class CompositorUI {
       colorTheme: null,
       frame: null,
       showPageNumbers: true,
+      textAlign: 'center', // 'left', 'center', 'right'
     };
     
     // Per-page crop settings: { [pageIndex]: { cropZoom, cropX, cropY } }
@@ -62,6 +63,11 @@ export class CompositorUI {
     this.isResizing = false;
     this.dragStart = { x: 0, y: 0 };
     this.dragStartValues = {};
+    
+    // Undo/Redo system
+    this.undoStack = [];
+    this.redoStack = [];
+    this.maxUndoSteps = 50;
     
     // Callbacks
     this.onExportComplete = null;
@@ -134,6 +140,19 @@ export class CompositorUI {
             <button id="back-btn" class="topbar-btn" title="Back to Storyboard">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+            </button>
+            <div class="topbar-divider"></div>
+            <button id="undo-btn" class="topbar-btn" title="Undo (Ctrl+Z)" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 7v6h6"/>
+                <path d="M3 13a9 9 0 1 0 2.5-6.5L3 7"/>
+              </svg>
+            </button>
+            <button id="redo-btn" class="topbar-btn" title="Redo (Ctrl+Shift+Z)" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 7v6h-6"/>
+                <path d="M21 13a9 9 0 1 1-2.5-6.5L21 7"/>
               </svg>
             </button>
             <div class="topbar-divider"></div>
@@ -544,6 +563,42 @@ export class CompositorUI {
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
+        <label class="taskbar-label">Snap</label>
+        <div class="taskbar-snap-btns">
+          <button class="taskbar-btn" id="img-snap-left" title="Snap to Left (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v16"/><rect x="8" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="img-snap-center-h" title="Center Horizontally">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 4v16"/><rect x="6" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="img-snap-right" title="Snap to Right (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 4v16"/><rect x="4" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="img-snap-top" title="Snap to Top (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16"/><rect x="8" y="8" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="img-snap-center-v" title="Center Vertically">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 12h16"/><rect x="8" y="6" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="img-snap-bottom" title="Snap to Bottom (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 20h16"/><rect x="8" y="4" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
         <button class="taskbar-btn-mode ${isCropMode ? 'active' : ''}" id="crop-mode-btn" title="Crop & reposition image within frame">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 2v14a2 2 0 002 2h14M6 6H2M18 22v-4"/>
@@ -621,6 +676,7 @@ export class CompositorUI {
     const currentFont = this.customizations.fontFamily || tmpl.typography?.fontFamily || 'Merriweather';
     const currentSize = this.customizations.fontSize || tmpl.typography?.baseFontSize || 18;
     const textSettings = this.getCurrentTextSettings();
+    const currentAlign = this.customizations.textAlign || 'center';
     
     return `
       <div class="taskbar-section">
@@ -638,6 +694,63 @@ export class CompositorUI {
           <button class="taskbar-btn" id="fontsize-down">−</button>
           <span class="taskbar-value" id="fontsize-value">${currentSize}px</span>
           <button class="taskbar-btn" id="fontsize-up">+</button>
+        </div>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <label class="taskbar-label">Align</label>
+        <div class="taskbar-align-btns">
+          <button class="taskbar-btn ${currentAlign === 'left' ? 'active' : ''}" id="text-align-left" title="Align Left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M3 12h12M3 18h18"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn ${currentAlign === 'center' ? 'active' : ''}" id="text-align-center" title="Align Center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M6 12h12M3 18h18"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn ${currentAlign === 'right' ? 'active' : ''}" id="text-align-right" title="Align Right">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M9 12h12M3 18h18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <label class="taskbar-label">Snap</label>
+        <div class="taskbar-snap-btns">
+          <button class="taskbar-btn" id="snap-left" title="Snap to Left (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v16"/><rect x="8" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="snap-center-h" title="Center Horizontally">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 4v16"/><rect x="6" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="snap-right" title="Snap to Right (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 4v16"/><rect x="4" y="8" width="12" height="8" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="snap-top" title="Snap to Top (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16"/><rect x="8" y="8" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="snap-center-v" title="Center Vertically">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 12h16"/><rect x="8" y="6" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
+          <button class="taskbar-btn" id="snap-bottom" title="Snap to Bottom (3% margin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 20h16"/><rect x="8" y="4" width="8" height="12" rx="1"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div class="taskbar-divider"></div>
@@ -681,12 +794,21 @@ export class CompositorUI {
     // Frame shape selection
     document.querySelectorAll('.taskbar-frame-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        this.saveUndoState();
         document.querySelectorAll('.taskbar-frame-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.customizations.frame = btn.dataset.frame;
         this.renderPreviewAndUpdateOverlay();
       });
     });
+
+    // Image snap buttons
+    document.getElementById('img-snap-left')?.addEventListener('click', () => this.snapElement('image', 'left'));
+    document.getElementById('img-snap-center-h')?.addEventListener('click', () => this.snapElement('image', 'center-h'));
+    document.getElementById('img-snap-right')?.addEventListener('click', () => this.snapElement('image', 'right'));
+    document.getElementById('img-snap-top')?.addEventListener('click', () => this.snapElement('image', 'top'));
+    document.getElementById('img-snap-center-v')?.addEventListener('click', () => this.snapElement('image', 'center-v'));
+    document.getElementById('img-snap-bottom')?.addEventListener('click', () => this.snapElement('image', 'bottom'));
 
     // Crop mode toggle
     document.getElementById('crop-mode-btn')?.addEventListener('click', () => {
@@ -695,6 +817,7 @@ export class CompositorUI {
 
     // Reset all
     document.getElementById('frame-reset')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.pageFrameSettings[this.currentPageIndex] = { scale: 1.0, offsetX: 0, offsetY: 0 };
       this.pageCropSettings[this.currentPageIndex] = { cropZoom: 1.0, cropX: 0.5, cropY: 0.5 };
       document.getElementById('frame-scale-value').textContent = '100%';
@@ -703,6 +826,7 @@ export class CompositorUI {
 
     // Apply image settings to all pages
     document.getElementById('apply-image-all')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.applyImageSettingsToAllPages();
     });
   }
@@ -939,25 +1063,50 @@ export class CompositorUI {
 
   bindTextTaskbarEvents() {
     document.getElementById('taskbar-font')?.addEventListener('change', (e) => {
+      this.saveUndoState();
       this.customizations.fontFamily = e.target.value;
       this.preloadFonts([e.target.value]);
       this.renderPreviewAndUpdateOverlay();
     });
 
     document.getElementById('fontsize-down')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.customizations.fontSize = Math.max(12, (this.customizations.fontSize || 18) - 2);
       document.getElementById('fontsize-value').textContent = `${this.customizations.fontSize}px`;
       this.renderPreviewAndUpdateOverlay();
     });
 
     document.getElementById('fontsize-up')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.customizations.fontSize = Math.min(36, (this.customizations.fontSize || 18) + 2);
       document.getElementById('fontsize-value').textContent = `${this.customizations.fontSize}px`;
       this.renderPreviewAndUpdateOverlay();
     });
 
+    // Text alignment buttons
+    ['left', 'center', 'right'].forEach(align => {
+      document.getElementById(`text-align-${align}`)?.addEventListener('click', () => {
+        this.saveUndoState();
+        this.customizations.textAlign = align;
+        // Update button states
+        document.querySelectorAll('.taskbar-align-btns .taskbar-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`text-align-${align}`)?.classList.add('active');
+        this.renderPreviewAndUpdateOverlay();
+        this.renderThumbnails();
+      });
+    });
+
+    // Text snap buttons
+    document.getElementById('snap-left')?.addEventListener('click', () => this.snapElement('text', 'left'));
+    document.getElementById('snap-center-h')?.addEventListener('click', () => this.snapElement('text', 'center-h'));
+    document.getElementById('snap-right')?.addEventListener('click', () => this.snapElement('text', 'right'));
+    document.getElementById('snap-top')?.addEventListener('click', () => this.snapElement('text', 'top'));
+    document.getElementById('snap-center-v')?.addEventListener('click', () => this.snapElement('text', 'center-v'));
+    document.getElementById('snap-bottom')?.addEventListener('click', () => this.snapElement('text', 'bottom'));
+
     document.querySelectorAll('.taskbar-color-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        this.saveUndoState();
         document.querySelectorAll('.taskbar-color-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.customizations.colorTheme = btn.dataset.theme;
@@ -968,6 +1117,7 @@ export class CompositorUI {
 
     // Reset text position/scale
     document.getElementById('text-reset')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.pageTextSettings[this.currentPageIndex] = { scale: 1.0, offsetX: 0, offsetY: 0 };
       document.getElementById('text-scale-value').textContent = '100%';
       this.renderPreviewAndUpdateOverlay();
@@ -975,6 +1125,7 @@ export class CompositorUI {
 
     // Apply text settings to all pages
     document.getElementById('apply-text-all')?.addEventListener('click', () => {
+      this.saveUndoState();
       this.applyTextSettingsToAllPages();
     });
   }
@@ -1555,8 +1706,31 @@ export class CompositorUI {
   }
 
   selectTemplate(templateId) {
+    // Save undo state before change
+    this.saveUndoState();
+    
     this.selectedTemplate = templateId;
-    this.renderPreview();
+    
+    // Reset all frame and text positions (but NOT crop settings)
+    const totalPages = this.bookData?.pages?.length || 0;
+    for (let i = 0; i < totalPages; i++) {
+      this.pageFrameSettings[i] = { scale: 1.0, offsetX: 0, offsetY: 0 };
+      this.pageTextSettings[i] = { scale: 1.0, offsetX: 0, offsetY: 0 };
+    }
+    
+    // Reset global customizations except for things that should persist
+    this.customizations.frame = null;
+    this.customizations.fontFamily = null;
+    this.customizations.fontSize = null;
+    this.customizations.colorTheme = null;
+    // Keep showPageNumbers as-is
+    
+    // Update UI and template gallery selection
+    document.querySelectorAll('.template-card').forEach(card => {
+      card.classList.toggle('selected', card.dataset.template === templateId);
+    });
+    
+    this.renderViewMode();
     this.renderThumbnails();
     this.hideTaskbar();
     if (this.onTemplateChange) this.onTemplateChange(templateId);
@@ -1583,6 +1757,13 @@ export class CompositorUI {
       config.layout = config.layout || {};
       config.layout.image = config.layout.image || {};
       config.layout.image.frame = this.customizations.frame;
+    }
+
+    // Apply text alignment
+    if (this.customizations.textAlign) {
+      config.layout = config.layout || {};
+      config.layout.text = config.layout.text || {};
+      config.layout.text.align = this.customizations.textAlign;
     }
 
     // Apply per-page frame settings (size and position of frame on page)
@@ -1695,11 +1876,30 @@ export class CompositorUI {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      
+      // Undo: Ctrl+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        this.undo();
+        return;
+      }
+      
+      // Redo: Ctrl+Shift+Z or Ctrl+Y
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) {
+        e.preventDefault();
+        this.redo();
+        return;
+      }
+      
       if (e.key === 'ArrowLeft') document.getElementById('prev-page')?.click();
       else if (e.key === 'ArrowRight') document.getElementById('next-page')?.click();
       else if (e.key === 'Escape') this.hideTaskbar();
     });
+
+    // Undo/Redo buttons
+    document.getElementById('undo-btn')?.addEventListener('click', () => this.undo());
+    document.getElementById('redo-btn')?.addEventListener('click', () => this.redo());
 
     // View Mode Dropdown
     document.getElementById('view-mode-btn')?.addEventListener('click', (e) => {
@@ -1726,7 +1926,8 @@ export class CompositorUI {
         const newSize = item.dataset.size;
         this.renderer = new PageRenderer({ pageSize: newSize });
         this.updatePageSizeButton(newSize);
-        this.renderPreview();
+        this.renderViewMode();
+        this.renderThumbnails();
         this.closeAllDropdowns();
       });
     });
@@ -1750,7 +1951,8 @@ export class CompositorUI {
     // Page numbers toggle
     document.getElementById('show-page-numbers')?.addEventListener('change', (e) => {
       this.customizations.showPageNumbers = e.target.checked;
-      this.renderPreview();
+      this.renderViewMode();
+      this.renderThumbnails();
     });
 
     document.getElementById('export-btn')?.addEventListener('click', () => {
@@ -1916,11 +2118,7 @@ export class CompositorUI {
       pageIndicator?.style.removeProperty('display');
     }
 
-    // Hide/show sidebar in grid/list modes
-    const sidebar = document.querySelector('.compositor-sidebar');
-    if (sidebar) {
-      sidebar.style.display = (mode === 'grid' || mode === 'list') ? 'none' : '';
-    }
+    // Sidebar is always visible (controlled by CSS via data-view-mode)
 
     // Render the appropriate view
     this.renderViewMode();
@@ -2494,6 +2692,184 @@ export class CompositorUI {
         }
       }
     }
+  }
+
+  // ============================================
+  // Undo/Redo System
+  // ============================================
+  
+  saveUndoState() {
+    const state = {
+      selectedTemplate: this.selectedTemplate,
+      customizations: JSON.parse(JSON.stringify(this.customizations)),
+      pageFrameSettings: JSON.parse(JSON.stringify(this.pageFrameSettings)),
+      pageTextSettings: JSON.parse(JSON.stringify(this.pageTextSettings)),
+      pageCropSettings: JSON.parse(JSON.stringify(this.pageCropSettings)),
+    };
+    
+    this.undoStack.push(state);
+    
+    // Limit stack size
+    if (this.undoStack.length > this.maxUndoSteps) {
+      this.undoStack.shift();
+    }
+    
+    // Clear redo stack on new action
+    this.redoStack = [];
+    
+    this.updateUndoRedoButtons();
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) return;
+    
+    // Save current state to redo stack
+    const currentState = {
+      selectedTemplate: this.selectedTemplate,
+      customizations: JSON.parse(JSON.stringify(this.customizations)),
+      pageFrameSettings: JSON.parse(JSON.stringify(this.pageFrameSettings)),
+      pageTextSettings: JSON.parse(JSON.stringify(this.pageTextSettings)),
+      pageCropSettings: JSON.parse(JSON.stringify(this.pageCropSettings)),
+    };
+    this.redoStack.push(currentState);
+    
+    // Restore previous state
+    const prevState = this.undoStack.pop();
+    this.restoreState(prevState);
+    
+    this.updateUndoRedoButtons();
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return;
+    
+    // Save current state to undo stack
+    const currentState = {
+      selectedTemplate: this.selectedTemplate,
+      customizations: JSON.parse(JSON.stringify(this.customizations)),
+      pageFrameSettings: JSON.parse(JSON.stringify(this.pageFrameSettings)),
+      pageTextSettings: JSON.parse(JSON.stringify(this.pageTextSettings)),
+      pageCropSettings: JSON.parse(JSON.stringify(this.pageCropSettings)),
+    };
+    this.undoStack.push(currentState);
+    
+    // Restore redo state
+    const redoState = this.redoStack.pop();
+    this.restoreState(redoState);
+    
+    this.updateUndoRedoButtons();
+  }
+
+  restoreState(state) {
+    this.selectedTemplate = state.selectedTemplate;
+    this.customizations = state.customizations;
+    this.pageFrameSettings = state.pageFrameSettings;
+    this.pageTextSettings = state.pageTextSettings;
+    this.pageCropSettings = state.pageCropSettings;
+    
+    // Update template gallery selection
+    document.querySelectorAll('.template-card').forEach(card => {
+      card.classList.toggle('selected', card.dataset.template === state.selectedTemplate);
+    });
+    
+    this.renderViewMode();
+    this.renderThumbnails();
+  }
+
+  updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    
+    if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
+  }
+
+  // ============================================
+  // Snap/Alignment System
+  // ============================================
+  
+  snapElement(elementType, snapType) {
+    this.saveUndoState();
+    
+    const MARGIN = 0.03; // 3% safe margin
+    const tmpl = getTemplate(this.selectedTemplate);
+    
+    if (elementType === 'image') {
+      const basePos = tmpl.layout?.image?.position?.region || { x: 0.05, y: 0.05, width: 0.9, height: 0.6 };
+      const frame = this.getCurrentFrameSettings();
+      const scale = frame.scale;
+      const scaledWidth = basePos.width * scale;
+      const scaledHeight = basePos.height * scale;
+      
+      let newOffsetX = frame.offsetX;
+      let newOffsetY = frame.offsetY;
+      
+      // Calculate target positions
+      switch (snapType) {
+        case 'left':
+          // Snap to left with margin
+          newOffsetX = MARGIN - basePos.x - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'center-h':
+          // Center horizontally
+          newOffsetX = 0.5 - basePos.x - basePos.width / 2 - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'right':
+          // Snap to right with margin
+          newOffsetX = (1 - MARGIN - scaledWidth) - basePos.x - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'top':
+          // Snap to top with margin
+          newOffsetY = MARGIN - basePos.y - (basePos.height - scaledHeight) / 2;
+          break;
+        case 'center-v':
+          // Center vertically
+          newOffsetY = 0.5 - basePos.y - basePos.height / 2 - (basePos.height - scaledHeight) / 2;
+          break;
+        case 'bottom':
+          // Snap to bottom with margin
+          newOffsetY = (1 - MARGIN - scaledHeight) - basePos.y - (basePos.height - scaledHeight) / 2;
+          break;
+      }
+      
+      this.setCurrentFrameSettings({ offsetX: newOffsetX, offsetY: newOffsetY });
+      
+    } else if (elementType === 'text') {
+      const basePos = tmpl.layout?.text?.position?.region || { x: 0.05, y: 0.7, width: 0.9, height: 0.25 };
+      const textSettings = this.getCurrentTextSettings();
+      const scale = textSettings.scale;
+      const scaledWidth = basePos.width * scale;
+      const scaledHeight = basePos.height * scale;
+      
+      let newOffsetX = textSettings.offsetX;
+      let newOffsetY = textSettings.offsetY;
+      
+      switch (snapType) {
+        case 'left':
+          newOffsetX = MARGIN - basePos.x - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'center-h':
+          newOffsetX = 0.5 - basePos.x - basePos.width / 2 - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'right':
+          newOffsetX = (1 - MARGIN - scaledWidth) - basePos.x - (basePos.width - scaledWidth) / 2;
+          break;
+        case 'top':
+          newOffsetY = MARGIN - basePos.y - (basePos.height - scaledHeight) / 2;
+          break;
+        case 'center-v':
+          newOffsetY = 0.5 - basePos.y - basePos.height / 2 - (basePos.height - scaledHeight) / 2;
+          break;
+        case 'bottom':
+          newOffsetY = (1 - MARGIN - scaledHeight) - basePos.y - (basePos.height - scaledHeight) / 2;
+          break;
+      }
+      
+      this.setCurrentTextSettings({ offsetX: newOffsetX, offsetY: newOffsetY });
+    }
+    
+    this.renderPreviewAndUpdateOverlay();
+    this.renderThumbnails();
   }
 }
 

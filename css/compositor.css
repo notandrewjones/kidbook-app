@@ -259,6 +259,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
+  padding-bottom: 80px; /* Space for taskbar */
   min-height: 0;
   overflow: hidden;
 }
@@ -268,6 +269,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  max-height: 100%;
 }
 
 .page-preview {
@@ -281,9 +283,9 @@
   display: block;
   width: auto;
   height: auto;
-  max-width: calc(100vw - 280px);
-  max-height: calc(100vh - 220px);
-  max-height: calc(100dvh - 220px);
+  max-width: calc(100vw - 320px);
+  max-height: calc(100vh - 340px);
+  max-height: calc(100dvh - 340px);
   pointer-events: all;
 }
 
@@ -350,6 +352,10 @@
    Thumbnails - Fixed to Bottom
    ============================================ */
 .thumbnails-strip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   flex-shrink: 0;
   background: var(--comp-surface);
   border-top: 1px solid var(--comp-border);
@@ -413,7 +419,7 @@
    ============================================ */
 .floating-taskbar {
   position: absolute;
-  bottom: 12px;
+  bottom: 76px; /* Above the thumbnail strip */
   left: 50%;
   transform: translateX(-50%);
   background: var(--comp-taskbar-bg);
@@ -513,6 +519,30 @@
 .taskbar-btn:hover {
   background: var(--comp-primary);
   border-color: var(--comp-primary);
+}
+
+.taskbar-btn.active {
+  background: var(--comp-primary);
+  border-color: var(--comp-primary);
+  color: white;
+}
+
+.taskbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Alignment and Snap button groups */
+.taskbar-align-btns,
+.taskbar-snap-btns {
+  display: flex;
+  gap: 2px;
+}
+
+.taskbar-align-btns .taskbar-btn,
+.taskbar-snap-btns .taskbar-btn {
+  width: 24px;
+  height: 24px;
 }
 
 .taskbar-btn-icon {
@@ -941,20 +971,15 @@
 .spread-selection-overlay .resize-handle.sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .spread-selection-overlay .resize-handle.se { bottom: -5px; right: -5px; cursor: nwse-resize; }
 
-/* Grid View - Full Workspace */
+/* Grid View - Full Workspace but keep sidebar */
 .compositor-canva[data-view-mode="grid"] .compositor-main,
 .compositor-canva[data-view-mode="list"] .compositor-main {
-  display: block;
-}
-
-.compositor-canva[data-view-mode="grid"] .compositor-sidebar,
-.compositor-canva[data-view-mode="list"] .compositor-sidebar {
-  display: none;
+  display: flex; /* Keep sidebar visible */
 }
 
 .compositor-canva[data-view-mode="grid"] .compositor-canvas-area,
 .compositor-canva[data-view-mode="list"] .compositor-canvas-area {
-  width: 100%;
+  flex: 1;
 }
 
 .compositor-canva[data-view-mode="grid"] .canvas-container,
