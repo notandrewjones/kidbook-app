@@ -27,10 +27,17 @@
   grid-template-rows: 48px 1fr;
   height: 100vh;
   height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   background: var(--comp-bg);
   color: var(--comp-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 .compositor-canva *, .compositor-canva *::before, .compositor-canva *::after {
@@ -245,6 +252,7 @@
   flex-direction: column;
   background: var(--comp-canvas-bg);
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -255,7 +263,6 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  padding-bottom: 80px; /* Space for fixed thumbnail strip */
   min-height: 0;
   overflow: hidden;
 }
@@ -279,8 +286,8 @@
   width: auto;
   height: auto;
   max-width: calc(100vw - 280px);
-  max-height: calc(100vh - 160px);
-  max-height: calc(100dvh - 160px);
+  max-height: calc(100vh - 220px);
+  max-height: calc(100dvh - 220px);
   pointer-events: all;
 }
 
@@ -347,10 +354,7 @@
    Thumbnails - Fixed to Bottom
    ============================================ */
 .thumbnails-strip {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   background: var(--comp-surface);
   border-top: 1px solid var(--comp-border);
   padding: 8px 12px;
@@ -413,7 +417,7 @@
    ============================================ */
 .floating-taskbar {
   position: absolute;
-  bottom: 76px; /* Above the thumbnail strip */
+  bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--comp-taskbar-bg);
@@ -530,6 +534,35 @@
 }
 
 .taskbar-btn-icon:hover { color: var(--comp-text); }
+
+/* Apply to All Button */
+.taskbar-btn-apply {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--comp-border);
+  border-radius: 4px;
+  color: var(--comp-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.taskbar-btn-apply:hover {
+  background: var(--comp-primary);
+  border-color: var(--comp-primary);
+  color: white;
+}
+
+.taskbar-btn-apply.applied {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
 
 .taskbar-select {
   padding: 4px 6px;
@@ -766,8 +799,8 @@
   .template-category-grid { grid-template-columns: 1fr; }
   .page-preview svg {
     max-width: calc(100vw - 220px);
-    max-height: calc(100vh - 160px);
-    max-height: calc(100dvh - 160px);
+    max-height: calc(100vh - 220px);
+    max-height: calc(100dvh - 220px);
   }
   .floating-taskbar { padding: 6px 10px; }
   .taskbar-content { gap: 6px; }
@@ -778,8 +811,9 @@
   .topbar-title { display: none; }
   .page-preview svg {
     max-width: calc(100vw - 32px);
-    max-height: calc(100vh - 150px);
-    max-height: calc(100dvh - 150px);
+    max-height: calc(100vh - 200px);
+    max-height: calc(100dvh - 200px);
   }
   .taskbar-content { flex-wrap: wrap; justify-content: center; }
+  .taskbar-btn-apply span { display: none; }
 }

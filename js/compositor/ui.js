@@ -456,6 +456,18 @@ export class CompositorUI {
       <div class="taskbar-section">
         <button class="taskbar-btn-icon" id="frame-reset" title="Reset all">⟲</button>
       </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <button class="taskbar-btn-apply" id="apply-image-all" title="Apply image settings to all pages">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 1l4 4-4 4"/>
+            <path d="M3 11V9a4 4 0 014-4h14"/>
+            <path d="M7 23l-4-4 4-4"/>
+            <path d="M21 13v2a4 4 0 01-4 4H3"/>
+          </svg>
+          <span>Apply to All</span>
+        </button>
+      </div>
     `;
   }
 
@@ -519,6 +531,18 @@ export class CompositorUI {
       <div class="taskbar-section">
         <button class="taskbar-btn-icon" id="text-reset" title="Reset position/scale">⟲</button>
       </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <button class="taskbar-btn-apply" id="apply-text-all" title="Apply text settings to all pages">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 1l4 4-4 4"/>
+            <path d="M3 11V9a4 4 0 014-4h14"/>
+            <path d="M7 23l-4-4 4-4"/>
+            <path d="M21 13v2a4 4 0 01-4 4H3"/>
+          </svg>
+          <span>Apply to All</span>
+        </button>
+      </div>
     `;
   }
 
@@ -545,6 +569,36 @@ export class CompositorUI {
       document.getElementById('frame-scale-value').textContent = '100%';
       this.renderPreviewAndUpdateOverlay();
     });
+
+    // Apply image settings to all pages
+    document.getElementById('apply-image-all')?.addEventListener('click', () => {
+      this.applyImageSettingsToAllPages();
+    });
+  }
+
+  applyImageSettingsToAllPages() {
+    const currentFrameSettings = this.getCurrentFrameSettings();
+    const currentCropSettings = this.getCurrentCrop();
+    const totalPages = this.bookData?.pages?.length || 0;
+    
+    for (let i = 0; i < totalPages; i++) {
+      this.pageFrameSettings[i] = { ...currentFrameSettings };
+      this.pageCropSettings[i] = { ...currentCropSettings };
+    }
+    
+    // Visual feedback
+    const btn = document.getElementById('apply-image-all');
+    if (btn) {
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span>Applied!</span>';
+      btn.classList.add('applied');
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('applied');
+      }, 1500);
+    }
+    
+    this.renderThumbnails();
   }
   
   toggleCropMode() {
@@ -695,7 +749,7 @@ export class CompositorUI {
         else if (handle === 'ne') { dy = -dy; }
         else if (handle === 'sw') { dx = -dx; }
         
-        const delta = (dx + dy) / 2 / 100;
+        const delta = (dx + dy) / 2 / 200; // Changed from 100 to 200 for smoother 1:1 feel
         const newZoom = Math.max(1.0, Math.min(3.0, this.dragStartValues.cropZoom + delta));
         
         this.setCurrentCrop({ cropZoom: newZoom });
@@ -787,6 +841,34 @@ export class CompositorUI {
       document.getElementById('text-scale-value').textContent = '100%';
       this.renderPreviewAndUpdateOverlay();
     });
+
+    // Apply text settings to all pages
+    document.getElementById('apply-text-all')?.addEventListener('click', () => {
+      this.applyTextSettingsToAllPages();
+    });
+  }
+
+  applyTextSettingsToAllPages() {
+    const currentTextSettings = this.getCurrentTextSettings();
+    const totalPages = this.bookData?.pages?.length || 0;
+    
+    for (let i = 0; i < totalPages; i++) {
+      this.pageTextSettings[i] = { ...currentTextSettings };
+    }
+    
+    // Visual feedback
+    const btn = document.getElementById('apply-text-all');
+    if (btn) {
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span>Applied!</span>';
+      btn.classList.add('applied');
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('applied');
+      }, 1500);
+    }
+    
+    this.renderThumbnails();
   }
 
   async renderPreviewAndUpdateOverlay() {
@@ -1004,7 +1086,7 @@ export class CompositorUI {
       }
       
       if (this.isResizing) {
-        // Resize frame
+        // Resize frame - use larger divisor for 1:1 feel with mouse movement
         const handle = this.resizeHandle;
         let dx = e.clientX - this.dragStart.x;
         let dy = e.clientY - this.dragStart.y;
@@ -1013,7 +1095,7 @@ export class CompositorUI {
         else if (handle === 'ne') { dy = -dy; }
         else if (handle === 'sw') { dx = -dx; }
         
-        const delta = (dx + dy) / 2 / 100;
+        const delta = (dx + dy) / 2 / 200; // Changed from 100 to 200 for smoother 1:1 feel
         const newScale = Math.max(0.3, Math.min(1.5, this.dragStartValues.scale + delta));
         
         this.setCurrentFrameSettings({ scale: newScale });
@@ -1099,7 +1181,7 @@ export class CompositorUI {
       }
       
       if (this.isResizing) {
-        // Resize text
+        // Resize text - use larger divisor for 1:1 feel with mouse movement
         const handle = this.resizeHandle;
         let dx = e.clientX - this.dragStart.x;
         let dy = e.clientY - this.dragStart.y;
@@ -1108,7 +1190,7 @@ export class CompositorUI {
         else if (handle === 'ne') { dy = -dy; }
         else if (handle === 'sw') { dx = -dx; }
         
-        const delta = (dx + dy) / 2 / 100;
+        const delta = (dx + dy) / 2 / 200; // Changed from 100 to 200 for smoother 1:1 feel
         const newScale = Math.max(0.5, Math.min(2.0, this.dragStartValues.scale + delta));
         
         this.setCurrentTextSettings({ scale: newScale });
@@ -1309,6 +1391,9 @@ export class CompositorUI {
           height: newHeight,
         }
       };
+      
+      // Scale the font size proportionally to the text box scale
+      config.textScaleMultiplier = scale;
     }
 
     // Page numbers toggle

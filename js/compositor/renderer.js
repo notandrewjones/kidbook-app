@@ -619,7 +619,12 @@ export class PageRenderer {
 
     // Calculate font size with auto-scaling
     const baseFontSize = typography.baseFontSize || 18;
-    const scaledFontSize = this.calculateScaledFontSize(text, w, h, baseFontSize, typography);
+    let scaledFontSize = this.calculateScaledFontSize(text, w, h, baseFontSize, typography);
+    
+    // Apply text scale multiplier if box was resized (so font scales with box)
+    if (config.textScaleMultiplier && config.textScaleMultiplier !== 1) {
+      scaledFontSize = Math.round(scaledFontSize * config.textScaleMultiplier);
+    }
 
     // Create text element
     const textGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
