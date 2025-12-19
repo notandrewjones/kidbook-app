@@ -36,6 +36,9 @@ export class CompositorUI {
     // Per-page frame settings: { [pageIndex]: { scale, offsetX, offsetY } }
     this.pageFrameSettings = {};
     
+    // Per-page text settings: { [pageIndex]: { scale, offsetX, offsetY } }
+    this.pageTextSettings = {};
+    
     // Crop mode state
     this.cropMode = false;
     
@@ -68,6 +71,23 @@ export class CompositorUI {
   setCurrentFrameSettings(settings) {
     this.pageFrameSettings[this.currentPageIndex] = {
       ...this.getCurrentFrameSettings(),
+      ...settings,
+    };
+  }
+
+  // Get text settings for current page (size and position of the text block)
+  getCurrentTextSettings() {
+    return this.pageTextSettings[this.currentPageIndex] || {
+      scale: 1.0,
+      offsetX: 0,
+      offsetY: 0,
+    };
+  }
+
+  // Set text settings for current page
+  setCurrentTextSettings(settings) {
+    this.pageTextSettings[this.currentPageIndex] = {
+      ...this.getCurrentTextSettings(),
       ...settings,
     };
   }
@@ -457,6 +477,7 @@ export class CompositorUI {
     const tmpl = getTemplate(this.selectedTemplate);
     const currentFont = this.customizations.fontFamily || tmpl.typography?.fontFamily || 'Merriweather';
     const currentSize = this.customizations.fontSize || tmpl.typography?.baseFontSize || 18;
+    const textSettings = this.getCurrentTextSettings();
     
     return `
       <div class="taskbar-section">
@@ -478,6 +499,11 @@ export class CompositorUI {
       </div>
       <div class="taskbar-divider"></div>
       <div class="taskbar-section">
+        <label class="taskbar-label">Scale</label>
+        <span class="taskbar-value" id="text-scale-value">${Math.round(textSettings.scale * 100)}%</span>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
         <label class="taskbar-label">Theme</label>
         <div class="taskbar-colors">
           ${Object.values(COLOR_THEMES).slice(0, 8).map(theme => `
@@ -488,6 +514,10 @@ export class CompositorUI {
             </button>
           `).join('')}
         </div>
+      </div>
+      <div class="taskbar-divider"></div>
+      <div class="taskbar-section">
+        <button class="taskbar-btn-icon" id="text-reset" title="Reset position/scale">⟲</button>
       </div>
     `;
   }
@@ -596,6 +626,8 @@ export class CompositorUI {
       if (imageEl) {
         const rect = imageEl.getBoundingClientRect();
         this.showSelectionOverlay('image', rect);
+        // Re-setup crop mode drag handlers after overlay is shown
+        this.setupCropModeDrag();
       }
     } catch (error) {
       console.error('Failed to render crop preview:', error);
@@ -700,7 +732,23 @@ export class CompositorUI {
       const config = this.applyCustomizations(tmpl);
       config.showCropOverlay = true;
       
-      this.renderer.renderToContainer(container, pageData, config, this.customizations);
+      await this.renderer.renderToContainer(container, pageData, config, this.customizations);
+      
+      // Update selection overlay position without re-adding handlers (we're mid-drag)
+      const svg = container.querySelector('svg');
+      const imageEl = svg?.querySelector('image');
+      if (imageEl) {
+        const rect = imageEl.getBoundingClientRect();
+        const overlay = document.getElementById('selection-overlay');
+        const wrapper = document.getElementById('preview-wrapper');
+        if (overlay && wrapper) {
+          const wrapperRect = wrapper.getBoundingClientRect();
+          overlay.style.left = `${rect.left - wrapperRect.left}px`;
+          overlay.style.top = `${rect.top - wrapperRect.top}px`;
+          overlay.style.width = `${rect.width}px`;
+          overlay.style.height = `${rect.height}px`;
+        }
+      }
     }, 16);
   }
 
@@ -732,10 +780,25 @@ export class CompositorUI {
         this.renderThumbnails();
       });
     });
+
+    // Reset text position/scale
+    document.getElementById('text-reset')?.addEventListener('click', () => {
+      this.pageTextSettings[this.currentPageIndex] = { scale: 1.0, offsetX: 0, offsetY: 0 };
+      document.getElementById('text-scale-value').textContent = '100%';
+      this.renderPreviewAndUpdateOverlay();
+    });
   }
 
   async renderPreviewAndUpdateOverlay() {
     const wasSelected = this.selectedElement;
+    const wasCropMode = this.cropMode;
+    
+    // If in crop mode, use crop-specific render
+    if (wasCropMode) {
+      await this.renderPreviewWithCropOverlay();
+      return;
+    }
+    
     await this.renderPreview();
     
     // Re-establish selection after render
@@ -757,6 +820,8 @@ export class CompositorUI {
           this.showSelectionOverlay(wasSelected, rect);
           if (wasSelected === 'image') {
             this.setupImageDrag();
+          } else if (wasSelected === 'text') {
+            this.setupTextDrag();
           }
         }
       }, 50);
@@ -864,15 +929,8 @@ export class CompositorUI {
     
     if (type === 'image') {
       this.setupImageDrag();
-    } else {
-      // For text, disable drag/resize on overlay
-      const overlay = document.getElementById('selection-overlay');
-      if (overlay) {
-        overlay.onmousedown = null;
-        overlay.querySelectorAll('.resize-handle').forEach(h => {
-          h.style.display = 'none';
-        });
-      }
+    } else if (type === 'text') {
+      this.setupTextDrag();
     }
   }
   
@@ -981,6 +1039,101 @@ export class CompositorUI {
     };
   }
   
+  setupTextDrag() {
+    const overlay = document.getElementById('selection-overlay');
+    if (!overlay) return;
+
+    console.log('[UI] Setting up text drag handlers');
+    
+    // Show resize handles for text
+    overlay.querySelectorAll('.resize-handle').forEach(h => {
+      h.style.display = 'block';
+    });
+
+    // Drag overlay to move the text position
+    overlay.onmousedown = (e) => {
+      if (e.target.classList.contains('resize-handle')) return;
+      
+      console.log('[UI] Text drag started');
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX, y: e.clientY };
+      const textSettings = this.getCurrentTextSettings();
+      this.dragStartValues = { 
+        offsetX: textSettings.offsetX, 
+        offsetY: textSettings.offsetY,
+        scale: textSettings.scale,
+      };
+      e.preventDefault();
+    };
+
+    // Resize handles - resize the TEXT block on the page
+    overlay.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.onmousedown = (e) => {
+        console.log('[UI] Text resize started', handle.dataset.handle);
+        e.stopPropagation();
+        this.isResizing = true;
+        this.resizeHandle = handle.dataset.handle;
+        this.dragStart = { x: e.clientX, y: e.clientY };
+        const textSettings = this.getCurrentTextSettings();
+        this.dragStartValues = { 
+          scale: textSettings.scale,
+          offsetX: textSettings.offsetX,
+          offsetY: textSettings.offsetY,
+        };
+        e.preventDefault();
+      };
+    });
+
+    document.onmousemove = (e) => {
+      if (!this.isDragging && !this.isResizing) return;
+      
+      if (this.isDragging) {
+        // Move the text position on the page
+        const dx = (e.clientX - this.dragStart.x) / 500;
+        const dy = (e.clientY - this.dragStart.y) / 500;
+        
+        this.setCurrentTextSettings({
+          offsetX: this.dragStartValues.offsetX + dx,
+          offsetY: this.dragStartValues.offsetY + dy,
+        });
+      }
+      
+      if (this.isResizing) {
+        // Resize text
+        const handle = this.resizeHandle;
+        let dx = e.clientX - this.dragStart.x;
+        let dy = e.clientY - this.dragStart.y;
+        
+        if (handle === 'nw') { dx = -dx; dy = -dy; }
+        else if (handle === 'ne') { dy = -dy; }
+        else if (handle === 'sw') { dx = -dx; }
+        
+        const delta = (dx + dy) / 2 / 100;
+        const newScale = Math.max(0.5, Math.min(2.0, this.dragStartValues.scale + delta));
+        
+        this.setCurrentTextSettings({ scale: newScale });
+        
+        const scaleDisplay = document.getElementById('text-scale-value');
+        if (scaleDisplay) scaleDisplay.textContent = `${Math.round(newScale * 100)}%`;
+      }
+      
+      // Render preview during drag
+      this.renderPreviewThrottled();
+    };
+
+    document.onmouseup = () => {
+      if (this.isDragging || this.isResizing) {
+        console.log('[UI] Text drag/resize ended');
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        
+        // Final render and update overlay
+        this.renderPreviewAndUpdateOverlay();
+      }
+    };
+  }
+  
   // Throttled render for smooth dragging
   renderPreviewThrottled() {
     if (this.renderThrottleTimer) return;
@@ -996,7 +1149,30 @@ export class CompositorUI {
       const config = this.applyCustomizations(tmpl);
       
       // Quick render without waiting
-      this.renderer.renderToContainer(container, pageData, config, this.customizations);
+      await this.renderer.renderToContainer(container, pageData, config, this.customizations);
+      
+      // Update selection overlay position without re-adding handlers (we're mid-drag)
+      if (this.selectedElement) {
+        const svg = container.querySelector('svg');
+        let element;
+        if (this.selectedElement === 'image') {
+          element = svg?.querySelector('image');
+        } else if (this.selectedElement === 'text') {
+          element = Array.from(svg?.querySelectorAll('g') || []).find(g => g.querySelector('text'));
+        }
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          const overlay = document.getElementById('selection-overlay');
+          const wrapper = document.getElementById('preview-wrapper');
+          if (overlay && wrapper) {
+            const wrapperRect = wrapper.getBoundingClientRect();
+            overlay.style.left = `${rect.left - wrapperRect.left}px`;
+            overlay.style.top = `${rect.top - wrapperRect.top}px`;
+            overlay.style.width = `${rect.width}px`;
+            overlay.style.height = `${rect.height}px`;
+          }
+        }
+      }
     }, 16); // ~60fps
   }
 
@@ -1107,6 +1283,33 @@ export class CompositorUI {
       x: crop.cropX,
       y: crop.cropY,
     };
+
+    // Apply per-page text settings (size and position of text block on page)
+    const textSettings = this.getCurrentTextSettings();
+    if (textSettings.scale !== 1 || textSettings.offsetX !== 0 || textSettings.offsetY !== 0) {
+      config.layout = config.layout || {};
+      config.layout.text = config.layout.text || {};
+      const pos = config.layout.text.position?.region || { x: 0.05, y: 0.7, width: 0.9, height: 0.25 };
+      
+      // Scale the text area size
+      const scale = textSettings.scale;
+      const newWidth = pos.width * scale;
+      const newHeight = pos.height * scale;
+      
+      // Center the scaled text area (adjust x,y to keep centered)
+      const xOffset = (pos.width - newWidth) / 2;
+      const yOffset = (pos.height - newHeight) / 2;
+      
+      config.layout.text.position = {
+        ...config.layout.text.position,
+        region: {
+          x: pos.x + xOffset + textSettings.offsetX,
+          y: pos.y + yOffset + textSettings.offsetY,
+          width: newWidth,
+          height: newHeight,
+        }
+      };
+    }
 
     // Page numbers toggle
     config.showPageNumbers = this.customizations.showPageNumbers !== false;
