@@ -118,8 +118,16 @@ export class CompositorUI {
   render() {
     if (!this.container) return;
 
+    // Hide the workspace header when compositor is active
+    const workspaceHead = document.querySelector('.workspace-head');
+    if (workspaceHead) workspaceHead.style.display = 'none';
+    
+    // Make results container take full space without padding
+    this.container.style.padding = '0';
+    this.container.style.overflow = 'hidden';
+
     this.container.innerHTML = `
-      <div class="compositor-canva">
+      <div class="compositor-canva" data-view-mode="${this.viewMode}">
         <!-- Top Header Bar -->
         <header class="compositor-topbar">
           <div class="topbar-left">
@@ -263,8 +271,8 @@ export class CompositorUI {
               </div>
             </div>
             
-            <!-- Page Thumbnails -->
-            <div class="thumbnails-strip">
+            <!-- Page Thumbnails - hidden in grid/list views -->
+            <div class="thumbnails-strip" id="thumbnails-strip">
               <div id="preview-thumbnails" class="preview-thumbnails"></div>
             </div>
 
@@ -1385,41 +1393,164 @@ export class CompositorUI {
     if (!this.bookData?.pages?.length) return;
 
     const container = document.getElementById('preview-thumbnails');
+    const strip = document.getElementById('thumbnails-strip');
+    
+    // Hide thumbnails in grid and list views
+    if (this.viewMode === 'grid' || this.viewMode === 'list') {
+      if (strip) strip.style.display = 'none';
+      return;
+    } else {
+      if (strip) strip.style.display = '';
+    }
+
     const tmpl = getTemplate(this.selectedTemplate);
-    const config = this.applyCustomizations(tmpl);
 
-    container.innerHTML = this.bookData.pages.map((page, i) => `
-      <div class="thumbnail ${i === this.currentPageIndex ? 'active' : ''}" data-page-index="${i}">
-        <div class="thumbnail-inner">
-          ${page.imageUrl 
-            ? `<img src="${page.imageUrl}" alt="Page ${page.page}">`
-            : `<div class="thumbnail-placeholder"><span>${page.page}</span></div>`
-          }
-        </div>
-        <span class="thumbnail-number">${page.page}</span>
-      </div>
-    `).join('');
+    if (this.viewMode === 'sideBySide') {
+      // Render thumbnails as spreads (pairs)
+      this.renderSpreadThumbnails(container, tmpl);
+    } else {
+      // Render individual page thumbnails
+      this.renderSingleThumbnails(container, tmpl);
+    }
+  }
 
-    container.querySelectorAll('.thumbnail').forEach(thumb => {
-      thumb.addEventListener('click', () => {
-        this.currentPageIndex = parseInt(thumb.dataset.pageIndex);
-        this.renderPreview();
+  async renderSingleThumbnails(container, tmpl) {
+    container.innerHTML = '';
+    
+    for (let i = 0; i < this.bookData.pages.length; i++) {
+      const page = this.bookData.pages[i];
+      const config = this.applyCustomizationsForPage(tmpl, i);
+      
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = `thumbnail ${i === this.currentPageIndex ? 'active' : ''}`;
+      thumbWrap.dataset.pageIndex = i;
+      
+      const thumbInner = document.createElement('div');
+      thumbInner.className = 'thumbnail-inner';
+      
+      // Render actual page preview
+      try {
+        const svg = await this.renderer.render(page, config);
+        thumbInner.appendChild(svg);
+      } catch (e) {
+        thumbInner.innerHTML = `<div class="thumbnail-placeholder"><span>${page.page}</span></div>`;
+      }
+      
+      const thumbNumber = document.createElement('span');
+      thumbNumber.className = 'thumbnail-number';
+      thumbNumber.textContent = page.page;
+      
+      thumbWrap.appendChild(thumbInner);
+      thumbWrap.appendChild(thumbNumber);
+      container.appendChild(thumbWrap);
+      
+      thumbWrap.addEventListener('click', () => {
+        this.currentPageIndex = i;
+        this.renderViewMode();
         this.updateThumbnailSelection();
         this.hideTaskbar();
       });
-    });
+    }
+  }
+
+  async renderSpreadThumbnails(container, tmpl) {
+    container.innerHTML = '';
+    
+    const totalPages = this.bookData.pages.length;
+    const currentSpread = Math.floor(this.currentPageIndex / 2);
+    
+    for (let spread = 0; spread < Math.ceil(totalPages / 2); spread++) {
+      const leftIndex = spread * 2;
+      const rightIndex = leftIndex + 1;
+      
+      const spreadWrap = document.createElement('div');
+      spreadWrap.className = `thumbnail-spread ${spread === currentSpread ? 'active' : ''}`;
+      spreadWrap.dataset.spreadIndex = spread;
+      
+      const spreadInner = document.createElement('div');
+      spreadInner.className = 'thumbnail-spread-inner';
+      
+      // Left page
+      const leftPage = this.bookData.pages[leftIndex];
+      if (leftPage) {
+        const leftThumb = document.createElement('div');
+        leftThumb.className = 'thumbnail-spread-page';
+        try {
+          const config = this.applyCustomizationsForPage(tmpl, leftIndex);
+          const svg = await this.renderer.render(leftPage, config);
+          leftThumb.appendChild(svg);
+        } catch (e) {
+          leftThumb.innerHTML = `<span>${leftPage.page}</span>`;
+        }
+        spreadInner.appendChild(leftThumb);
+      }
+      
+      // Right page
+      if (rightIndex < totalPages) {
+        const rightPage = this.bookData.pages[rightIndex];
+        const rightThumb = document.createElement('div');
+        rightThumb.className = 'thumbnail-spread-page';
+        try {
+          const config = this.applyCustomizationsForPage(tmpl, rightIndex);
+          const svg = await this.renderer.render(rightPage, config);
+          rightThumb.appendChild(svg);
+        } catch (e) {
+          rightThumb.innerHTML = `<span>${rightPage.page}</span>`;
+        }
+        spreadInner.appendChild(rightThumb);
+      }
+      
+      const spreadLabel = document.createElement('span');
+      spreadLabel.className = 'thumbnail-spread-label';
+      spreadLabel.textContent = rightIndex < totalPages ? `${leftIndex + 1}-${rightIndex + 1}` : `${leftIndex + 1}`;
+      
+      spreadWrap.appendChild(spreadInner);
+      spreadWrap.appendChild(spreadLabel);
+      container.appendChild(spreadWrap);
+      
+      spreadWrap.addEventListener('click', () => {
+        this.currentPageIndex = leftIndex;
+        this.renderViewMode();
+        this.updateSpreadThumbnailSelection();
+        this.hideTaskbar();
+      });
+    }
   }
 
   updateThumbnailSelection() {
+    if (this.viewMode === 'sideBySide') {
+      this.updateSpreadThumbnailSelection();
+      return;
+    }
     document.querySelectorAll('.thumbnail').forEach((thumb, i) => {
       thumb.classList.toggle('active', i === this.currentPageIndex);
+    });
+  }
+
+  updateSpreadThumbnailSelection() {
+    const currentSpread = Math.floor(this.currentPageIndex / 2);
+    document.querySelectorAll('.thumbnail-spread').forEach((thumb) => {
+      const spread = parseInt(thumb.dataset.spreadIndex);
+      thumb.classList.toggle('active', spread === currentSpread);
     });
   }
 
   updatePageIndicator() {
     const indicator = document.getElementById('page-indicator');
     if (indicator) {
-      indicator.textContent = `Page ${this.currentPageIndex + 1} of ${this.bookData.pages.length}`;
+      if (this.viewMode === 'sideBySide') {
+        const spreadIndex = Math.floor(this.currentPageIndex / 2);
+        const leftPage = spreadIndex * 2 + 1;
+        const rightPage = Math.min(leftPage + 1, this.bookData.pages.length);
+        const totalSpreads = Math.ceil(this.bookData.pages.length / 2);
+        if (rightPage > leftPage && rightPage <= this.bookData.pages.length) {
+          indicator.textContent = `Pages ${leftPage}-${rightPage} of ${this.bookData.pages.length}`;
+        } else {
+          indicator.textContent = `Page ${leftPage} of ${this.bookData.pages.length}`;
+        }
+      } else {
+        indicator.textContent = `Page ${this.currentPageIndex + 1} of ${this.bookData.pages.length}`;
+      }
     }
   }
 
@@ -1527,18 +1658,37 @@ export class CompositorUI {
 
   bindEvents() {
     document.getElementById('prev-page')?.addEventListener('click', () => {
-      if (this.currentPageIndex > 0) {
+      if (this.viewMode === 'sideBySide') {
+        // Navigate by spreads (2 pages at a time)
+        const currentSpread = Math.floor(this.currentPageIndex / 2);
+        if (currentSpread > 0) {
+          this.currentPageIndex = (currentSpread - 1) * 2;
+          this.renderViewMode();
+          this.updateThumbnailSelection();
+          this.hideTaskbar();
+        }
+      } else if (this.currentPageIndex > 0) {
         this.currentPageIndex--;
-        this.renderPreview();
+        this.renderViewMode();
         this.updateThumbnailSelection();
         this.hideTaskbar();
       }
     });
 
     document.getElementById('next-page')?.addEventListener('click', () => {
-      if (this.currentPageIndex < this.bookData.pages.length - 1) {
+      if (this.viewMode === 'sideBySide') {
+        // Navigate by spreads (2 pages at a time)
+        const currentSpread = Math.floor(this.currentPageIndex / 2);
+        const maxSpread = Math.floor((this.bookData.pages.length - 1) / 2);
+        if (currentSpread < maxSpread) {
+          this.currentPageIndex = (currentSpread + 1) * 2;
+          this.renderViewMode();
+          this.updateThumbnailSelection();
+          this.hideTaskbar();
+        }
+      } else if (this.currentPageIndex < this.bookData.pages.length - 1) {
         this.currentPageIndex++;
-        this.renderPreview();
+        this.renderViewMode();
         this.updateThumbnailSelection();
         this.hideTaskbar();
       }
@@ -1731,6 +1881,10 @@ export class CompositorUI {
   setViewMode(mode) {
     this.viewMode = mode;
     
+    // Update data attribute for CSS
+    const compositor = document.querySelector('.compositor-canva');
+    if (compositor) compositor.dataset.viewMode = mode;
+    
     // Update button
     const btn = document.getElementById('view-mode-btn');
     if (btn) {
@@ -1752,7 +1906,7 @@ export class CompositorUI {
     const nextBtn = document.getElementById('next-page');
     const pageIndicator = document.getElementById('page-indicator');
     
-    if (mode === 'grid') {
+    if (mode === 'grid' || mode === 'list') {
       prevBtn?.style.setProperty('display', 'none');
       nextBtn?.style.setProperty('display', 'none');
       pageIndicator?.style.setProperty('display', 'none');
@@ -1762,8 +1916,17 @@ export class CompositorUI {
       pageIndicator?.style.removeProperty('display');
     }
 
+    // Hide/show sidebar in grid/list modes
+    const sidebar = document.querySelector('.compositor-sidebar');
+    if (sidebar) {
+      sidebar.style.display = (mode === 'grid' || mode === 'list') ? 'none' : '';
+    }
+
     // Render the appropriate view
     this.renderViewMode();
+    
+    // Update thumbnails for the new mode
+    this.renderThumbnails();
   }
 
   renderViewMode() {
@@ -1794,46 +1957,288 @@ export class CompositorUI {
   }
 
   async renderSideBySideView() {
+    const wrapper = document.getElementById('preview-wrapper');
     const container = document.getElementById('page-preview');
     if (!container || !this.bookData?.pages?.length) return;
 
-    const leftIndex = this.currentPageIndex;
+    // Calculate spread indices (paired pages)
+    const spreadIndex = Math.floor(this.currentPageIndex / 2);
+    const leftIndex = spreadIndex * 2;
     const rightIndex = Math.min(leftIndex + 1, this.bookData.pages.length - 1);
 
     const tmpl = getTemplate(this.selectedTemplate);
     
-    container.innerHTML = '<div class="side-by-side-container"></div>';
+    container.innerHTML = '<div class="side-by-side-container" id="spread-container"></div>';
     const ssContainer = container.querySelector('.side-by-side-container');
 
     // Render left page
     const leftConfig = this.applyCustomizationsForPage(tmpl, leftIndex);
     const leftSvg = await this.renderer.render(this.bookData.pages[leftIndex], leftConfig);
     const leftWrap = document.createElement('div');
-    leftWrap.className = 'spread-page spread-page-left';
+    leftWrap.className = `spread-page spread-page-left ${this.currentPageIndex === leftIndex ? 'selected' : ''}`;
+    leftWrap.id = 'spread-page-left';
     leftWrap.dataset.pageIndex = leftIndex;
     leftWrap.appendChild(leftSvg);
     ssContainer.appendChild(leftWrap);
 
-    // Render right page (if different)
-    if (rightIndex !== leftIndex) {
+    // Render right page (if exists and different)
+    if (rightIndex !== leftIndex && rightIndex < this.bookData.pages.length) {
       const rightConfig = this.applyCustomizationsForPage(tmpl, rightIndex);
       const rightSvg = await this.renderer.render(this.bookData.pages[rightIndex], rightConfig);
       const rightWrap = document.createElement('div');
-      rightWrap.className = 'spread-page spread-page-right';
+      rightWrap.className = `spread-page spread-page-right ${this.currentPageIndex === rightIndex ? 'selected' : ''}`;
+      rightWrap.id = 'spread-page-right';
       rightWrap.dataset.pageIndex = rightIndex;
       rightWrap.appendChild(rightSvg);
       ssContainer.appendChild(rightWrap);
     }
 
-    // Make pages clickable
-    ssContainer.querySelectorAll('.spread-page').forEach(page => {
-      page.addEventListener('click', () => {
-        this.currentPageIndex = parseInt(page.dataset.pageIndex);
-        this.setViewMode('single');
+    // Setup interactive editing on both pages
+    this.setupSpreadInteraction(ssContainer);
+    
+    this.updatePageIndicator();
+  }
+
+  setupSpreadInteraction(ssContainer) {
+    const pages = ssContainer.querySelectorAll('.spread-page');
+    
+    pages.forEach(pageWrap => {
+      const pageIndex = parseInt(pageWrap.dataset.pageIndex);
+      const svg = pageWrap.querySelector('svg');
+      if (!svg) return;
+
+      // Make SVG elements interactive
+      svg.style.pointerEvents = 'all';
+      svg.style.overflow = 'hidden'; // Clip content to page bounds
+
+      const imageEls = svg.querySelectorAll('image');
+      const textGroups = svg.querySelectorAll('g');
+      const textGroup = Array.from(textGroups).find(g => g.querySelector('text'));
+
+      // Make images clickable
+      imageEls.forEach(imageEl => {
+        imageEl.style.cursor = 'pointer';
+        imageEl.style.pointerEvents = 'all';
+        
+        imageEl.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          // Switch to this page for editing
+          this.currentPageIndex = pageIndex;
+          this.selectSpreadElement('image', imageEl, pageWrap);
+        };
+      });
+
+      // Make text clickable
+      if (textGroup) {
+        textGroup.style.cursor = 'pointer';
+        textGroup.style.pointerEvents = 'all';
+        textGroup.querySelectorAll('text').forEach(t => {
+          t.style.pointerEvents = 'all';
+          t.style.cursor = 'pointer';
+        });
+        
+        textGroup.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          this.currentPageIndex = pageIndex;
+          this.selectSpreadElement('text', textGroup, pageWrap);
+        };
+      }
+
+      // Click on page background to select that page
+      pageWrap.addEventListener('click', (e) => {
+        if (e.target === pageWrap || e.target === svg || (e.target.tagName === 'rect' && e.target === svg.querySelector('rect'))) {
+          this.currentPageIndex = pageIndex;
+          this.updateSpreadSelection(ssContainer);
+          this.hideTaskbar();
+        }
       });
     });
+  }
 
-    this.updatePageIndicator();
+  selectSpreadElement(type, element, pageWrap) {
+    const ssContainer = document.getElementById('spread-container');
+    this.updateSpreadSelection(ssContainer);
+    
+    this.selectedElement = type;
+    
+    // Position the selection overlay relative to the spread page
+    const rect = element.getBoundingClientRect();
+    const wrapperRect = pageWrap.getBoundingClientRect();
+    
+    // Create or get spread-specific overlay
+    let overlay = pageWrap.querySelector('.spread-selection-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'spread-selection-overlay';
+      overlay.innerHTML = `
+        <div class="resize-handle nw" data-handle="nw"></div>
+        <div class="resize-handle ne" data-handle="ne"></div>
+        <div class="resize-handle sw" data-handle="sw"></div>
+        <div class="resize-handle se" data-handle="se"></div>
+      `;
+      pageWrap.appendChild(overlay);
+    }
+    
+    overlay.style.left = `${rect.left - wrapperRect.left}px`;
+    overlay.style.top = `${rect.top - wrapperRect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+    overlay.classList.remove('hidden');
+    overlay.dataset.element = type;
+    
+    this.showTaskbar(type);
+    
+    // Setup drag handlers for this overlay
+    if (type === 'image') {
+      this.setupSpreadImageDrag(overlay, pageWrap);
+    } else if (type === 'text') {
+      this.setupSpreadTextDrag(overlay, pageWrap);
+    }
+  }
+
+  updateSpreadSelection(ssContainer) {
+    // Update which page shows as selected
+    ssContainer?.querySelectorAll('.spread-page').forEach(page => {
+      const idx = parseInt(page.dataset.pageIndex);
+      page.classList.toggle('selected', idx === this.currentPageIndex);
+    });
+    
+    // Hide any existing spread overlays
+    ssContainer?.querySelectorAll('.spread-selection-overlay').forEach(o => o.classList.add('hidden'));
+  }
+
+  setupSpreadImageDrag(overlay, pageWrap) {
+    overlay.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'block');
+
+    overlay.onmousedown = (e) => {
+      if (e.target.classList.contains('resize-handle')) return;
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX, y: e.clientY };
+      const frame = this.getCurrentFrameSettings();
+      this.dragStartValues = { offsetX: frame.offsetX, offsetY: frame.offsetY, scale: frame.scale };
+      e.preventDefault();
+    };
+
+    overlay.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.onmousedown = (e) => {
+        e.stopPropagation();
+        this.isResizing = true;
+        this.resizeHandle = handle.dataset.handle;
+        this.dragStart = { x: e.clientX, y: e.clientY };
+        const frame = this.getCurrentFrameSettings();
+        this.dragStartValues = { scale: frame.scale, offsetX: frame.offsetX, offsetY: frame.offsetY };
+        e.preventDefault();
+      };
+    });
+
+    document.onmousemove = (e) => {
+      if (!this.isDragging && !this.isResizing) return;
+      
+      if (this.isDragging) {
+        const dx = (e.clientX - this.dragStart.x) / 500;
+        const dy = (e.clientY - this.dragStart.y) / 500;
+        this.setCurrentFrameSettings({
+          offsetX: this.dragStartValues.offsetX + dx,
+          offsetY: this.dragStartValues.offsetY + dy,
+        });
+      }
+      
+      if (this.isResizing) {
+        const handle = this.resizeHandle;
+        let dx = e.clientX - this.dragStart.x;
+        let dy = e.clientY - this.dragStart.y;
+        if (handle === 'nw') { dx = -dx; dy = -dy; }
+        else if (handle === 'ne') { dy = -dy; }
+        else if (handle === 'sw') { dx = -dx; }
+        const delta = (dx + dy) / 2 / 200;
+        const newScale = Math.max(0.3, Math.min(1.5, this.dragStartValues.scale + delta));
+        this.setCurrentFrameSettings({ scale: newScale });
+        document.getElementById('frame-scale-value')?.textContent && (document.getElementById('frame-scale-value').textContent = `${Math.round(newScale * 100)}%`);
+      }
+      
+      this.renderSpreadPreviewThrottled();
+    };
+
+    document.onmouseup = () => {
+      if (this.isDragging || this.isResizing) {
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        this.renderSideBySideView();
+      }
+    };
+  }
+
+  setupSpreadTextDrag(overlay, pageWrap) {
+    overlay.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'block');
+
+    overlay.onmousedown = (e) => {
+      if (e.target.classList.contains('resize-handle')) return;
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX, y: e.clientY };
+      const textSettings = this.getCurrentTextSettings();
+      this.dragStartValues = { offsetX: textSettings.offsetX, offsetY: textSettings.offsetY, scale: textSettings.scale };
+      e.preventDefault();
+    };
+
+    overlay.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.onmousedown = (e) => {
+        e.stopPropagation();
+        this.isResizing = true;
+        this.resizeHandle = handle.dataset.handle;
+        this.dragStart = { x: e.clientX, y: e.clientY };
+        const textSettings = this.getCurrentTextSettings();
+        this.dragStartValues = { scale: textSettings.scale, offsetX: textSettings.offsetX, offsetY: textSettings.offsetY };
+        e.preventDefault();
+      };
+    });
+
+    document.onmousemove = (e) => {
+      if (!this.isDragging && !this.isResizing) return;
+      
+      if (this.isDragging) {
+        const dx = (e.clientX - this.dragStart.x) / 500;
+        const dy = (e.clientY - this.dragStart.y) / 500;
+        this.setCurrentTextSettings({
+          offsetX: this.dragStartValues.offsetX + dx,
+          offsetY: this.dragStartValues.offsetY + dy,
+        });
+      }
+      
+      if (this.isResizing) {
+        const handle = this.resizeHandle;
+        let dx = e.clientX - this.dragStart.x;
+        let dy = e.clientY - this.dragStart.y;
+        if (handle === 'nw') { dx = -dx; dy = -dy; }
+        else if (handle === 'ne') { dy = -dy; }
+        else if (handle === 'sw') { dx = -dx; }
+        const delta = (dx + dy) / 2 / 200;
+        const newScale = Math.max(0.5, Math.min(2.0, this.dragStartValues.scale + delta));
+        this.setCurrentTextSettings({ scale: newScale });
+        document.getElementById('text-scale-value')?.textContent && (document.getElementById('text-scale-value').textContent = `${Math.round(newScale * 100)}%`);
+      }
+      
+      this.renderSpreadPreviewThrottled();
+    };
+
+    document.onmouseup = () => {
+      if (this.isDragging || this.isResizing) {
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        this.renderSideBySideView();
+      }
+    };
+  }
+
+  renderSpreadPreviewThrottled() {
+    if (this.spreadRenderTimer) return;
+    this.spreadRenderTimer = setTimeout(async () => {
+      this.spreadRenderTimer = null;
+      await this.renderSideBySideView();
+    }, 32);
   }
 
   async renderGridView() {
