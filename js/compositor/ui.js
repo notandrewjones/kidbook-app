@@ -11,6 +11,7 @@ import {
 } from './templates.js';
 import { PageRenderer, PAGE_DIMENSIONS } from './renderer.js';
 import { bookExporter, EXPORT_FORMATS } from './exporter.js';
+import { state } from '../core/state.js';
 
 export class CompositorUI {
   constructor(containerId) {
@@ -1178,10 +1179,17 @@ export class CompositorUI {
       return;
     }
     
-    await this.renderPreview();
+    // Use renderViewMode to respect current view, not just renderPreview
+    // This prevents switching to single view when editing in spread mode
+    if (this.viewMode === 'single') {
+      await this.renderPreview();
+    } else {
+      // For other views, use renderViewMode but don't disturb selection
+      this.renderViewMode();
+    }
     
-    // Re-establish selection after render
-    if (wasSelected) {
+    // Re-establish selection after render (only for single view)
+    if (wasSelected && this.viewMode === 'single') {
       setTimeout(() => {
         const container = document.getElementById('page-preview');
         const svg = container?.querySelector('svg');
@@ -2131,6 +2139,9 @@ export class CompositorUI {
   setViewMode(mode) {
     this.viewMode = mode;
     
+    // Clear any selection when changing views
+    this.hideTaskbar();
+    
     // Update data attribute for CSS
     const compositor = document.querySelector('.compositor-canva');
     if (compositor) compositor.dataset.viewMode = mode;
@@ -2816,9 +2827,17 @@ export class CompositorUI {
     this.pageTextSettings = state.pageTextSettings;
     this.pageCropSettings = state.pageCropSettings;
     
+    // Clear selection on undo/redo
+    this.hideTaskbar();
+    
     // Update template gallery selection
     document.querySelectorAll('.template-card').forEach(card => {
       card.classList.toggle('selected', card.dataset.template === state.selectedTemplate);
+    });
+    
+    // Update color theme selection
+    document.querySelectorAll('.color-theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === state.customizations.colorTheme);
     });
     
     this.renderViewMode();
@@ -2926,15 +2945,22 @@ export class CompositorUI {
   // ============================================
   
   goBackToStoryboard() {
+    // Clear the compositor UI from the container
+    if (this.container) {
+      this.container.innerHTML = '';
+      this.container.style.padding = '';
+      this.container.style.overflow = '';
+    }
+    
     // Restore workspace header
     const workspaceHead = document.querySelector('.workspace-head');
     if (workspaceHead) workspaceHead.style.display = '';
     
-    // Reset container padding
-    if (this.container) {
-      this.container.style.padding = '';
-      this.container.style.overflow = '';
-    }
+    // Restore workspace title/subtitle
+    const title = document.getElementById('workspace-title');
+    const subtitle = document.getElementById('workspace-subtitle');
+    if (title) title.textContent = 'Storyboard';
+    if (subtitle) subtitle.textContent = 'Review and generate illustrations for your story';
     
     // Change phase back to storyboard
     document.body.dataset.phase = 'storyboard';
@@ -2945,12 +2971,17 @@ export class CompositorUI {
     });
     document.dispatchEvent(event);
     
-    // Re-render storyboard phase
-    if (window.renderCurrentPhase) {
-      window.renderCurrentPhase();
-    } else if (window.renderStoryboard) {
-      window.renderStoryboard();
-    }
+    // Import and call renderStoryboard dynamically
+    // This handles the case where we need to re-render the storyboard view
+    import('../ui/render.js').then(module => {
+      if (module.renderStoryboard && state.cachedProject) {
+        module.renderStoryboard(state.cachedProject);
+      } else if (module.reRenderCurrentView) {
+        module.reRenderCurrentView();
+      }
+    }).catch(err => {
+      console.error('Failed to load render module:', err);
+    });
   }
 }
 

@@ -25,10 +25,10 @@
 .compositor-canva {
   display: grid;
   grid-template-rows: 48px 1fr;
-  height: calc(100vh - 60px); /* Account for main app header */
-  height: calc(100dvh - 60px);
-  max-height: calc(100vh - 60px);
-  max-height: calc(100dvh - 60px);
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   background: var(--comp-bg);
   color: var(--comp-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
