@@ -39,6 +39,16 @@ export class CompositorUI {
     // Per-page text settings: { [pageIndex]: { scale, offsetX, offsetY } }
     this.pageTextSettings = {};
     
+    // View mode: 'single', 'sideBySide', 'grid', 'list'
+    this.viewMode = 'single';
+    
+    // A/B pattern mode: when enabled, odd pages share settings, even pages share settings
+    this.abPatternMode = false;
+    
+    // Grid view state
+    this.gridZoom = 1;
+    this.gridPan = { x: 0, y: 0 };
+    
     // Crop mode state
     this.cropMode = false;
     
@@ -67,28 +77,12 @@ export class CompositorUI {
     };
   }
 
-  // Set frame settings for current page
-  setCurrentFrameSettings(settings) {
-    this.pageFrameSettings[this.currentPageIndex] = {
-      ...this.getCurrentFrameSettings(),
-      ...settings,
-    };
-  }
-
   // Get text settings for current page (size and position of the text block)
   getCurrentTextSettings() {
     return this.pageTextSettings[this.currentPageIndex] || {
       scale: 1.0,
       offsetX: 0,
       offsetY: 0,
-    };
-  }
-
-  // Set text settings for current page
-  setCurrentTextSettings(settings) {
-    this.pageTextSettings[this.currentPageIndex] = {
-      ...this.getCurrentTextSettings(),
-      ...settings,
     };
   }
 
@@ -138,31 +132,101 @@ export class CompositorUI {
             <span class="topbar-title">${this.bookData?.title || 'Book Layout'}</span>
           </div>
           <div class="topbar-center">
-            <button id="prev-page" class="topbar-btn" title="Previous page">
+            <button id="prev-page" class="topbar-btn" title="Previous page" ${this.viewMode === 'grid' ? 'style="display:none"' : ''}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M15 18l-6-6 6-6"/>
               </svg>
             </button>
-            <span id="page-indicator" class="page-indicator">Page 1 of ${this.bookData?.pages?.length || 1}</span>
-            <button id="next-page" class="topbar-btn" title="Next page">
+            <span id="page-indicator" class="page-indicator" ${this.viewMode === 'grid' ? 'style="display:none"' : ''}>Page 1 of ${this.bookData?.pages?.length || 1}</span>
+            <button id="next-page" class="topbar-btn" title="Next page" ${this.viewMode === 'grid' ? 'style="display:none"' : ''}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 18l6-6-6-6"/>
               </svg>
             </button>
           </div>
           <div class="topbar-right">
+            <!-- View Mode Dropdown -->
+            <div class="topbar-dropdown-wrap">
+              <button id="view-mode-btn" class="topbar-dropdown-btn" title="View Mode">
+                ${this.getViewModeIcon(this.viewMode)}
+                <span class="dropdown-label">${this.getViewModeLabel(this.viewMode)}</span>
+                <svg class="dropdown-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+              <div id="view-mode-dropdown" class="topbar-dropdown hidden">
+                <button class="dropdown-item ${this.viewMode === 'single' ? 'active' : ''}" data-view="single">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="4" y="3" width="16" height="18" rx="2"/>
+                  </svg>
+                  <span>Single Page</span>
+                </button>
+                <button class="dropdown-item ${this.viewMode === 'sideBySide' ? 'active' : ''}" data-view="sideBySide">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="8" height="18" rx="1"/>
+                    <rect x="14" y="3" width="8" height="18" rx="1"/>
+                  </svg>
+                  <span>Side by Side</span>
+                </button>
+                <button class="dropdown-item ${this.viewMode === 'grid' ? 'active' : ''}" data-view="grid">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                  </svg>
+                  <span>Grid View</span>
+                </button>
+                <button class="dropdown-item ${this.viewMode === 'list' ? 'active' : ''}" data-view="list">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="4" y="4" width="16" height="4" rx="1"/>
+                    <rect x="4" y="10" width="16" height="4" rx="1"/>
+                    <rect x="4" y="16" width="16" height="4" rx="1"/>
+                  </svg>
+                  <span>List View</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="topbar-divider"></div>
+            
+            <!-- A/B Pattern Toggle -->
+            <button id="ab-pattern-btn" class="topbar-btn ${this.abPatternMode ? 'active' : ''}" title="A/B Pattern Mode">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h6M4 12h6M4 17h6"/>
+                <rect x="14" y="5" width="6" height="4" rx="1"/>
+                <rect x="14" y="15" width="6" height="4" rx="1"/>
+              </svg>
+              <span>A/B</span>
+            </button>
+            
+            <div class="topbar-divider"></div>
+            
             <label class="topbar-checkbox" title="Show page numbers on pages">
               <input type="checkbox" id="show-page-numbers" checked>
               <span>Page #</span>
             </label>
             <div class="topbar-divider"></div>
-            <select id="page-size-select" class="topbar-select">
-              ${Object.entries(PAGE_DIMENSIONS).map(([key, dim]) => `
-                <option value="${key}" ${key === 'square-medium' ? 'selected' : ''}>
-                  ${dim.name}
-                </option>
-              `).join('')}
-            </select>
+            
+            <!-- Page Size Dropdown with Icons -->
+            <div class="topbar-dropdown-wrap">
+              <button id="page-size-btn" class="topbar-dropdown-btn" title="Page Size">
+                ${this.getPageSizeIcon(this.renderer?.pageSize || 'square-medium')}
+                <span class="dropdown-label">${PAGE_DIMENSIONS[this.renderer?.pageSize || 'square-medium']?.name || '8" × 8"'}</span>
+                <svg class="dropdown-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+              <div id="page-size-dropdown" class="topbar-dropdown hidden">
+                ${Object.entries(PAGE_DIMENSIONS).map(([key, dim]) => `
+                  <button class="dropdown-item ${key === (this.renderer?.pageSize || 'square-medium') ? 'active' : ''}" data-size="${key}">
+                    ${this.getPageSizeIcon(key)}
+                    <span>${dim.name}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+            
             <button id="export-btn" class="topbar-btn topbar-btn-primary">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -245,6 +309,33 @@ export class CompositorUI {
                   <div id="export-progress-fill" class="progress-fill"></div>
                 </div>
                 <div id="export-progress-text" class="progress-text">Preparing...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- A/B Pattern Confirm Modal -->
+        <div id="ab-confirm-modal" class="modal hidden">
+          <div class="modal-backdrop"></div>
+          <div class="modal-dialog modal-dialog-sm">
+            <div class="modal-header">
+              <h3>Enable A/B Pattern Mode?</h3>
+              <button id="close-ab-modal" class="modal-close">×</button>
+            </div>
+            <div class="modal-body">
+              <p class="modal-text">
+                This will link your page layouts so that:
+              </p>
+              <ul class="modal-list">
+                <li><strong>Odd pages</strong> (1, 3, 5...) share the same layout</li>
+                <li><strong>Even pages</strong> (2, 4, 6...) share the same layout</li>
+              </ul>
+              <p class="modal-text modal-text-muted">
+                Changes to image/text position and size will automatically apply to matching pages. Crop settings remain independent.
+              </p>
+              <div class="modal-actions">
+                <button id="ab-confirm-no" class="modal-btn modal-btn-secondary">Cancel</button>
+                <button id="ab-confirm-yes" class="modal-btn modal-btn-primary">Enable A/B Mode</button>
               </div>
             </div>
           </div>
@@ -483,6 +574,38 @@ export class CompositorUI {
       hexagon: '<polygon points="16,5 26,10 26,22 16,27 6,22 6,10" fill="currentColor" opacity="0.7"/>',
     };
     return icons[frameType] || icons.rectangle;
+  }
+
+  getViewModeIcon(mode) {
+    const icons = {
+      single: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/></svg>',
+      sideBySide: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>',
+      grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+      list: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="4" rx="1"/><rect x="4" y="10" width="16" height="4" rx="1"/><rect x="4" y="16" width="16" height="4" rx="1"/></svg>',
+    };
+    return icons[mode] || icons.single;
+  }
+
+  getViewModeLabel(mode) {
+    const labels = {
+      single: 'Single',
+      sideBySide: 'Spread',
+      grid: 'Grid',
+      list: 'List',
+    };
+    return labels[mode] || 'Single';
+  }
+
+  getPageSizeIcon(size) {
+    const icons = {
+      'square-small': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>',
+      'square-medium': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+      'square-large': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
+      'portrait': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="2"/></svg>',
+      'landscape': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/></svg>',
+      'standard': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/></svg>',
+    };
+    return icons[size] || icons['square-medium'];
   }
 
   renderTextTaskbar() {
@@ -1428,9 +1551,50 @@ export class CompositorUI {
       else if (e.key === 'Escape') this.hideTaskbar();
     });
 
-    document.getElementById('page-size-select')?.addEventListener('change', (e) => {
-      this.renderer = new PageRenderer({ pageSize: e.target.value });
-      this.renderPreview();
+    // View Mode Dropdown
+    document.getElementById('view-mode-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleDropdown('view-mode-dropdown');
+    });
+
+    document.querySelectorAll('#view-mode-dropdown .dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        const newMode = item.dataset.view;
+        this.setViewMode(newMode);
+        this.closeAllDropdowns();
+      });
+    });
+
+    // Page Size Dropdown
+    document.getElementById('page-size-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleDropdown('page-size-dropdown');
+    });
+
+    document.querySelectorAll('#page-size-dropdown .dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        const newSize = item.dataset.size;
+        this.renderer = new PageRenderer({ pageSize: newSize });
+        this.updatePageSizeButton(newSize);
+        this.renderPreview();
+        this.closeAllDropdowns();
+      });
+    });
+
+    // A/B Pattern Toggle
+    document.getElementById('ab-pattern-btn')?.addEventListener('click', () => {
+      if (!this.abPatternMode) {
+        this.showABPatternConfirm();
+      } else {
+        this.disableABPattern();
+      }
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.topbar-dropdown-wrap')) {
+        this.closeAllDropdowns();
+      }
     });
 
     // Page numbers toggle
@@ -1449,10 +1613,25 @@ export class CompositorUI {
 
     document.querySelector('.modal-backdrop')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.add('hidden');
+      document.getElementById('ab-confirm-modal')?.classList.add('hidden');
     });
 
     document.querySelectorAll('.export-option').forEach(opt => {
       opt.addEventListener('click', () => this.handleExport(opt.dataset.format));
+    });
+
+    // A/B Confirm Modal buttons
+    document.getElementById('ab-confirm-yes')?.addEventListener('click', () => {
+      this.enableABPattern();
+      document.getElementById('ab-confirm-modal')?.classList.add('hidden');
+    });
+
+    document.getElementById('ab-confirm-no')?.addEventListener('click', () => {
+      document.getElementById('ab-confirm-modal')?.classList.add('hidden');
+    });
+
+    document.getElementById('close-ab-modal')?.addEventListener('click', () => {
+      document.getElementById('ab-confirm-modal')?.classList.add('hidden');
     });
 
     // Click outside canvas to deselect
@@ -1519,6 +1698,397 @@ export class CompositorUI {
     const tmpl = getTemplate(this.selectedTemplate);
     const fonts = [tmpl.typography?.fontFamily, ...additionalFonts].filter(Boolean);
     await this.renderer.preloadFonts(fonts);
+  }
+
+  // Dropdown management
+  toggleDropdown(dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    const wasHidden = dropdown?.classList.contains('hidden');
+    this.closeAllDropdowns();
+    if (wasHidden) {
+      dropdown?.classList.remove('hidden');
+    }
+  }
+
+  closeAllDropdowns() {
+    document.querySelectorAll('.topbar-dropdown').forEach(d => d.classList.add('hidden'));
+  }
+
+  updatePageSizeButton(size) {
+    const btn = document.getElementById('page-size-btn');
+    if (btn) {
+      const label = btn.querySelector('.dropdown-label');
+      const iconWrap = btn.querySelector('svg');
+      if (label) label.textContent = PAGE_DIMENSIONS[size]?.name || size;
+      // Update active state in dropdown
+      document.querySelectorAll('#page-size-dropdown .dropdown-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.size === size);
+      });
+    }
+  }
+
+  // View Mode Management
+  setViewMode(mode) {
+    this.viewMode = mode;
+    
+    // Update button
+    const btn = document.getElementById('view-mode-btn');
+    if (btn) {
+      const iconContainer = btn.querySelector('svg');
+      const label = btn.querySelector('.dropdown-label');
+      if (iconContainer) {
+        iconContainer.outerHTML = this.getViewModeIcon(mode);
+      }
+      if (label) label.textContent = this.getViewModeLabel(mode);
+    }
+
+    // Update dropdown active states
+    document.querySelectorAll('#view-mode-dropdown .dropdown-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.view === mode);
+    });
+
+    // Show/hide page navigation based on mode
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const pageIndicator = document.getElementById('page-indicator');
+    
+    if (mode === 'grid') {
+      prevBtn?.style.setProperty('display', 'none');
+      nextBtn?.style.setProperty('display', 'none');
+      pageIndicator?.style.setProperty('display', 'none');
+    } else {
+      prevBtn?.style.removeProperty('display');
+      nextBtn?.style.removeProperty('display');
+      pageIndicator?.style.removeProperty('display');
+    }
+
+    // Render the appropriate view
+    this.renderViewMode();
+  }
+
+  renderViewMode() {
+    const canvasContainer = document.querySelector('.canvas-container');
+    if (!canvasContainer) return;
+
+    // Clear existing content classes
+    canvasContainer.classList.remove('view-single', 'view-side-by-side', 'view-grid', 'view-list');
+
+    switch (this.viewMode) {
+      case 'single':
+        canvasContainer.classList.add('view-single');
+        this.renderPreview();
+        break;
+      case 'sideBySide':
+        canvasContainer.classList.add('view-side-by-side');
+        this.renderSideBySideView();
+        break;
+      case 'grid':
+        canvasContainer.classList.add('view-grid');
+        this.renderGridView();
+        break;
+      case 'list':
+        canvasContainer.classList.add('view-list');
+        this.renderListView();
+        break;
+    }
+  }
+
+  async renderSideBySideView() {
+    const container = document.getElementById('page-preview');
+    if (!container || !this.bookData?.pages?.length) return;
+
+    const leftIndex = this.currentPageIndex;
+    const rightIndex = Math.min(leftIndex + 1, this.bookData.pages.length - 1);
+
+    const tmpl = getTemplate(this.selectedTemplate);
+    
+    container.innerHTML = '<div class="side-by-side-container"></div>';
+    const ssContainer = container.querySelector('.side-by-side-container');
+
+    // Render left page
+    const leftConfig = this.applyCustomizationsForPage(tmpl, leftIndex);
+    const leftSvg = await this.renderer.render(this.bookData.pages[leftIndex], leftConfig);
+    const leftWrap = document.createElement('div');
+    leftWrap.className = 'spread-page spread-page-left';
+    leftWrap.dataset.pageIndex = leftIndex;
+    leftWrap.appendChild(leftSvg);
+    ssContainer.appendChild(leftWrap);
+
+    // Render right page (if different)
+    if (rightIndex !== leftIndex) {
+      const rightConfig = this.applyCustomizationsForPage(tmpl, rightIndex);
+      const rightSvg = await this.renderer.render(this.bookData.pages[rightIndex], rightConfig);
+      const rightWrap = document.createElement('div');
+      rightWrap.className = 'spread-page spread-page-right';
+      rightWrap.dataset.pageIndex = rightIndex;
+      rightWrap.appendChild(rightSvg);
+      ssContainer.appendChild(rightWrap);
+    }
+
+    // Make pages clickable
+    ssContainer.querySelectorAll('.spread-page').forEach(page => {
+      page.addEventListener('click', () => {
+        this.currentPageIndex = parseInt(page.dataset.pageIndex);
+        this.setViewMode('single');
+      });
+    });
+
+    this.updatePageIndicator();
+  }
+
+  async renderGridView() {
+    const container = document.getElementById('page-preview');
+    if (!container || !this.bookData?.pages?.length) return;
+
+    container.innerHTML = `
+      <div class="grid-view-container" id="grid-view-container">
+        <div class="grid-view-inner" id="grid-view-inner"></div>
+      </div>
+      <div class="grid-zoom-controls">
+        <button id="grid-zoom-out" class="grid-zoom-btn" title="Zoom Out">−</button>
+        <span id="grid-zoom-level">${Math.round(this.gridZoom * 100)}%</span>
+        <button id="grid-zoom-in" class="grid-zoom-btn" title="Zoom In">+</button>
+        <button id="grid-zoom-fit" class="grid-zoom-btn" title="Fit All">⊡</button>
+      </div>
+    `;
+
+    const gridInner = document.getElementById('grid-view-inner');
+    const tmpl = getTemplate(this.selectedTemplate);
+
+    // Render all pages
+    for (let i = 0; i < this.bookData.pages.length; i++) {
+      const config = this.applyCustomizationsForPage(tmpl, i);
+      const svg = await this.renderer.render(this.bookData.pages[i], config);
+      
+      const pageWrap = document.createElement('div');
+      pageWrap.className = 'grid-page';
+      pageWrap.dataset.pageIndex = i;
+      pageWrap.appendChild(svg);
+      
+      const pageLabel = document.createElement('span');
+      pageLabel.className = 'grid-page-label';
+      pageLabel.textContent = `Page ${i + 1}`;
+      pageWrap.appendChild(pageLabel);
+      
+      gridInner.appendChild(pageWrap);
+    }
+
+    // Apply current zoom
+    this.applyGridZoom();
+
+    // Setup grid interactions
+    this.setupGridInteractions();
+  }
+
+  setupGridInteractions() {
+    const gridContainer = document.getElementById('grid-view-container');
+    const gridInner = document.getElementById('grid-view-inner');
+
+    // Click on page to select
+    gridInner?.querySelectorAll('.grid-page').forEach(page => {
+      page.addEventListener('click', () => {
+        this.currentPageIndex = parseInt(page.dataset.pageIndex);
+        this.setViewMode('single');
+      });
+    });
+
+    // Zoom controls
+    document.getElementById('grid-zoom-in')?.addEventListener('click', () => {
+      this.gridZoom = Math.min(2, this.gridZoom + 0.25);
+      this.applyGridZoom();
+    });
+
+    document.getElementById('grid-zoom-out')?.addEventListener('click', () => {
+      this.gridZoom = Math.max(0.25, this.gridZoom - 0.25);
+      this.applyGridZoom();
+    });
+
+    document.getElementById('grid-zoom-fit')?.addEventListener('click', () => {
+      this.gridZoom = 1;
+      this.gridPan = { x: 0, y: 0 };
+      this.applyGridZoom();
+    });
+
+    // Mouse wheel zoom
+    gridContainer?.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        this.gridZoom = Math.max(0.25, Math.min(2, this.gridZoom + delta));
+        this.applyGridZoom();
+      }
+    }, { passive: false });
+
+    // Pan with middle mouse or shift+drag
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+
+    gridContainer?.addEventListener('mousedown', (e) => {
+      if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+        isPanning = true;
+        panStart = { x: e.clientX - this.gridPan.x, y: e.clientY - this.gridPan.y };
+        gridContainer.style.cursor = 'grabbing';
+        e.preventDefault();
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        this.gridPan = { x: e.clientX - panStart.x, y: e.clientY - panStart.y };
+        this.applyGridZoom();
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        if (gridContainer) gridContainer.style.cursor = '';
+      }
+    });
+  }
+
+  applyGridZoom() {
+    const gridInner = document.getElementById('grid-view-inner');
+    const zoomLevel = document.getElementById('grid-zoom-level');
+    
+    if (gridInner) {
+      gridInner.style.transform = `translate(${this.gridPan.x}px, ${this.gridPan.y}px) scale(${this.gridZoom})`;
+    }
+    if (zoomLevel) {
+      zoomLevel.textContent = `${Math.round(this.gridZoom * 100)}%`;
+    }
+  }
+
+  async renderListView() {
+    const container = document.getElementById('page-preview');
+    if (!container || !this.bookData?.pages?.length) return;
+
+    container.innerHTML = '<div class="list-view-container"></div>';
+    const listContainer = container.querySelector('.list-view-container');
+
+    const tmpl = getTemplate(this.selectedTemplate);
+
+    for (let i = 0; i < this.bookData.pages.length; i++) {
+      const config = this.applyCustomizationsForPage(tmpl, i);
+      const svg = await this.renderer.render(this.bookData.pages[i], config);
+      
+      const pageWrap = document.createElement('div');
+      pageWrap.className = 'list-page';
+      pageWrap.dataset.pageIndex = i;
+      
+      const pagePreview = document.createElement('div');
+      pagePreview.className = 'list-page-preview';
+      pagePreview.appendChild(svg);
+      
+      const pageInfo = document.createElement('div');
+      pageInfo.className = 'list-page-info';
+      pageInfo.innerHTML = `
+        <span class="list-page-number">Page ${i + 1}</span>
+        <span class="list-page-text">${this.bookData.pages[i].text?.substring(0, 100) || ''}${this.bookData.pages[i].text?.length > 100 ? '...' : ''}</span>
+      `;
+      
+      pageWrap.appendChild(pagePreview);
+      pageWrap.appendChild(pageInfo);
+      listContainer.appendChild(pageWrap);
+    }
+
+    // Click to select
+    listContainer.querySelectorAll('.list-page').forEach(page => {
+      page.addEventListener('click', () => {
+        this.currentPageIndex = parseInt(page.dataset.pageIndex);
+        this.setViewMode('single');
+      });
+    });
+  }
+
+  // Helper to apply customizations for a specific page index
+  applyCustomizationsForPage(template, pageIndex) {
+    const savedCurrentIndex = this.currentPageIndex;
+    this.currentPageIndex = pageIndex;
+    const config = this.applyCustomizations(template);
+    this.currentPageIndex = savedCurrentIndex;
+    return config;
+  }
+
+  // A/B Pattern Mode
+  showABPatternConfirm() {
+    // Show custom confirm modal
+    const modal = document.getElementById('ab-confirm-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+  }
+
+  enableABPattern() {
+    this.abPatternMode = true;
+    const btn = document.getElementById('ab-pattern-btn');
+    if (btn) btn.classList.add('active');
+    
+    // Show feedback
+    this.showABPatternFeedback('A/B Pattern enabled');
+  }
+
+  disableABPattern() {
+    this.abPatternMode = false;
+    const btn = document.getElementById('ab-pattern-btn');
+    if (btn) btn.classList.remove('active');
+    
+    this.showABPatternFeedback('A/B Pattern disabled');
+  }
+
+  showABPatternFeedback(message) {
+    // Simple visual feedback
+    const btn = document.getElementById('ab-pattern-btn');
+    if (btn) {
+      btn.title = message;
+      setTimeout(() => {
+        btn.title = 'A/B Pattern Mode';
+      }, 2000);
+    }
+  }
+
+  // Override setCurrentFrameSettings to apply A/B pattern
+  setCurrentFrameSettings(settings) {
+    const newSettings = {
+      ...this.getCurrentFrameSettings(),
+      ...settings,
+    };
+    
+    this.pageFrameSettings[this.currentPageIndex] = newSettings;
+    
+    // If A/B pattern is enabled, apply to matching pages (odd/even)
+    if (this.abPatternMode) {
+      const isOdd = this.currentPageIndex % 2 === 1;
+      const totalPages = this.bookData?.pages?.length || 0;
+      
+      for (let i = 0; i < totalPages; i++) {
+        if (i !== this.currentPageIndex && (i % 2 === 1) === isOdd) {
+          this.pageFrameSettings[i] = { ...newSettings };
+        }
+      }
+    }
+  }
+
+  // Override setCurrentTextSettings to apply A/B pattern
+  setCurrentTextSettings(settings) {
+    const newSettings = {
+      ...this.getCurrentTextSettings(),
+      ...settings,
+    };
+    
+    this.pageTextSettings[this.currentPageIndex] = newSettings;
+    
+    // If A/B pattern is enabled, apply to matching pages (odd/even)
+    if (this.abPatternMode) {
+      const isOdd = this.currentPageIndex % 2 === 1;
+      const totalPages = this.bookData?.pages?.length || 0;
+      
+      for (let i = 0; i < totalPages; i++) {
+        if (i !== this.currentPageIndex && (i % 2 === 1) === isOdd) {
+          this.pageTextSettings[i] = { ...newSettings };
+        }
+      }
+    }
   }
 }
 
