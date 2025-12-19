@@ -137,8 +137,10 @@
    ============================================ */
 .compositor-main {
   display: flex;
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 /* ============================================
@@ -340,18 +342,20 @@
   background: var(--comp-canvas-bg);
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
 .canvas-container {
-  flex: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 160px; /* Leave space for thumbnails (72px) + taskbar (~60px) + gap */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  padding-bottom: 140px; /* Space for taskbar + thumbnails */
-  min-height: 0;
   overflow: hidden;
 }
 
@@ -375,8 +379,8 @@
   width: auto;
   height: auto;
   max-width: calc(100vw - 320px);
-  max-height: calc(100vh - 340px);
-  max-height: calc(100dvh - 340px);
+  max-height: calc(100vh - 280px);
+  max-height: calc(100dvh - 280px);
   pointer-events: all;
 }
 
@@ -447,11 +451,10 @@
   bottom: 0;
   left: 0;
   right: 0;
-  flex-shrink: 0;
   background: var(--comp-surface);
   border-top: 1px solid var(--comp-border);
-  padding: 10px 16px;
-  height: 72px;
+  padding: 12px 16px;
+  height: 76px;
   z-index: 50;
 }
 
@@ -473,8 +476,8 @@
 .thumbnail.active .thumbnail-inner { box-shadow: 0 0 0 2px var(--comp-primary); }
 
 .thumbnail-inner {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 3px;
   overflow: hidden;
   background: var(--comp-surface-hover);
@@ -510,7 +513,7 @@
    ============================================ */
 .floating-taskbar {
   position: absolute;
-  bottom: 84px; /* Above the thumbnail strip (72px + 12px gap) */
+  bottom: 88px; /* Above the thumbnail strip (76px + 12px gap) */
   left: 50%;
   transform: translateX(-50%);
   background: var(--comp-taskbar-bg);
