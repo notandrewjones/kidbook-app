@@ -1673,6 +1673,7 @@ body[data-phase="compositor"] .panel {
 body[data-phase="compositor"] .workspace-body {
   display: block;
   height: 100%;
+  position: relative;
 }
 
 body[data-phase="compositor"] .character-panel {
@@ -1681,5 +1682,7 @@ body[data-phase="compositor"] .character-panel {
 
 body[data-phase="compositor"] #results {
   padding: 0;
-  height: calc(100vh - 120px);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
 }

@@ -20,20 +20,22 @@
 }
 
 /* ============================================
-   Main Layout - STRICT Viewport Fit
+   Main Layout - STRICT Container Fit
    ============================================ */
 .compositor-canva {
   display: grid;
   grid-template-rows: 48px 1fr;
-  height: 100vh;
-  height: 100dvh;
-  max-height: 100vh;
-  max-height: 100dvh;
+  height: 100%;
+  width: 100%;
   background: var(--comp-bg);
   color: var(--comp-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 .compositor-canva *, .compositor-canva *::before, .compositor-canva *::after {
@@ -378,9 +380,8 @@
   display: block;
   width: auto;
   height: auto;
-  max-width: calc(100vw - 320px);
-  max-height: calc(100vh - 280px);
-  max-height: calc(100dvh - 280px);
+  max-width: 100%;
+  max-height: 100%;
   pointer-events: all;
 }
 
@@ -1031,8 +1032,7 @@
 
 .spread-page svg {
   display: block;
-  max-height: calc(100vh - 280px);
-  max-height: calc(100dvh - 280px);
+  max-height: 100%;
   width: auto;
   pointer-events: all;
 }
@@ -1391,9 +1391,8 @@
   .compositor-sidebar { width: 170px; min-width: 170px; }
   .template-category-grid { grid-template-columns: 1fr; }
   .page-preview svg {
-    max-width: calc(100vw - 220px);
-    max-height: calc(100vh - 220px);
-    max-height: calc(100dvh - 220px);
+    max-width: 100%;
+    max-height: 100%;
   }
   .floating-taskbar { padding: 6px 10px; }
   .taskbar-content { gap: 6px; }
@@ -1405,9 +1404,8 @@
   .compositor-sidebar { display: none; }
   .topbar-title { display: none; }
   .page-preview svg {
-    max-width: calc(100vw - 32px);
-    max-height: calc(100vh - 200px);
-    max-height: calc(100dvh - 200px);
+    max-width: 100%;
+    max-height: 100%;
   }
   .taskbar-content { flex-wrap: wrap; justify-content: center; }
   .taskbar-btn-apply span { display: none; }
