@@ -139,7 +139,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
 }
 
@@ -342,7 +342,7 @@
   background: var(--comp-canvas-bg);
   min-width: 0;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
 }
 
