@@ -51,6 +51,11 @@ export class CompositorUI {
     this.gridZoom = 1;
     this.gridPan = { x: 0, y: 0 };
     
+    // Canvas zoom state
+    this.canvasZoom = 1;
+    this.minZoom = 0.25;
+    this.maxZoom = 3;
+    
     // Crop mode state
     this.cropMode = false;
     
@@ -171,6 +176,30 @@ export class CompositorUI {
                 <path d="M9 18l6-6-6-6"/>
               </svg>
             </button>
+            
+            <div class="topbar-divider" ${this.viewMode === 'grid' || this.viewMode === 'list' ? 'style="display:none"' : ''}></div>
+            
+            <!-- Zoom Controls -->
+            <div class="zoom-controls" id="zoom-controls" ${this.viewMode === 'grid' || this.viewMode === 'list' ? 'style="display:none"' : ''}>
+              <button id="zoom-out-btn" class="zoom-btn" title="Zoom Out (Ctrl+-)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35M8 11h6"/>
+                </svg>
+              </button>
+              <span id="zoom-level" class="zoom-level" title="Click to reset zoom">100%</span>
+              <button id="zoom-in-btn" class="zoom-btn" title="Zoom In (Ctrl++)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                </svg>
+              </button>
+              <button id="zoom-fit-btn" class="zoom-btn" title="Fit to Screen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="topbar-right">
             <!-- View Mode Dropdown -->
@@ -2048,6 +2077,9 @@ export class CompositorUI {
         this.hideTaskbar();
       }
     });
+    
+    // Bind zoom events
+    this.bindZoomEvents();
   }
 
   async handleExport(format = 'pdf') {
@@ -2142,6 +2174,14 @@ export class CompositorUI {
     // Clear any selection when changing views
     this.hideTaskbar();
     
+    // Reset zoom when changing view modes
+    this.canvasZoom = 1;
+    const wrapper = document.getElementById('preview-wrapper');
+    if (wrapper) {
+      wrapper.style.transform = 'scale(1)';
+    }
+    this.updateZoomDisplay();
+    
     // Update data attribute for CSS
     const compositor = document.querySelector('.compositor-canva');
     if (compositor) compositor.dataset.viewMode = mode;
@@ -2162,19 +2202,29 @@ export class CompositorUI {
       item.classList.toggle('active', item.dataset.view === mode);
     });
 
-    // Show/hide page navigation based on mode
+    // Show/hide page navigation and zoom controls based on mode
     const prevBtn = document.getElementById('prev-page');
     const nextBtn = document.getElementById('next-page');
     const pageIndicator = document.getElementById('page-indicator');
+    const zoomControls = document.getElementById('zoom-controls');
+    const zoomDivider = zoomControls?.previousElementSibling;
     
     if (mode === 'grid' || mode === 'list') {
       prevBtn?.style.setProperty('display', 'none');
       nextBtn?.style.setProperty('display', 'none');
       pageIndicator?.style.setProperty('display', 'none');
+      zoomControls?.style.setProperty('display', 'none');
+      if (zoomDivider?.classList.contains('topbar-divider')) {
+        zoomDivider.style.setProperty('display', 'none');
+      }
     } else {
       prevBtn?.style.removeProperty('display');
       nextBtn?.style.removeProperty('display');
       pageIndicator?.style.removeProperty('display');
+      zoomControls?.style.removeProperty('display');
+      if (zoomDivider?.classList.contains('topbar-divider')) {
+        zoomDivider.style.removeProperty('display');
+      }
     }
 
     // Sidebar is always visible (controlled by CSS via data-view-mode)
@@ -2850,6 +2900,164 @@ export class CompositorUI {
     
     if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
     if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
+  }
+
+  // ============================================
+  // Canvas Zoom System
+  // ============================================
+  
+  setCanvasZoom(zoom, updateSlider = true) {
+    // Clamp zoom value
+    this.canvasZoom = Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
+    
+    // Apply zoom to preview wrapper
+    const wrapper = document.getElementById('preview-wrapper');
+    if (wrapper) {
+      wrapper.style.transform = `scale(${this.canvasZoom})`;
+    }
+    
+    // Update zoom level display
+    this.updateZoomDisplay();
+  }
+  
+  updateZoomDisplay() {
+    const zoomLevel = document.getElementById('zoom-level');
+    if (zoomLevel) {
+      zoomLevel.textContent = `${Math.round(this.canvasZoom * 100)}%`;
+    }
+  }
+  
+  zoomIn() {
+    const step = this.canvasZoom < 1 ? 0.1 : 0.25;
+    this.setCanvasZoom(this.canvasZoom + step);
+  }
+  
+  zoomOut() {
+    const step = this.canvasZoom <= 1 ? 0.1 : 0.25;
+    this.setCanvasZoom(this.canvasZoom - step);
+  }
+  
+  resetZoom() {
+    this.setCanvasZoom(1);
+  }
+  
+  fitToScreen() {
+    // Calculate the optimal zoom to fit the page in the canvas container
+    const container = document.querySelector('.canvas-container');
+    const preview = document.querySelector('.page-preview');
+    
+    if (!container || !preview) {
+      this.setCanvasZoom(1);
+      return;
+    }
+    
+    // Temporarily reset zoom to measure actual size
+    const wrapper = document.getElementById('preview-wrapper');
+    if (wrapper) {
+      wrapper.style.transform = 'scale(1)';
+    }
+    
+    // Get dimensions after a brief delay to let layout settle
+    requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const previewRect = preview.getBoundingClientRect();
+      
+      // Calculate zoom to fit with some padding
+      const padding = 40;
+      const scaleX = (containerRect.width - padding) / previewRect.width;
+      const scaleY = (containerRect.height - padding) / previewRect.height;
+      const optimalZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
+      
+      this.setCanvasZoom(optimalZoom);
+    });
+  }
+  
+  handleWheelZoom(e) {
+    // Only zoom if Ctrl/Cmd is held
+    if (!e.ctrlKey && !e.metaKey) return;
+    
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    this.setCanvasZoom(this.canvasZoom + delta);
+  }
+  
+  bindZoomEvents() {
+    // Zoom buttons
+    document.getElementById('zoom-in-btn')?.addEventListener('click', () => this.zoomIn());
+    document.getElementById('zoom-out-btn')?.addEventListener('click', () => this.zoomOut());
+    document.getElementById('zoom-fit-btn')?.addEventListener('click', () => this.fitToScreen());
+    
+    // Click zoom level to reset
+    document.getElementById('zoom-level')?.addEventListener('click', () => this.resetZoom());
+    
+    // Mouse wheel zoom (Ctrl + scroll)
+    const canvasArea = document.getElementById('canvas-area');
+    if (canvasArea) {
+      canvasArea.addEventListener('wheel', (e) => this.handleWheelZoom(e), { passive: false });
+    }
+    
+    // Pinch to zoom on trackpad
+    let lastTouchDistance = 0;
+    const previewWrapper = document.getElementById('preview-wrapper');
+    
+    if (previewWrapper) {
+      previewWrapper.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+          lastTouchDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+        }
+      }, { passive: true });
+      
+      previewWrapper.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const currentDistance = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          
+          if (lastTouchDistance > 0) {
+            const scale = currentDistance / lastTouchDistance;
+            this.setCanvasZoom(this.canvasZoom * scale);
+          }
+          
+          lastTouchDistance = currentDistance;
+        }
+      }, { passive: false });
+      
+      previewWrapper.addEventListener('touchend', () => {
+        lastTouchDistance = 0;
+      }, { passive: true });
+    }
+    
+    // Keyboard shortcuts for zoom
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+      
+      // Ctrl/Cmd + Plus: Zoom in
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        this.zoomIn();
+      }
+      // Ctrl/Cmd + Minus: Zoom out
+      else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        this.zoomOut();
+      }
+      // Ctrl/Cmd + 0: Reset zoom
+      else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        this.resetZoom();
+      }
+      // Ctrl/Cmd + 1: Fit to screen
+      else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        e.preventDefault();
+        this.fitToScreen();
+      }
+    });
   }
 
   // ============================================
