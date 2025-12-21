@@ -561,6 +561,107 @@ export class PageRenderer {
         path.setAttribute('d', d);
         return path;
       }
+
+      case 'superRounded': {
+        const radius = Math.min(width, height) * 0.2;
+        return this.createRect(x, y, width, height, radius);
+      }
+
+      case 'bubble': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x + w*0.5} ${y + h*0.02}
+          Q ${x + w*0.82} ${y + h*0.02} ${x + w*0.95} ${y + h*0.25}
+          Q ${x + w*1.02} ${y + h*0.5} ${x + w*0.92} ${y + h*0.75}
+          Q ${x + w*0.8} ${y + h*0.98} ${x + w*0.5} ${y + h*0.98}
+          Q ${x + w*0.2} ${y + h*0.98} ${x + w*0.08} ${y + h*0.75}
+          Q ${x + w*-0.02} ${y + h*0.5} ${x + w*0.05} ${y + h*0.25}
+          Q ${x + w*0.18} ${y + h*0.02} ${x + w*0.5} ${y + h*0.02}
+          Z
+        `);
+        return path;
+      }
+
+      case 'wavy': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const waves = 4;
+        const waveDepth = 0.05;
+        let d = `M ${x} ${y + h * waveDepth}`;
+        for (let i = 0; i < waves; i++) {
+          const x1 = x + (i + 0.5) * (w / waves);
+          const x2 = x + (i + 1) * (w / waves);
+          d += ` Q ${x1} ${y + (i % 2 === 0 ? 0 : h * waveDepth * 2)} ${x2} ${y + h * waveDepth}`;
+        }
+        d += ` L ${x + w} ${y + h - h * waveDepth}`;
+        for (let i = waves - 1; i >= 0; i--) {
+          const x1 = x + (i + 0.5) * (w / waves);
+          const x2 = x + i * (w / waves);
+          d += ` Q ${x1} ${y + (i % 2 === 0 ? h : h - h * waveDepth * 2)} ${x2} ${y + h - h * waveDepth}`;
+        }
+        d += ' Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+
+      case 'stamp': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const notches = 10;
+        const notchSize = Math.min(w, h) * 0.03;
+        const margin = notchSize * 1.5;
+        let d = `M ${x + margin} ${y + margin}`;
+        // Top edge with notches
+        for (let i = 0; i < notches; i++) {
+          const nx = x + margin + (i + 0.5) * ((w - margin * 2) / notches);
+          d += ` L ${nx - notchSize} ${y + margin}`;
+          d += ` A ${notchSize} ${notchSize} 0 1 1 ${nx + notchSize} ${y + margin}`;
+        }
+        d += ` L ${x + w - margin} ${y + margin}`;
+        // Right edge
+        for (let i = 0; i < notches; i++) {
+          const ny = y + margin + (i + 0.5) * ((h - margin * 2) / notches);
+          d += ` L ${x + w - margin} ${ny - notchSize}`;
+          d += ` A ${notchSize} ${notchSize} 0 1 1 ${x + w - margin} ${ny + notchSize}`;
+        }
+        d += ` L ${x + w - margin} ${y + h - margin}`;
+        // Bottom edge
+        for (let i = notches - 1; i >= 0; i--) {
+          const nx = x + margin + (i + 0.5) * ((w - margin * 2) / notches);
+          d += ` L ${nx + notchSize} ${y + h - margin}`;
+          d += ` A ${notchSize} ${notchSize} 0 1 1 ${nx - notchSize} ${y + h - margin}`;
+        }
+        d += ` L ${x + margin} ${y + h - margin}`;
+        // Left edge
+        for (let i = notches - 1; i >= 0; i--) {
+          const ny = y + margin + (i + 0.5) * ((h - margin * 2) / notches);
+          d += ` L ${x + margin} ${ny + notchSize}`;
+          d += ` A ${notchSize} ${notchSize} 0 1 1 ${x + margin} ${ny - notchSize}`;
+        }
+        d += ' Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+
+      case 'shield': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `
+          M ${x + w * 0.5} ${y + h * 0.02}
+          L ${x + w * 0.95} ${y + h * 0.12}
+          L ${x + w * 0.95} ${y + h * 0.5}
+          Q ${x + w * 0.95} ${y + h * 0.75} ${x + w * 0.5} ${y + h * 0.98}
+          Q ${x + w * 0.05} ${y + h * 0.75} ${x + w * 0.05} ${y + h * 0.5}
+          L ${x + w * 0.05} ${y + h * 0.12}
+          Z
+        `);
+        return path;
+      }
       
       default:
         // Default to rectangle
