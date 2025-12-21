@@ -902,7 +902,7 @@
   background: var(--comp-surface);
   border-radius: var(--comp-radius-lg);
   width: 90%;
-  max-width: 380px;
+  max-width: 520px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.5);
 }
 
@@ -1436,7 +1436,7 @@
    A/B Confirm Modal Styles
    ============================================ */
 .modal-dialog-sm {
-  max-width: 400px;
+  max-width: 480px;
 }
 
 .modal-text {

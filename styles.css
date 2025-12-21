@@ -338,7 +338,7 @@ body::before {
   width: 220px;
   border-radius: 16px;
   border:1px solid var(--stroke);
-  background: rgba(11,15,25,0.92);
+  background: rgb(11,15,25);
   box-shadow: var(--shadow2);
   overflow:hidden;
   animation: popIn var(--speed2) var(--ease);
@@ -670,12 +670,12 @@ body[data-phase="storyboard"] #results {
   overflow:hidden;
   border-radius: 22px;
   border:1px solid var(--stroke);
-  background: rgba(11,15,25,0.92);
+  background: rgb(11,15,25);
   box-shadow: var(--shadow2);
   animation: popIn var(--speed2) var(--ease);
 }
 .modal-dialog-sm{
-  width:min(720px, calc(100vw - 24px));
+  width:min(520px, calc(100vw - 24px));
 }
 .modal-header{
   display:flex;
@@ -874,7 +874,7 @@ body[data-phase="storyboard"] #results {
   max-width: 360px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(11,15,25,0.92);
+  background: rgb(11,15,25);
   border-left: 4px solid var(--brand);
   box-shadow: var(--shadow2);
   animation: popIn var(--speed2) var(--ease);
