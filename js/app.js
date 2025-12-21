@@ -14,6 +14,7 @@ import { loadDashboard, openProjectById } from './api/projects.js';
 import { initViewControls, initAccountMenu, initSearch } from './ui/controls.js';
 import { initImageModalEvents } from './ui/modals.js';
 import { initAuthUI } from './ui/auth.js';
+import { closeNewStoryModal } from './ui/render.js';
 
 // =====================================================
 // App Initialization
@@ -22,6 +23,14 @@ import { initAuthUI } from './ui/auth.js';
 async function initApp() {
   // Check authentication session on load
   await checkSession();
+  
+  // Subscribe to auth changes to refresh dashboard on login
+  onAuthChange(({ isAuthenticated }) => {
+    // If user just logged in and we're on dashboard, refresh it
+    if (isAuthenticated && state.currentPhase === "dashboard") {
+      loadDashboard();
+    }
+  });
   
   // Register route handlers (avoids circular imports in router.js)
   setRouteHandlers({
@@ -43,6 +52,43 @@ async function initApp() {
     e.preventDefault();
     const { fetchIdeas } = await import('./api/story.js');
     await fetchIdeas();
+  });
+
+  // New story modal form submission
+  $("new-story-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = $("new-story-name");
+    const topicInput = $("new-story-topic");
+    
+    // Copy values to the sidebar form (which the fetchIdeas function reads from)
+    const sidebarName = $("kid-name");
+    const sidebarInterests = $("kid-interests");
+    
+    if (sidebarName) sidebarName.value = nameInput?.value || "";
+    if (sidebarInterests) sidebarInterests.value = topicInput?.value || "";
+    
+    // Close modal
+    closeNewStoryModal();
+    
+    // Start a new project and generate ideas
+    startNewProject();
+    const { fetchIdeas } = await import('./api/story.js');
+    await fetchIdeas();
+  });
+
+  // Close new story modal
+  $("close-new-story-modal")?.addEventListener("click", closeNewStoryModal);
+  
+  // Close modal on backdrop click
+  $("new-story-modal")?.addEventListener("click", (e) => {
+    if (e.target?.classList?.contains("modal-backdrop")) closeNewStoryModal();
+  });
+  
+  // Close new story modal on Escape key
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeNewStoryModal();
+    }
   });
 
   // Reset session button - IMPORTANT: Clear projectId so new project is created

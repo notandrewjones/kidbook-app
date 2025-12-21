@@ -144,16 +144,16 @@
     <!-- Illustration Preview + Regenerate Modal -->
     <div id="image-modal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
-      <div class="modal-dialog" role="dialog" aria-modal="true">
+      <div class="modal-dialog modal-dialog-regen" role="dialog" aria-modal="true">
         <div class="modal-header">
           <div class="modal-header-left">
             <div class="modal-title">Illustration Preview</div>
             <div id="modal-subtitle" class="modal-subtitle">Page</div>
           </div>
-          <button id="close-modal" class="icon-btn" title="Close">✕</button>
+          <button id="close-modal" class="icon-btn modal-close-btn" title="Close">✕</button>
         </div>
 
-        <div class="modal-body">
+        <div class="modal-body modal-body-regen">
           <div class="modal-image-wrap">
             <img id="modal-image" src="" alt="Illustration preview" />
           </div>
@@ -166,25 +166,19 @@
             <div id="revision-history" class="hidden"></div>
             
             <!-- Use this version button (shown when viewing a past revision) -->
-            <button id="use-version-btn" class="btn btn-secondary hidden">
+            <button id="use-version-btn" class="btn btn-secondary btn-full hidden">
               <span>Use This Version</span>
             </button>
             
-            <label class="label">Revision notes</label>
-            <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+            <div class="form-group">
+              <label class="label" for="revision-notes">Revision notes</label>
+              <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+            </div>
 
-            <button id="regen-btn" class="btn btn-primary">
+            <button id="regen-btn" class="btn btn-primary btn-full">
               <span>Regenerate</span>
               <span class="pill">max 2</span>
             </button>
-
-            <!---
-            
-             <div class="modal-help">
-              THIS TEXT WOULD APPEAR AS A TOOL TIP IN THE REGENERATION WINDOW IF UNCOMMENTED
-            </div>
-            
-            -->
           </div>
         </div>
       </div>
@@ -227,6 +221,42 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- New Story Modal -->
+  <div id="new-story-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog auth-modal-dialog" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Start a New Story</div>
+          <div class="modal-subtitle">Tell us about your main character</div>
+        </div>
+        <button id="close-new-story-modal" class="icon-btn modal-close-btn" title="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="new-story-form" class="auth-form">
+          <div class="form-group">
+            <label for="new-story-name">Main Character's Name</label>
+            <input id="new-story-name" type="text" placeholder="e.g., Hannah" required />
+          </div>
+
+          <div class="form-group">
+            <label for="new-story-topic">Story Topic</label>
+            <input id="new-story-topic" type="text" placeholder="e.g., space adventure, puppies, soccer" />
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-full">
+            <span>Generate Story Ideas</span>
+          </button>
+          
+          <div class="modal-tip">
+            <strong>Tip:</strong> If you have a specific vision for your story, include as much detail as you can in the topic field.
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
   <!-- Toast notifications -->

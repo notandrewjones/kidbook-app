@@ -1,13 +1,42 @@
 // js/ui/render.js
 // Rendering functions for dashboard, storyboard, ideas, and story editor
 
-import { state, setLastStoryPages, getProjectId } from '../core/state.js';
+import { state, setLastStoryPages, getProjectId, startNewProject } from '../core/state.js';
 import { $, escapeHtml, showToast, showLoader } from '../core/utils.js';
 import { projectStatusText, openProjectById } from '../api/projects.js';
 import { generateSingleIllustration, generateIllustrations } from '../api/illustrations.js';
 import { openImageModal, initUploadModal } from './modals.js';
 import { renderCharacterPanel, openAddCharacterModal } from './panels.js';
 import { finalizeStory, saveStoryEdits } from '../api/story.js';
+
+// New Story Modal functions
+export function openNewStoryModal() {
+  const modal = $("new-story-modal");
+  if (!modal) return;
+  
+  // Clear form
+  const form = modal.querySelector("#new-story-form");
+  if (form) form.reset();
+  
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  
+  // Focus first input
+  modal.querySelector("#new-story-name")?.focus();
+}
+
+export function closeNewStoryModal() {
+  const modal = $("new-story-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+// Helper to remove dashboard mode
+function removeDashboardMode() {
+  const main = $("main") || document.querySelector(".main");
+  main?.classList.remove("dashboard-mode");
+}
 
 // Re-render current view without fetching (for view/filter switching)
 export function reRenderCurrentView() {
@@ -23,13 +52,25 @@ export function reRenderCurrentView() {
 // Render the dashboard (project list)
 export function renderDashboard(projects) {
   const results = $("results");
+  const main = $("main") || document.querySelector(".main");
+  
+  // Add dashboard mode class to hide sidebar
+  main?.classList.add("dashboard-mode");
+
+  // New story card - always first
+  const newStoryCard = `
+    <div class="new-story-card" id="new-story-card">
+      <div class="new-story-card-icon">+</div>
+      <div class="new-story-card-text">Start a New Story</div>
+    </div>
+  `;
 
   if (!projects.length) {
-    results.innerHTML = `
-      <div class="loader">
-        <div>No projects yet.</div>
-      </div>
-    `;
+    const containerClass = state.currentView === "list" ? "list" : "grid";
+    results.innerHTML = `<div class="${containerClass}">${newStoryCard}</div>`;
+    
+    // Wire new story card click
+    $("new-story-card")?.addEventListener("click", openNewStoryModal);
     return;
   }
 
@@ -75,7 +116,10 @@ export function renderDashboard(projects) {
   }).join("");
 
   const containerClass = state.currentView === "list" ? "list" : "grid";
-  results.innerHTML = `<div class="${containerClass}">${cards}</div>`;
+  results.innerHTML = `<div class="${containerClass}">${newStoryCard}${cards}</div>`;
+
+  // Wire new story card click
+  $("new-story-card")?.addEventListener("click", openNewStoryModal);
 
   // Wire click events
   results.querySelectorAll("[data-open-project]").forEach((el) => {
@@ -88,6 +132,7 @@ export function renderDashboard(projects) {
 
 // Render story ideas selection
 export function renderIdeas(ideas) {
+  removeDashboardMode();
   const results = $("results");
 
   const cards = ideas.map((idea, idx) => `
@@ -130,6 +175,7 @@ export function renderIdeas(ideas) {
 
 // Render the story editor (edit phase before finalization)
 export function renderStoryEditor(project) {
+  removeDashboardMode();
   const results = $("results");
   const pages = project.story_json || [];
   
@@ -318,6 +364,7 @@ function isProjectReadyForComposition(project) {
 
 // Render the storyboard
 export function renderStoryboard(project) {
+  removeDashboardMode();
   renderCharacterPanel(project);
   
   const results = $("results");

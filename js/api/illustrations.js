@@ -209,9 +209,13 @@ export async function handleRegenerateIllustration() {
   const pageNum = Number(regenBtn.dataset.page || "0");
   if (!pageNum) return;
 
-  const pages = JSON.parse(localStorage.getItem("lastStoryPages") || "[]");
+  // Pages are stored in sessionStorage, not localStorage
+  const pages = JSON.parse(sessionStorage.getItem("lastStoryPages") || "[]");
   const pageData = pages.find((p) => Number(p.page) === pageNum);
-  if (!pageData) return;
+  if (!pageData) {
+    showToast("Error", "Could not find page data for regeneration", "error");
+    return;
+  }
 
   const revisionText = (notes?.value || "").trim();
   const pageTextWithNotes = revisionText
