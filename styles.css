@@ -338,7 +338,7 @@ body::before {
   width: 220px;
   border-radius: 16px;
   border:1px solid var(--stroke);
-  background: rgb(11,15,25);
+  background: #0b0f19 !important;
   box-shadow: var(--shadow2);
   overflow:hidden;
   animation: popIn var(--speed2) var(--ease);
@@ -670,7 +670,7 @@ body[data-phase="storyboard"] #results {
   overflow:hidden;
   border-radius: 22px;
   border:1px solid var(--stroke);
-  background: rgb(11,15,25);
+  background: #0b0f19 !important;
   box-shadow: var(--shadow2);
   animation: popIn var(--speed2) var(--ease);
 }
