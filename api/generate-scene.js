@@ -490,6 +490,7 @@ Generate the illustration now.
       page,
       image_url: urlData.publicUrl,
       revisions: newRevisions,
+      revision_history: newHistory,
       scene_composition: sceneComposition,
     });
 

@@ -144,7 +144,7 @@
     <!-- Illustration Preview + Regenerate Modal -->
     <div id="image-modal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
-      <div class="modal-dialog modal-dialog-regen" role="dialog" aria-modal="true">
+      <div class="modal-dialog modal-dialog-preview" role="dialog" aria-modal="true">
         <div class="modal-header">
           <div class="modal-header-left">
             <div class="modal-title">Illustration Preview</div>
@@ -153,32 +153,44 @@
           <button id="close-modal" class="icon-btn modal-close-btn" title="Close">✕</button>
         </div>
 
-        <div class="modal-body modal-body-regen">
-          <div class="modal-image-wrap">
-            <img id="modal-image" src="" alt="Illustration preview" />
+        <div class="modal-body modal-body-preview">
+          <!-- Left side: Main image preview -->
+          <div class="preview-main">
+            <div class="modal-image-wrap">
+              <img id="modal-image" src="" alt="Illustration preview" />
+            </div>
           </div>
 
-          <div class="modal-side">
+          <!-- Right side: Controls and history -->
+          <div class="preview-controls">
             <!-- Current version indicator -->
-            <div id="current-version-indicator" class="hidden"></div>
+            <div class="preview-section">
+              <div class="preview-section-label">Current Version</div>
+              <div id="current-version-indicator" class="hidden"></div>
+            </div>
             
             <!-- Revision history -->
-            <div id="revision-history" class="hidden"></div>
+            <div id="revision-history" class="preview-section hidden">
+              <div class="preview-section-label">Previous Versions</div>
+              <div class="revision-thumbs-container"></div>
+            </div>
             
             <!-- Use this version button (shown when viewing a past revision) -->
             <button id="use-version-btn" class="btn btn-secondary btn-full hidden">
-              <span>Use This Version</span>
+              <span>↩ Use This Version</span>
             </button>
             
-            <div class="form-group">
-              <label class="label" for="revision-notes">Revision notes</label>
-              <textarea id="revision-notes" class="textarea" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+            <!-- Regeneration controls -->
+            <div class="preview-section preview-regen-section">
+              <div class="preview-section-label">Regenerate with Notes</div>
+              <div class="form-group">
+                <textarea id="revision-notes" class="textarea textarea-sm" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+              </div>
+              <button id="regen-btn" class="btn btn-primary btn-full">
+                <span>Regenerate</span>
+                <span class="pill">max 2</span>
+              </button>
             </div>
-
-            <button id="regen-btn" class="btn btn-primary btn-full">
-              <span>Regenerate</span>
-              <span class="pill">max 2</span>
-            </button>
           </div>
         </div>
       </div>

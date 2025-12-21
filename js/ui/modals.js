@@ -50,6 +50,33 @@ export function openImageModal(pageNum, imageUrl) {
   const revisionHistory = illustration?.revision_history || [];
   const currentRevision = illustration?.revisions || 0;
 
+  // Render current version indicator
+  const currentIndicator = $("current-version-indicator");
+  if (currentIndicator) {
+    const currentThumbUrl = `${imageUrl}?v=${Date.now()}`;
+    currentIndicator.innerHTML = `
+      <div class="revision-thumb active current" data-url="${currentThumbUrl}">
+        <img src="${currentThumbUrl}" alt="Current version">
+        <span class="revision-label">v${currentRevision} (current)</span>
+      </div>
+    `;
+    currentIndicator.classList.remove("hidden");
+    
+    currentIndicator.querySelector(".revision-thumb")?.addEventListener("click", () => {
+      img.src = currentThumbUrl;
+      currentlyViewingUrl = currentThumbUrl;
+      
+      // Update active states
+      historyContainer?.querySelectorAll(".revision-thumb").forEach(t => 
+        t.classList.remove("active")
+      );
+      currentIndicator.querySelector(".revision-thumb")?.classList.add("active");
+      
+      // Hide "Use This Version" button since we're viewing current
+      updateUseVersionButton();
+    });
+  }
+
   // Render revision history
   if (historyContainer) {
     if (revisionHistory.length > 0) {
@@ -62,18 +89,16 @@ export function openImageModal(pageNum, imageUrl) {
           return `
             <div class="revision-thumb" data-url="${thumbUrl}" data-revision="${rev.revision}">
               <img src="${thumbUrl}" alt="Revision ${rev.revision}">
-              <span class="revision-label">r${rev.revision}</span>
+              <span class="revision-label">v${rev.revision}</span>
             </div>
           `;
         })
         .join("");
 
-      historyContainer.innerHTML = `
-        <div class="revision-history-label">Previous versions</div>
-        <div class="revision-thumbs">
-          ${historyHtml}
-        </div>
-      `;
+      const thumbsContainer = historyContainer.querySelector(".revision-thumbs-container");
+      if (thumbsContainer) {
+        thumbsContainer.innerHTML = `<div class="revision-thumbs">${historyHtml}</div>`;
+      }
       historyContainer.classList.remove("hidden");
 
       // Wire click events for history thumbnails
@@ -89,47 +114,15 @@ export function openImageModal(pageNum, imageUrl) {
           );
           thumb.classList.add("active");
           
-          // Remove active from current indicator if exists
-          $("current-version-indicator")?.querySelector(".revision-thumb")?.classList.remove("active");
+          // Remove active from current indicator
+          currentIndicator?.querySelector(".revision-thumb")?.classList.remove("active");
           
           // Show "Use This Version" button since we're viewing a past revision
           updateUseVersionButton();
         });
       });
     } else {
-      historyContainer.innerHTML = "";
       historyContainer.classList.add("hidden");
-    }
-  }
-
-  // Add current version indicator if there's history
-  const currentIndicator = $("current-version-indicator");
-  if (currentIndicator) {
-    if (revisionHistory.length > 0) {
-      currentIndicator.innerHTML = `
-        <div class="revision-thumb active current" data-url="${imageUrl}">
-          <img src="${imageUrl}" alt="Current version">
-          <span class="revision-label">r${currentRevision} (current)</span>
-        </div>
-      `;
-      currentIndicator.classList.remove("hidden");
-      
-      currentIndicator.querySelector(".revision-thumb")?.addEventListener("click", () => {
-        img.src = imageUrl;
-        currentlyViewingUrl = imageUrl;
-        
-        // Update active states
-        historyContainer?.querySelectorAll(".revision-thumb").forEach(t => 
-          t.classList.remove("active")
-        );
-        currentIndicator.querySelector(".revision-thumb")?.classList.add("active");
-        
-        // Hide "Use This Version" button since we're viewing current
-        updateUseVersionButton();
-      });
-    } else {
-      currentIndicator.innerHTML = "";
-      currentIndicator.classList.add("hidden");
     }
   }
 
