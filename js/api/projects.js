@@ -41,7 +41,26 @@ export async function loadDashboard() {
   navigate("dashboard");
 
   try {
-    const res = await fetch("/api/projects-list");
+    const res = await fetch("/api/projects-list", {
+      credentials: 'include' // Important for auth cookies
+    });
+    
+    // Handle auth errors
+    if (res.status === 401) {
+      state.cachedDashboardProjects = [];
+      $("results").innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📚</div>
+          <h3>Welcome to Kids Book Creator!</h3>
+          <p>Please log in to view your books or create a new one.</p>
+          <button class="btn btn-primary" onclick="document.getElementById('login-btn').click()">
+            Log In to Get Started
+          </button>
+        </div>
+      `;
+      return;
+    }
+    
     const data = await res.json();
     state.cachedDashboardProjects = data.projects || [];
     renderDashboard(state.cachedDashboardProjects);

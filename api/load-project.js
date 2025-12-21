@@ -1,7 +1,8 @@
 // api/load-project.js (CommonJS)
-// Updated to include character_models array
+// Updated to include character_models array and user authentication
 
 const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("./_auth.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -11,6 +12,16 @@ const supabase = createClient(
 async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Check authentication
+  const { user, error: authError } = await getCurrentUser(req, res);
+  
+  if (!user) {
+    return res.status(401).json({ 
+      error: "Unauthorized",
+      message: authError || "Please log in to access this project"
+    });
   }
 
   const { projectId } = req.body || {};
@@ -23,6 +34,7 @@ async function handler(req, res) {
       .from("book_projects")
       .select(`
         id,
+        user_id,
         kid_name,
         kid_interests,
         story_ideas,
@@ -46,6 +58,14 @@ async function handler(req, res) {
 
     if (!data) {
       return res.status(404).json({ error: "Project not found" });
+    }
+
+    // Verify ownership
+    if (data.user_id !== user.id) {
+      return res.status(403).json({ 
+        error: "Access denied",
+        message: "You don't have permission to access this project"
+      });
     }
 
     // Normalize character_models

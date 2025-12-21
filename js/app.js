@@ -5,6 +5,7 @@
 import { state, clearAllState, setPhase, startNewProject } from './core/state.js';
 import { $, setWorkspaceTitle } from './core/utils.js';
 import { initRouter, setRouteHandlers } from './core/router.js';
+import { checkSession, onAuthChange } from './core/auth.js';
 
 // API
 import { loadDashboard, openProjectById } from './api/projects.js';
@@ -12,12 +13,16 @@ import { loadDashboard, openProjectById } from './api/projects.js';
 // UI
 import { initViewControls, initAccountMenu, initSearch } from './ui/controls.js';
 import { initImageModalEvents } from './ui/modals.js';
+import { initAuthUI } from './ui/auth.js';
 
 // =====================================================
 // App Initialization
 // =====================================================
 
-function initApp() {
+async function initApp() {
+  // Check authentication session on load
+  await checkSession();
+  
   // Register route handlers (avoids circular imports in router.js)
   setRouteHandlers({
     dashboard: loadDashboard,
@@ -29,6 +34,9 @@ function initApp() {
   initImageModalEvents();
   initViewControls();
   initSearch();
+  
+  // Initialize auth UI (login/logout buttons, etc.)
+  initAuthUI();
 
   // Form submission - generate ideas (use dynamic import to avoid circular dependency)
   $("kid-form")?.addEventListener("submit", async (e) => {

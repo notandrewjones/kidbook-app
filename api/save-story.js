@@ -2,6 +2,7 @@
 // Saves story edits without finalizing (keeps story_locked = false)
 
 const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("./_auth.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -11,6 +12,16 @@ const supabase = createClient(
 async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Check authentication
+  const { user, error: authError } = await getCurrentUser(req, res);
+  
+  if (!user) {
+    return res.status(401).json({ 
+      error: "Unauthorized",
+      message: authError || "Please log in to save your story"
+    });
   }
 
   const { projectId, storyPages } = req.body;
@@ -24,15 +35,23 @@ async function handler(req, res) {
   }
 
   try {
-    // Check if story is already locked
+    // Check if project exists and belongs to user, also check if locked
     const { data: project, error: checkError } = await supabase
       .from("book_projects")
-      .select("story_locked")
+      .select("story_locked, user_id")
       .eq("id", projectId)
       .single();
 
     if (checkError) {
       return res.status(500).json({ error: "Could not load project." });
+    }
+
+    // Verify ownership
+    if (project.user_id !== user.id) {
+      return res.status(403).json({ 
+        error: "Access denied",
+        message: "You don't have permission to modify this project"
+      });
     }
 
     if (project.story_locked === true) {

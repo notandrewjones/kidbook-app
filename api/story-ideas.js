@@ -1,5 +1,7 @@
-import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
+// api/story-ideas.js (CommonJS)
+const OpenAI = require("openai").default;
+const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("./_auth.js");
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -28,9 +30,19 @@ function cleanJsonOutput(text) {
   return text.substring(firstBrace, lastBrace + 1);
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Check authentication
+  const { user, error: authError } = await getCurrentUser(req, res);
+  
+  if (!user) {
+    return res.status(401).json({ 
+      error: "Unauthorized",
+      message: authError || "Please log in to create stories"
+    });
   }
 
   const { name, interests, projectId } = req.body;
@@ -77,62 +89,82 @@ Child:
       projectId && projectId !== "undefined" && projectId !== null;
 
     if (hasProjectId) {
-      // 1) Try UPDATE first
-      const { data: updateData, error: updateError } = await supabase
+      // First verify the project belongs to this user
+      const { data: existingProject, error: checkError } = await supabase
         .from("book_projects")
-        .update({
-          kid_name: name,
-          kid_interests: interests,
-          story_ideas: parsed.ideas
-        })
+        .select("id, user_id")
         .eq("id", projectId)
-        .select("*"); // no .single() so we can see if 0 rows came back
-
-      if (updateError) {
-        console.error("Update failed:", updateError);
-        return res
-          .status(500)
-          .json({ error: "Update failed", details: updateError });
+        .single();
+      
+      if (checkError || !existingProject) {
+        // Project doesn't exist, create new one
+        console.log("Project not found, creating new one");
+      } else if (existingProject.user_id !== user.id) {
+        return res.status(403).json({ 
+          error: "Access denied",
+          message: "You don't have permission to modify this project"
+        });
       }
 
-      // If no rows were updated (projectId didn't match anything),
-      // fall back to INSERT a brand new project.
-      if (!updateData || updateData.length === 0) {
-        console.log(
-          "No existing project found with this projectId; inserting a new row instead."
-        );
+      // 1) Try UPDATE first (only if project exists and belongs to user)
+      if (existingProject && existingProject.user_id === user.id) {
+        const { data: updateData, error: updateError } = await supabase
+          .from("book_projects")
+          .update({
+            kid_name: name,
+            kid_interests: interests,
+            story_ideas: parsed.ideas
+          })
+          .eq("id", projectId)
+          .eq("user_id", user.id) // Extra safety
+          .select("*");
+
+        if (updateError) {
+          console.error("Update failed:", updateError);
+          return res
+            .status(500)
+            .json({ error: "Update failed", details: updateError });
+        }
+
+        if (updateData && updateData.length > 0) {
+          finalProjectId = updateData[0].id;
+        }
+      }
+
+      // If no rows were updated, insert a new project
+      if (!finalProjectId) {
+        console.log("No existing project found; inserting a new row.");
 
         const { data: insertData, error: insertError } = await supabase
           .from("book_projects")
           .insert({
             kid_name: name,
             kid_interests: interests,
-            story_ideas: parsed.ideas
+            story_ideas: parsed.ideas,
+            user_id: user.id
           })
           .select("*")
           .single();
 
         if (insertError) {
-          console.error("Insert failed (after empty update):", insertError);
+          console.error("Insert failed:", insertError);
           return res.status(500).json({
-            error: "Insert failed after empty update",
+            error: "Insert failed",
             details: insertError
           });
         }
 
         finalProjectId = insertData.id;
-      } else {
-        // Normal update success, use the existing project
-        finalProjectId = updateData[0].id;
       }
     } else {
-      // 2) No projectId given → always INSERT a new project
+      // 2) No projectId given → INSERT a new project with user_id
       const { data, error } = await supabase
         .from("book_projects")
         .insert({
           kid_name: name,
           kid_interests: interests,
-          story_ideas: parsed.ideas
+          story_ideas: parsed.ideas,
+          user_id: user.id
         })
         .select("*")
         .single();
@@ -154,3 +186,5 @@ Child:
     return res.status(500).json({ error: "Failed to generate story ideas" });
   }
 }
+
+module.exports = handler;

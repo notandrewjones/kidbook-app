@@ -1,6 +1,7 @@
 // api/projects-list.js (CommonJS)
 
 const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("./_auth.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -10,6 +11,16 @@ const supabase = createClient(
 async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Check authentication
+  const { user, error: authError } = await getCurrentUser(req, res);
+  
+  if (!user) {
+    return res.status(401).json({ 
+      error: "Unauthorized",
+      message: authError || "Please log in to view your books"
+    });
   }
 
   try {
@@ -25,9 +36,12 @@ async function handler(req, res) {
         story_json,
         story_locked,
         illustrations,
-        character_model_url
+        character_model_url,
+        user_id
       `
-      );
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("PROJECTS LIST ERROR:", error);
