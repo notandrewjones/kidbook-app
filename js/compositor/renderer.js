@@ -1,7 +1,7 @@
 // js/compositor/renderer.js
 // SVG-based page renderer for book compositor
 
-import { FRAME_SHAPES, FONT_FAMILIES, getTemplate } from './templates.js';
+import { FRAME_SHAPES, FONT_FAMILIES, BACKGROUND_PATTERNS, getTemplate } from './templates.js';
 
 /**
  * PageRenderer - Renders a single book page as SVG
@@ -225,9 +225,29 @@ export class PageRenderer {
     bg.setAttribute('fill', bgColor);
     svg.appendChild(bg);
 
+    // Render background pattern if specified
+    if (config.backgroundPattern && config.backgroundPattern !== 'none' && BACKGROUND_PATTERNS[config.backgroundPattern]) {
+      this.renderBackgroundPattern(svg, config, width, height);
+    }
+
     // Decorative border if enabled
     if (config.effects?.decorativeBorder) {
       this.renderDecorativeBorder(svg, config, width, height);
+    }
+  }
+
+  renderBackgroundPattern(svg, config, width, height) {
+    const pattern = BACKGROUND_PATTERNS[config.backgroundPattern];
+    if (!pattern || !pattern.svg) return;
+
+    const patternGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    patternGroup.setAttribute('class', 'background-pattern');
+    
+    // Generate pattern SVG
+    const patternSvg = pattern.svg(width, height, config.colors || {});
+    if (patternSvg) {
+      patternGroup.innerHTML = patternSvg;
+      svg.appendChild(patternGroup);
     }
   }
 
@@ -651,15 +671,137 @@ export class PageRenderer {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         const w = width;
         const h = height;
-        path.setAttribute('d', `
-          M ${x + w * 0.5} ${y + h * 0.02}
-          L ${x + w * 0.95} ${y + h * 0.12}
-          L ${x + w * 0.95} ${y + h * 0.5}
-          Q ${x + w * 0.95} ${y + h * 0.75} ${x + w * 0.5} ${y + h * 0.98}
-          Q ${x + w * 0.05} ${y + h * 0.75} ${x + w * 0.05} ${y + h * 0.5}
-          L ${x + w * 0.05} ${y + h * 0.12}
-          Z
-        `);
+        path.setAttribute('d', `M ${x + w * 0.5} ${y + h * 0.02} L ${x + w * 0.95} ${y + h * 0.12} L ${x + w * 0.95} ${y + h * 0.5} Q ${x + w * 0.95} ${y + h * 0.75} ${x + w * 0.5} ${y + h * 0.98} Q ${x + w * 0.05} ${y + h * 0.75} ${x + w * 0.05} ${y + h * 0.5} L ${x + w * 0.05} ${y + h * 0.12} Z`);
+        return path;
+      }
+
+      case 'pillShape': {
+        const radius = Math.min(width, height) * 0.5;
+        return this.createRect(x, y, width, height, radius);
+      }
+
+      case 'chunkyStar': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const outerR = Math.min(width, height) / 2;
+        const innerR = outerR * 0.65;
+        const points = 5;
+        let d = '';
+        for (let i = 0; i < points * 2; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const angle = (i * Math.PI / points) - Math.PI / 2;
+          const px = cx + r * Math.cos(angle);
+          const py = cy + r * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + ` ${px} ${py} `;
+        }
+        d += 'Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+
+      case 'wobble': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `M ${x + w*0.08} ${y + h*0.15} Q ${x + w*0.25} ${y + h*0.02} ${x + w*0.5} ${y + h*0.05} Q ${x + w*0.75} ${y + h*0.02} ${x + w*0.92} ${y + h*0.15} Q ${x + w*1.0} ${y + h*0.4} ${x + w*0.95} ${y + h*0.6} Q ${x + w*0.98} ${y + h*0.85} ${x + w*0.85} ${y + h*0.95} Q ${x + w*0.6} ${y + h*1.02} ${x + w*0.4} ${y + h*0.98} Q ${x + w*0.15} ${y + h*1.0} ${x + w*0.05} ${y + h*0.85} Q ${x + w*-0.02} ${y + h*0.6} ${x + w*0.03} ${y + h*0.4} Q ${x + w*0.0} ${y + h*0.2} ${x + w*0.08} ${y + h*0.15} Z`);
+        return path;
+      }
+
+      case 'wavyRect': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const waves = 5;
+        const amp = h * 0.04;
+        let d = `M ${x} ${y + amp}`;
+        for (let i = 0; i < waves; i++) {
+          const x1 = x + (i + 0.5) * (w / waves);
+          const x2 = x + (i + 1) * (w / waves);
+          d += ` Q ${x1} ${y + (i % 2 === 0 ? 0 : amp * 2)} ${x2} ${y + amp}`;
+        }
+        d += ` L ${x + w} ${y + h - amp}`;
+        for (let i = waves - 1; i >= 0; i--) {
+          const x1 = x + (i + 0.5) * (w / waves);
+          const x2 = x + i * (w / waves);
+          d += ` Q ${x1} ${y + (i % 2 === 0 ? h : h - amp * 2)} ${x2} ${y + h - amp}`;
+        }
+        d += ' Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+
+      case 'wavyOval': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const bumps = 12;
+        const bumpDepth = 0.06;
+        let d = '';
+        for (let i = 0; i < bumps; i++) {
+          const angle1 = (i / bumps) * Math.PI * 2;
+          const angle2 = ((i + 0.5) / bumps) * Math.PI * 2;
+          const angle3 = ((i + 1) / bumps) * Math.PI * 2;
+          const r1 = 0.48;
+          const r2 = 0.48 - bumpDepth;
+          const x1 = cx + r1 * w * Math.cos(angle1);
+          const y1 = cy + r1 * h * Math.sin(angle1);
+          const ctrlX = cx + r2 * w * Math.cos(angle2);
+          const ctrlY = cy + r2 * h * Math.sin(angle2);
+          const x2 = cx + r1 * w * Math.cos(angle3);
+          const y2 = cy + r1 * h * Math.sin(angle3);
+          if (i === 0) d += `M ${x1} ${y1}`;
+          d += ` Q ${ctrlX} ${ctrlY} ${x2} ${y2}`;
+        }
+        d += ' Z';
+        path.setAttribute('d', d);
+        return path;
+      }
+
+      case 'ticket': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        const notchR = h * 0.06;
+        const r = Math.min(w, h) * 0.04;
+        path.setAttribute('d', `M ${x + r} ${y} L ${x + w - r} ${y} Q ${x + w} ${y} ${x + w} ${y + r} L ${x + w} ${y + h * 0.35 - notchR} A ${notchR} ${notchR} 0 0 1 ${x + w} ${y + h * 0.35 + notchR} L ${x + w} ${y + h * 0.65 - notchR} A ${notchR} ${notchR} 0 0 1 ${x + w} ${y + h * 0.65 + notchR} L ${x + w} ${y + h - r} Q ${x + w} ${y + h} ${x + w - r} ${y + h} L ${x + r} ${y + h} Q ${x} ${y + h} ${x} ${y + h - r} L ${x} ${y + h * 0.65 + notchR} A ${notchR} ${notchR} 0 0 1 ${x} ${y + h * 0.65 - notchR} L ${x} ${y + h * 0.35 + notchR} A ${notchR} ${notchR} 0 0 1 ${x} ${y + h * 0.35 - notchR} L ${x} ${y + r} Q ${x} ${y} ${x + r} ${y} Z`);
+        return path;
+      }
+
+      case 'splat': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `M ${x + w*0.5} ${y + h*0.05} Q ${x + w*0.65} ${y + h*0.0} ${x + w*0.72} ${y + h*0.08} Q ${x + w*0.85} ${y + h*0.05} ${x + w*0.9} ${y + h*0.18} Q ${x + w*1.0} ${y + h*0.25} ${x + w*0.95} ${y + h*0.35} Q ${x + w*1.02} ${y + h*0.5} ${x + w*0.92} ${y + h*0.6} Q ${x + w*0.98} ${y + h*0.75} ${x + w*0.88} ${y + h*0.82} Q ${x + w*0.82} ${y + h*0.95} ${x + w*0.68} ${y + h*0.92} Q ${x + w*0.55} ${y + h*1.0} ${x + w*0.42} ${y + h*0.95} Q ${x + w*0.25} ${y + h*0.98} ${x + w*0.18} ${y + h*0.88} Q ${x + w*0.05} ${y + h*0.82} ${x + w*0.08} ${y + h*0.7} Q ${x + w*-0.02} ${y + h*0.55} ${x + w*0.08} ${y + h*0.45} Q ${x + w*0.02} ${y + h*0.3} ${x + w*0.12} ${y + h*0.22} Q ${x + w*0.08} ${y + h*0.1} ${x + w*0.22} ${y + h*0.1} Q ${x + w*0.35} ${y + h*0.02} ${x + w*0.5} ${y + h*0.05} Z`);
+        return path;
+      }
+
+      case 'leaf': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const w = width;
+        const h = height;
+        path.setAttribute('d', `M ${x + w*0.5} ${y + h*0.02} Q ${x + w*0.95} ${y + h*0.15} ${x + w*0.98} ${y + h*0.5} Q ${x + w*0.95} ${y + h*0.85} ${x + w*0.5} ${y + h*0.98} Q ${x + w*0.05} ${y + h*0.85} ${x + w*0.02} ${y + h*0.5} Q ${x + w*0.05} ${y + h*0.15} ${x + w*0.5} ${y + h*0.02} Z`);
+        return path;
+      }
+
+      case 'TV': {
+        const radius = Math.min(width, height) * 0.15;
+        return this.createRect(x + width * 0.02, y + height * 0.02, width * 0.96, height * 0.96, radius);
+      }
+
+      case 'badge': {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const outerR = Math.min(width, height) / 2;
+        const innerR = outerR * 0.85;
+        const points = 12;
+        let d = '';
+        for (let i = 0; i < points * 2; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const angle = (i * Math.PI / points) - Math.PI / 2;
+          const px = cx + r * Math.cos(angle);
+          const py = cy + r * Math.sin(angle);
+          d += (i === 0 ? 'M' : 'L') + ` ${px} ${py} `;
+        }
+        d += 'Z';
+        path.setAttribute('d', d);
         return path;
       }
       
