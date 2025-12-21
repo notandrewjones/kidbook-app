@@ -10,6 +10,13 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Auth client for user authentication (login/signup)
+// Uses the publishable key - required for signInWithPassword
+const supabaseAuth = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 // Create a client from a user's access token
 function createUserClient(accessToken) {
   return createClient(
@@ -244,6 +251,7 @@ function getClientIP(req) {
 
 module.exports = {
   supabaseAdmin,
+  supabaseAuth,
   createUserClient,
   parseCookies,
   setCookie,

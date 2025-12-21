@@ -2,7 +2,7 @@
 // Secure login endpoint with rate limiting
 
 const { 
-  supabaseAdmin, 
+  supabaseAuth, 
   setAuthCookies, 
   checkRateLimit, 
   recordAuthAttempt,
@@ -49,7 +49,7 @@ async function handler(req, res) {
     recordAuthAttempt(`login:email:${normalizedEmail}`);
 
     // Authenticate with Supabase
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    const { data, error } = await supabaseAuth.auth.signInWithPassword({
       email: normalizedEmail,
       password
     });
