@@ -39,15 +39,27 @@
    ===================================================== */
 
 .auth-modal-dialog {
-  width: min(480px, calc(100vw - 24px));
+  width: min(480px, calc(100vw - 48px));
   max-width: 480px;
+  border-radius: var(--radius-xl, 20px);
+  background: #0b0f19 !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05) inset;
+}
+
+.auth-modal-dialog .modal-header {
+  padding: 20px 24px;
+  background: rgba(255,255,255,0.02);
+}
+
+.auth-modal-dialog .modal-body {
+  display: block;
+  padding: 24px;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  padding: 0.5rem;
 }
 
 .form-group {
@@ -56,22 +68,46 @@
   gap: 0.5rem;
 }
 
+.form-group label {
+  font-size: 13px;
+  color: var(--muted, #888);
+}
+
+.form-group input {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke, rgba(255,255,255,0.1));
+  background: rgba(255,255,255,0.06);
+  color: var(--text, #fff);
+  font-size: 14px;
+  outline: none;
+  transition: border 0.2s ease;
+}
+
+.form-group input:focus {
+  border-color: rgba(124,92,255,0.55);
+}
+
+.form-group input::placeholder {
+  color: var(--muted, #888);
+}
+
 .auth-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #dc2626;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  color: #f87171;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
 }
 
 .auth-success {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #16a34a;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+  color: #4ade80;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
 }
 
 .auth-footer {
@@ -79,8 +115,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--stroke, rgba(255,255,255,0.1));
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -106,21 +144,25 @@
 .btn-full {
   width: 100%;
   justify-content: center;
+  padding: 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* Password Strength Indicator */
 .password-strength {
-  font-size: 0.75rem;
+  font-size: 12px;
   min-height: 1rem;
   margin-top: 0.25rem;
 }
 
 .strength-good {
-  color: #16a34a;
+  color: #4ade80;
 }
 
 .strength-weak {
-  color: #dc2626;
+  color: #f87171;
 }
 
 /* Loading Spinner */
