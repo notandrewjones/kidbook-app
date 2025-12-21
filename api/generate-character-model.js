@@ -180,7 +180,7 @@ export default async function handler(req, res) {
       tools: [
         {
           type: "image_generation",
-          model: "gpt-image-1",
+          model: "gpt-image-1-mini", //changed to adjust for pricing. WAS gpt-image-1 originally
           size: "1024x1024",
           quality: "low", // Change to "high" for production
           background: "transparent",

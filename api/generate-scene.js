@@ -395,11 +395,11 @@ Generate the illustration now.
 
     // 8. Generate image
     const response = await client.responses.create({
-      model: "gpt-4.1",
+      model: "gpt-4.1", 
       input: [{ role: "user", content: inputContent }],
       tools: [{
         type: "image_generation",
-        model: "gpt-image-1",
+        model: "gpt-image-1-mini", //CHANGED TO TEST IF CHEAPER MODEL IS STILL GOOD LOOKING. WAS: gpt-image-1. Consider changing to gpt-image-1.5 if visual fidelity or context isn't working right on image-1-mini
         size: "1024x1024",
         quality: "low",  // Change to "high" for production
         background: "opaque",
