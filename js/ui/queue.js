@@ -10,11 +10,16 @@ import { openImageModal } from './modals.js';
 let generationHistory = [];
 const MAX_DROPDOWN_ITEMS = 5;
 
+// Cache settings
+const CACHE_KEY = 'generationHistory';
+const CACHE_TIMESTAMP_KEY = 'generationHistoryTimestamp';
+const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
 // Track if dropdown is open for auto-refresh
 let isDropdownOpen = false;
 
-// Track if we've loaded from server this session
-let hasLoadedFromServer = false;
+// Track if we've already fetched from server this session
+let hasFetchedThisSession = false;
 
 // Initialize queue UI
 export function initQueueUI() {
@@ -67,11 +72,35 @@ export function initQueueUI() {
     }
   });
   
-  // Load initial history (from localStorage first, then server)
-  loadHistory();
+  // Load initial history from cache (instant)
+  loadHistoryFromCache();
+  
+  // Check if we should fetch from server (cache is stale)
+  maybeRefreshFromServer();
 }
 
-// Load history from server (called after auth state changes)
+// Check if cache is stale and fetch from server if needed
+function isCacheStale() {
+  try {
+    const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+    if (!timestamp) return true;
+    
+    const age = Date.now() - parseInt(timestamp, 10);
+    return age > CACHE_MAX_AGE_MS;
+  } catch (e) {
+    return true;
+  }
+}
+
+// Maybe refresh from server if cache is stale
+async function maybeRefreshFromServer() {
+  // Only fetch if cache is stale AND we haven't fetched this session
+  if (isCacheStale() && !hasFetchedThisSession) {
+    await loadHistoryFromServer();
+  }
+}
+
+// Force load history from server (called on login)
 export async function loadHistoryFromServer() {
   try {
     const res = await fetch("/api/generation-history", {
@@ -80,16 +109,39 @@ export async function loadHistoryFromServer() {
     
     if (res.ok) {
       const data = await res.json();
-      if (data.history && data.history.length > 0) {
-        generationHistory = data.history;
-        saveHistoryLocal(); // Cache locally
-        hasLoadedFromServer = true;
+      if (data.history) {
+        // Merge server history with any local items not yet synced
+        mergeServerHistory(data.history);
+        hasFetchedThisSession = true;
         refreshDropdownIfOpen();
       }
     }
   } catch (e) {
     console.warn("Could not load generation history from server:", e);
   }
+}
+
+// Merge server history with local, keeping local items that may not be synced yet
+function mergeServerHistory(serverHistory) {
+  // Get IDs from server
+  const serverIds = new Set(serverHistory.map(h => h.id));
+  
+  // Keep local items that aren't on server (recently added, not yet synced)
+  const recentLocalOnly = generationHistory.filter(h => 
+    !serverIds.has(h.id) && 
+    (Date.now() - h.timestamp) < 60000 // Less than 1 minute old
+  );
+  
+  // Combine: recent local items first, then server history
+  generationHistory = [...recentLocalOnly, ...serverHistory];
+  
+  // Keep only 50
+  if (generationHistory.length > 50) {
+    generationHistory = generationHistory.slice(0, 50);
+  }
+  
+  // Update cache
+  saveHistoryToCache();
 }
 
 // Add a generation to history
@@ -103,6 +155,7 @@ export async function addToHistory(item) {
     imageUrl: item.imageUrl,
     status: item.status || 'complete',
     timestamp: item.timestamp || Date.now(),
+    synced: false, // Track if synced to server
   };
   
   // Add to front of local history
@@ -113,21 +166,21 @@ export async function addToHistory(item) {
     generationHistory = generationHistory.slice(0, 50);
   }
   
-  // Save to localStorage
-  saveHistoryLocal();
+  // Save to cache
+  saveHistoryToCache();
   
   // Update badge and refresh dropdown if open
   updateQueueBadge();
   refreshDropdownIfOpen();
   
   // Persist to server (non-blocking)
-  persistToServer(item);
+  persistToServer(item, historyItem.id);
 }
 
 // Persist history item to server
-async function persistToServer(item) {
+async function persistToServer(item, localId) {
   try {
-    await fetch("/api/generation-history", {
+    const res = await fetch("/api/generation-history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: 'include',
@@ -139,6 +192,17 @@ async function persistToServer(item) {
         status: item.status,
       }),
     });
+    
+    if (res.ok) {
+      const data = await res.json();
+      // Update local item with server ID and mark as synced
+      const localItem = generationHistory.find(h => h.id === localId);
+      if (localItem && data.item) {
+        localItem.id = data.item.id;
+        localItem.synced = true;
+        saveHistoryToCache();
+      }
+    }
   } catch (e) {
     // Silently fail - local storage is the backup
     console.warn("Could not persist generation history to server:", e);
@@ -153,7 +217,7 @@ export function updateHistoryItem(projectId, page, updates) {
   
   if (item) {
     Object.assign(item, updates);
-    saveHistoryLocal();
+    saveHistoryToCache();
     refreshDropdownIfOpen();
   }
 }
@@ -401,30 +465,27 @@ function escapeHtml(str) {
   }[m]));
 }
 
-// Save history to localStorage (local cache)
-function saveHistoryLocal() {
+// Save history to localStorage cache with timestamp
+function saveHistoryToCache() {
   try {
-    localStorage.setItem('generationHistory', JSON.stringify(generationHistory));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(generationHistory));
+    localStorage.setItem(CACHE_TIMESTAMP_KEY, String(Date.now()));
   } catch (e) {
-    console.warn('Could not save generation history locally:', e);
+    console.warn('Could not save generation history to cache:', e);
   }
 }
 
-// Load history from localStorage first, then server
-function loadHistory() {
-  // Load from localStorage first (instant)
+// Load history from localStorage cache
+function loadHistoryFromCache() {
   try {
-    const stored = localStorage.getItem('generationHistory');
+    const stored = localStorage.getItem(CACHE_KEY);
     if (stored) {
       generationHistory = JSON.parse(stored);
     }
   } catch (e) {
-    console.warn('Could not load generation history from localStorage:', e);
+    console.warn('Could not load generation history from cache:', e);
     generationHistory = [];
   }
-  
-  // Then try to load from server (async, will update if user is logged in)
-  loadHistoryFromServer();
 }
 
 // Export for use by illustrations.js

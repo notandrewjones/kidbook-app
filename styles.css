@@ -489,18 +489,25 @@ body::before {
 }
 
 .history-list {
-  padding: 8px 0;
   flex: 1;
   display: flex;
   flex-direction: column;
 }
 
+/* When history list only contains empty message, center it */
 .history-list .queue-empty {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
+  min-height: 230px;
+  width: 100%;
+  text-align: center;
+}
+
+/* When history list has items, use normal padding */
+.history-list:has(.history-item) {
+  padding: 8px 0;
 }
 
 .history-item {

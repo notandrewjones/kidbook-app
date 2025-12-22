@@ -1,39 +1,20 @@
-a// api/generation-history.js
+// api/generation-history.js
 // Get and save user's generation history
 
 const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("./_auth.js");
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Helper to get user from session cookie
-async function getUserFromSession(req) {
-  const sessionCookie = req.cookies?.session;
-  if (!sessionCookie) return null;
-  
-  try {
-    const sessionData = JSON.parse(
-      Buffer.from(sessionCookie, 'base64').toString('utf-8')
-    );
-    
-    if (!sessionData.access_token) return null;
-    
-    const { data: { user }, error } = await supabase.auth.getUser(sessionData.access_token);
-    if (error || !user) return null;
-    
-    return user;
-  } catch (e) {
-    return null;
-  }
-}
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 module.exports = async function handler(req, res) {
   // Get user from session
-  const user = await getUserFromSession(req);
+  const { user, error: authError } = await getCurrentUser(req, res);
   
   if (!user) {
-    return res.status(401).json({ error: "Not authenticated" });
+    return res.status(401).json({ error: authError || "Not authenticated" });
   }
   
   if (req.method === "GET") {
