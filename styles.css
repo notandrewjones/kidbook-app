@@ -3279,12 +3279,16 @@ body[data-phase="compositor"] .compositor-wrap {
    ============================================= */
 
 .cart-modal-dialog {
-  max-width: 480px;
+  max-width: 420px;
   width: 90%;
 }
 
 .cart-modal-body {
-  padding: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: unset !important;
+  padding: 0 !important;
+  gap: 0 !important;
 }
 
 .cart-modal-subtitle {
@@ -3305,18 +3309,19 @@ body[data-phase="compositor"] .compositor-wrap {
 
 .cart-section-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .cart-section-icon {
   font-size: 24px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .cart-section-info {
   flex: 1;
+  min-width: 0;
 }
 
 .cart-section-title {
@@ -3335,11 +3340,22 @@ body[data-phase="compositor"] .compositor-wrap {
   font-size: 16px;
   font-weight: 600;
   color: var(--accent);
+  flex-shrink: 0;
 }
 
 .cart-section-controls {
   display: flex;
   justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* Hardcover section with multiple sizes */
+.cart-section-hardcover .cart-section-header {
+  margin-bottom: 0;
+}
+
+#hardcover-sizes-container {
+  margin-top: 16px;
 }
 
 .cart-qty-control {
@@ -3376,11 +3392,6 @@ body[data-phase="compositor"] .compositor-wrap {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-}
-
-/* Hardcover section with multiple sizes */
-.cart-section-hardcover .cart-section-header {
-  margin-bottom: 16px;
 }
 
 #hardcover-sizes-container {
