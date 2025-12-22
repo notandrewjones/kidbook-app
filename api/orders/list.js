@@ -24,61 +24,53 @@ async function handler(req, res) {
   }
 
   try {
-    // Get all paid orders for this user with book details
-    // Note: Some columns may not exist if migration hasn't been run yet
+    // Get all paid orders for this user
     const { data: orders, error } = await supabase
       .from("orders")
-      .select(`
-        id,
-        created_at,
-        status,
-        amount_cents,
-        currency,
-        book_id,
-        paid_at,
-        product:product_id (
-          name,
-          display_name
-        ),
-        book:book_id (
-          selected_idea,
-          illustrations
-        )
-      `)
+      .select("*")
       .eq("user_id", user.id)
       .eq("status", "paid")
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Orders query error:", error);
+      throw error;
+    }
 
-    // Try to get extended fulfillment data if available
-    let fulfillmentData = {};
-    try {
-      const { data: extendedOrders } = await supabase
-        .from("orders")
-        .select(`
-          id,
-          fulfillment_status,
-          size,
-          shipping_carrier,
-          tracking_number,
-          tracking_url,
-          estimated_delivery_date,
-          shipped_at,
-          delivered_at,
-          cancellation_requested_at
-        `)
-        .eq("user_id", user.id)
-        .eq("status", "paid");
+    // If no orders, return empty array
+    if (!orders || orders.length === 0) {
+      return res.status(200).json({
+        orders: [],
+        count: 0,
+      });
+    }
+
+    // Get product details
+    const productIds = [...new Set(orders.map(o => o.product_id).filter(Boolean))];
+    let productsMap = {};
+    if (productIds.length > 0) {
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, name, display_name")
+        .in("id", productIds);
       
-      if (extendedOrders) {
-        extendedOrders.forEach(o => {
-          fulfillmentData[o.id] = o;
-        });
-      }
-    } catch (e) {
-      // Columns don't exist yet - that's OK
-      console.log("Extended fulfillment columns not available yet");
+      products?.forEach(p => {
+        productsMap[p.id] = p;
+      });
+    }
+
+    // Get book details
+    const bookIds = [...new Set(orders.map(o => o.book_id).filter(Boolean))];
+    let booksMap = {};
+    if (bookIds.length > 0) {
+      const { data: books } = await supabase
+        .from("book_projects")
+        .select("id, selected_idea, illustrations")
+        .in("id", bookIds);
+      
+      books?.forEach(b => {
+        booksMap[b.id] = b;
+      });
     }
 
     // Get hardcover sizes for display names
@@ -97,29 +89,31 @@ async function handler(req, res) {
 
     // Format the response
     const formattedOrders = orders.map(order => {
-      const extended = fulfillmentData[order.id] || {};
+      const product = productsMap[order.product_id] || {};
+      const book = booksMap[order.book_id] || {};
+      
       return {
         id: order.id,
         createdAt: order.created_at,
         status: order.status,
-        fulfillmentStatus: extended.fulfillment_status || 'pending',
+        fulfillmentStatus: order.fulfillment_status || 'pending',
         amountCents: order.amount_cents,
         currency: order.currency || 'usd',
         bookId: order.book_id,
-        bookTitle: order.book?.selected_idea?.title || 'Untitled Book',
-        bookThumbnail: order.book?.illustrations?.[0]?.image_url || null,
-        productType: order.product?.name || 'unknown',
-        productDisplayName: order.product?.display_name || 'Unknown Product',
-        size: extended.size || null,
-        sizeDisplayName: extended.size ? sizeMap[extended.size] : null,
-        shippingCarrier: extended.shipping_carrier || null,
-        trackingNumber: extended.tracking_number || null,
-        trackingUrl: extended.tracking_url || null,
-        estimatedDeliveryDate: extended.estimated_delivery_date || null,
-        shippedAt: extended.shipped_at || null,
-        deliveredAt: extended.delivered_at || null,
+        bookTitle: book.selected_idea?.title || 'Untitled Book',
+        bookThumbnail: book.illustrations?.[0]?.image_url || null,
+        productType: product.name || 'unknown',
+        productDisplayName: product.display_name || 'Unknown Product',
+        size: order.size || null,
+        sizeDisplayName: order.size ? sizeMap[order.size] : null,
+        shippingCarrier: order.shipping_carrier || null,
+        trackingNumber: order.tracking_number || null,
+        trackingUrl: order.tracking_url || null,
+        estimatedDeliveryDate: order.estimated_delivery_date || null,
+        shippedAt: order.shipped_at || null,
+        deliveredAt: order.delivered_at || null,
         paidAt: order.paid_at,
-        cancellationRequestedAt: extended.cancellation_requested_at || null,
+        cancellationRequestedAt: order.cancellation_requested_at || null,
       };
     });
 
@@ -130,7 +124,11 @@ async function handler(req, res) {
 
   } catch (err) {
     console.error("Error fetching orders:", err);
-    return res.status(500).json({ error: "Failed to fetch orders", details: err.message });
+    return res.status(500).json({ 
+      error: "Failed to fetch orders", 
+      details: err.message,
+      code: err.code 
+    });
   }
 }
 
