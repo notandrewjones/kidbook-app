@@ -21,13 +21,21 @@ const ADMIN_EMAILS = [
 async function isAdmin(req, res) {
   const { user, error } = await getCurrentUser(req, res);
   
+  console.log("Admin auth check:", {
+    hasUser: !!user,
+    userEmail: user?.email,
+    adminEmails: ADMIN_EMAILS,
+    isMatch: user?.email ? ADMIN_EMAILS.includes(user.email) : false,
+    error
+  });
+  
   if (!user) {
     return { isAdmin: false, error: error || "Not authenticated" };
   }
 
   // Check if user's email is in the admin list
   if (!ADMIN_EMAILS.includes(user.email)) {
-    return { isAdmin: false, user, error: "Not authorized as admin" };
+    return { isAdmin: false, user, error: `Not authorized as admin. Your email: ${user.email}` };
   }
 
   return { isAdmin: true, user, error: null };
@@ -43,7 +51,11 @@ function requireAdmin(handler) {
     if (!authorized) {
       return res.status(403).json({ 
         error: "Forbidden", 
-        message: error || "Admin access required" 
+        message: error || "Admin access required",
+        debug: {
+          userEmail: user?.email,
+          adminEmailConfigured: ADMIN_EMAILS.length > 0,
+        }
       });
     }
 
