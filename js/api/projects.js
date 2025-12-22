@@ -213,6 +213,15 @@ export async function openProjectById(projectId, phaseHint = null) {
       (project.kid_name ? `Book for ${project.kid_name}` : "Your Book");
     setWorkspaceTitle(title, "Storyboard view");
     renderStoryboard(project);
+  } else if (targetPhase === "compositor") {
+    // Dynamic import compositor to avoid loading until needed
+    const { CompositorUI, projectToBookData } = await import('../compositor/index.js');
+    const bookData = projectToBookData(project);
+    const compositor = new CompositorUI("results");
+    compositor.initialize(bookData);
+    if (project.id) {
+      compositor.setProjectId(project.id);
+    }
   }
 }
 
@@ -233,6 +242,11 @@ function isPhaseValidForProject(phase, project) {
     const hasIllustrations = project.illustrations?.length > 0;
     const hasCharacterModel = !!project.character_model_url;
     return project.story_json?.length > 0 && (project.story_locked || hasIllustrations || hasCharacterModel);
+  }
+  
+  // For compositor, must have illustrations
+  if (phase === "compositor") {
+    return project.illustrations?.length > 0;
   }
   
   return false;

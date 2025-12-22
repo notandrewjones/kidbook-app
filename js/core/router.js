@@ -7,7 +7,7 @@ import { state } from './state.js';
 const ROUTES = {
   dashboard: /^\/(?:dashboard)?$/,
   project: /^\/p\/([a-zA-Z0-9-]+)$/,
-  projectPhase: /^\/p\/([a-zA-Z0-9-]+)\/(storyboard|ideas|select-idea)$/,
+  projectPhase: /^\/p\/([a-zA-Z0-9-]+)\/(storyboard|ideas|select-idea|compositor)$/,
 };
 
 // Route handlers (set by app.js to avoid circular imports)
@@ -52,7 +52,7 @@ export function buildPath(phase, projectId = null) {
     return "/dashboard";
   }
 
-  if (phase === "storyboard" || phase === "ideas" || phase === "select-idea") {
+  if (phase === "storyboard" || phase === "ideas" || phase === "select-idea" || phase === "compositor") {
     return `/p/${projectId}/${phase}`;
   }
 
