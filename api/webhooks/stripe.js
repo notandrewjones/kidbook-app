@@ -1,0 +1,237 @@
+// api/webhooks/stripe.js
+// Handles Stripe webhook events for payment processing
+
+const { createClient } = require("@supabase/supabase-js");
+const Stripe = require("stripe");
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// Stripe sends raw body, need to disable body parsing
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      resolve(data);
+    });
+    req.on("error", reject);
+  });
+}
+
+async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const sig = req.headers["stripe-signature"];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error("STRIPE_WEBHOOK_SECRET not configured");
+    return res.status(500).json({ error: "Webhook not configured" });
+  }
+
+  let event;
+  let rawBody;
+
+  try {
+    // Get raw body for signature verification
+    rawBody = await getRawBody(req);
+    
+    // Verify webhook signature
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+  }
+
+  // Handle the event
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+        await handleCheckoutCompleted(event.data.object);
+        break;
+
+      case "checkout.session.expired":
+        await handleCheckoutExpired(event.data.object);
+        break;
+
+      case "payment_intent.payment_failed":
+        await handlePaymentFailed(event.data.object);
+        break;
+
+      case "charge.refunded":
+        await handleRefund(event.data.object);
+        break;
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    return res.status(200).json({ received: true });
+  } catch (err) {
+    console.error(`Error processing ${event.type}:`, err);
+    // Return 200 to acknowledge receipt (Stripe will retry on 4xx/5xx)
+    // Log the error for investigation
+    return res.status(200).json({ received: true, error: err.message });
+  }
+}
+
+/**
+ * Handle successful checkout
+ */
+async function handleCheckoutCompleted(session) {
+  const { order_id, book_id, product_type, user_id } = session.metadata;
+
+  if (!order_id) {
+    console.error("No order_id in session metadata");
+    return;
+  }
+
+  console.log(`Processing payment for order ${order_id}`);
+
+  // 1. Update the order status
+  const { error: orderError } = await supabase
+    .from("orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: session.payment_intent,
+      paid_at: new Date().toISOString(),
+    })
+    .eq("id", order_id);
+
+  if (orderError) {
+    console.error("Failed to update order:", orderError);
+    throw orderError;
+  }
+
+  // 2. Unlock the book for this product type
+  const unlockField = product_type === "ebook" ? "ebook_unlocked" : "hardcover_unlocked";
+  
+  const { error: bookError } = await supabase
+    .from("book_projects")
+    .update({
+      [unlockField]: true,
+      has_watermark: false, // Remove watermark once any product is purchased
+    })
+    .eq("id", book_id);
+
+  if (bookError) {
+    console.error("Failed to unlock book:", bookError);
+    // Don't throw - order is still valid, we can fix the unlock manually
+  }
+
+  // 3. Create export record (file will be generated on-demand)
+  const { error: exportError } = await supabase
+    .from("book_exports")
+    .insert({
+      book_id,
+      order_id,
+      user_id,
+      product_type,
+      download_count: 0,
+      max_downloads: product_type === "ebook" ? 10 : 5,
+    });
+
+  if (exportError) {
+    console.error("Failed to create export record:", exportError);
+    // Don't throw - order is still valid
+  }
+
+  console.log(`Order ${order_id} completed successfully`);
+}
+
+/**
+ * Handle expired checkout session
+ */
+async function handleCheckoutExpired(session) {
+  const { order_id } = session.metadata;
+
+  if (!order_id) return;
+
+  await supabase
+    .from("orders")
+    .update({ status: "expired" })
+    .eq("id", order_id)
+    .eq("status", "pending"); // Only update if still pending
+}
+
+/**
+ * Handle failed payment
+ */
+async function handlePaymentFailed(paymentIntent) {
+  // Find order by payment intent
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("stripe_payment_intent_id", paymentIntent.id)
+    .maybeSingle();
+
+  if (order) {
+    await supabase
+      .from("orders")
+      .update({ status: "failed" })
+      .eq("id", order.id);
+  }
+}
+
+/**
+ * Handle refund
+ */
+async function handleRefund(charge) {
+  // Find order by payment intent
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, book_id, product_id, products(name)")
+    .eq("stripe_payment_intent_id", charge.payment_intent)
+    .maybeSingle();
+
+  if (!order) return;
+
+  // Update order status
+  await supabase
+    .from("orders")
+    .update({ status: "refunded" })
+    .eq("id", order.id);
+
+  // Re-lock the book for this product type
+  const productType = order.products?.name;
+  if (productType && order.book_id) {
+    const lockField = productType === "ebook" ? "ebook_unlocked" : "hardcover_unlocked";
+    
+    // Check if any other paid orders exist for this book
+    const { data: otherOrders } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("book_id", order.book_id)
+      .eq("status", "paid")
+      .neq("id", order.id);
+
+    // If no other paid orders, re-enable watermark
+    const hasOtherPaidOrders = otherOrders && otherOrders.length > 0;
+    
+    await supabase
+      .from("book_projects")
+      .update({
+        [lockField]: false,
+        ...(hasOtherPaidOrders ? {} : { has_watermark: true }),
+      })
+      .eq("id", order.book_id);
+  }
+}
+
+module.exports = handler;
+
+// Disable body parsing - Stripe needs raw body for signature verification
+module.exports.config = {
+  api: {
+    bodyParser: false,
+  },
+};
