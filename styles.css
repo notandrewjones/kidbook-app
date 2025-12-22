@@ -2202,11 +2202,11 @@ body[data-phase="edit-story"] #results {
    COMPOSITOR PHASE LAYOUT
    ============================================= */
 body[data-phase="compositor"] .main {
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr !important;
 }
 
 body[data-phase="compositor"] .panel {
-  display: none;
+  display: none !important;
 }
 
 body[data-phase="compositor"] .workspace-body {
@@ -2216,7 +2216,12 @@ body[data-phase="compositor"] .workspace-body {
 }
 
 body[data-phase="compositor"] .character-panel {
-  display: none;
+  display: none !important;
+}
+
+body[data-phase="compositor"] .sidebar,
+body[data-phase="compositor"] aside:not(.compositor-sidebar) {
+  display: none !important;
 }
 
 body[data-phase="compositor"] #results {
@@ -2224,6 +2229,11 @@ body[data-phase="compositor"] #results {
   height: 100%;
   position: relative;
   overflow: hidden;
+}
+
+/* Ensure compositor wrapper fills its container */
+body[data-phase="compositor"] .compositor-wrap {
+  height: 100%;
 }
 
 /* =============================================

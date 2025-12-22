@@ -2256,108 +2256,180 @@ export class CompositorUI {
   }
 
   // ============================================
-  // Checkout & Payment Methods
+  // Add to Cart Methods
   // ============================================
 
-  async openCheckoutModal() {
+  async openAddToCartModal() {
     // Try to get projectId from URL if not already set
     if (!this.projectId) {
       const pathMatch = window.location.pathname.match(/\/p\/([^\/]+)/);
       if (pathMatch) {
         this.projectId = pathMatch[1];
-        console.log('[Checkout] Got projectId from URL:', this.projectId);
       }
     }
     
-    console.log('[Checkout] Opening modal, projectId:', this.projectId);
-    
-    const modal = document.getElementById('checkout-modal');
-    if (!modal) {
-      console.error('[Checkout] Modal element not found');
-      return;
-    }
+    const modal = document.getElementById('add-to-cart-modal');
+    if (!modal) return;
 
-    // Reset to products step
-    this.showCheckoutStep('products');
-    this.selectedProduct = null;
+    // Reset quantities
+    this.cartQuantities = { ebook: 0, hardcover: 0 };
+    this.updateCartModalUI();
     
     // Show modal
     modal.classList.remove('hidden');
 
-    // Fetch current purchase status
+    // Fetch prices
     try {
       if (this.projectId) {
-        console.log('[Checkout] Fetching purchase status for:', this.projectId);
         this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
-        console.log('[Checkout] Purchase status received:', this.purchaseStatus);
-        this.updateProductOptions();
-      } else {
-        console.error('[Checkout] No projectId set');
-        this.showCheckoutError('Project ID not available. Please reload the page.');
+        if (this.purchaseStatus?.products) {
+          this.productPrices.ebook = this.purchaseStatus.products.ebook?.priceCents || 999;
+          this.productPrices.hardcover = this.purchaseStatus.products.hardcover?.priceCents || 2999;
+          
+          // Update displayed prices
+          const ebookPrice = document.getElementById('cart-ebook-price');
+          const hardcoverPrice = document.getElementById('cart-hardcover-price');
+          if (ebookPrice) ebookPrice.textContent = formatPrice(this.productPrices.ebook);
+          if (hardcoverPrice) hardcoverPrice.textContent = formatPrice(this.productPrices.hardcover);
+        }
+      }
+      
+      // Try to load hardcover sizes
+      try {
+        const { sizes } = await getHardcoverSizes();
+        if (sizes) {
+          this.hardcoverSizes = sizes;
+          this.populateHardcoverSizes();
+        }
+      } catch (e) {
+        console.log('[Cart] Could not load hardcover sizes, using defaults');
       }
     } catch (err) {
-      console.error('[Checkout] Failed to fetch purchase status:', err);
-      this.showCheckoutError('Unable to load product information. Please try again.');
-    }
-
-    // Check if returning from successful payment
-    const paymentReturn = checkPaymentReturn();
-    if (paymentReturn.success) {
-      clearPaymentParams();
-      this.showCheckoutStep('success');
-      // Refresh status
-      if (this.projectId) {
-        this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
-      }
+      console.error('[Cart] Failed to fetch product info:', err);
     }
   }
 
-  closeCheckoutModal() {
-    const modal = document.getElementById('checkout-modal');
+  closeAddToCartModal() {
+    const modal = document.getElementById('add-to-cart-modal');
     modal?.classList.add('hidden');
-    
-    // Clean up Stripe checkout if mounted
-    if (this.stripeCheckout) {
-      this.stripeCheckout.destroy();
-      this.stripeCheckout = null;
-    }
   }
 
   openExportModal() {
     document.getElementById('export-modal')?.classList.remove('hidden');
   }
 
-  showCheckoutStep(step) {
-    const steps = ['products', 'payment', 'success'];
-    steps.forEach(s => {
-      const el = document.getElementById(`checkout-step-${s}`);
-      if (el) {
-        el.classList.toggle('hidden', s !== step);
-      }
-    });
+  populateHardcoverSizes() {
+    const select = document.getElementById('hardcover-size-select');
+    if (!select || !this.hardcoverSizes.length) return;
 
-    // Update modal title based on step
-    const title = document.getElementById('checkout-modal-title');
-    if (title) {
-      switch (step) {
-        case 'products':
-          title.textContent = 'Get Your Book';
-          break;
-        case 'payment':
-          title.textContent = 'Complete Purchase';
-          break;
-        case 'success':
-          title.textContent = 'Success!';
-          break;
+    select.innerHTML = this.hardcoverSizes.map(size => 
+      `<option value="${size.size_code}" ${size.size_code === this.hardcoverSize ? 'selected' : ''}>
+        ${size.dimensions} - ${size.display_name} (${size.priceFormatted})
+      </option>`
+    ).join('');
+  }
+
+  updateHardcoverPrice() {
+    const selectedSize = this.hardcoverSizes.find(s => s.size_code === this.hardcoverSize);
+    if (selectedSize) {
+      this.productPrices.hardcover = selectedSize.price_cents;
+      const priceEl = document.getElementById('cart-hardcover-price');
+      if (priceEl) priceEl.textContent = selectedSize.priceFormatted;
+    }
+    this.updateCartModalUI();
+  }
+
+  updateCartQuantity(product, delta) {
+    const newQty = Math.max(0, (this.cartQuantities[product] || 0) + delta);
+    this.cartQuantities[product] = newQty;
+    this.updateCartModalUI();
+  }
+
+  updateCartModalUI() {
+    // Update quantity displays
+    const ebookQty = document.getElementById('cart-ebook-qty');
+    const hardcoverQty = document.getElementById('cart-hardcover-qty');
+    if (ebookQty) ebookQty.textContent = this.cartQuantities.ebook;
+    if (hardcoverQty) hardcoverQty.textContent = this.cartQuantities.hardcover;
+
+    // Calculate subtotal
+    const subtotal = 
+      (this.cartQuantities.ebook * this.productPrices.ebook) +
+      (this.cartQuantities.hardcover * this.productPrices.hardcover);
+    
+    const subtotalEl = document.getElementById('cart-modal-subtotal');
+    if (subtotalEl) subtotalEl.textContent = formatPrice(subtotal);
+
+    // Enable/disable add to cart button
+    const addBtn = document.getElementById('add-to-cart-btn');
+    const hasItems = this.cartQuantities.ebook > 0 || this.cartQuantities.hardcover > 0;
+    if (addBtn) {
+      addBtn.disabled = !hasItems;
+      addBtn.textContent = hasItems 
+        ? `Add to Cart (${formatPrice(subtotal)})` 
+        : 'Add to Cart';
+    }
+  }
+
+  async submitAddToCart() {
+    if (!this.projectId) {
+      this.showCartError('Project not found');
+      return;
+    }
+
+    const addBtn = document.getElementById('add-to-cart-btn');
+    if (addBtn) {
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding...';
+    }
+
+    try {
+      // Add ebook if quantity > 0
+      if (this.cartQuantities.ebook > 0) {
+        await updateCartItem(this.projectId, 'ebook', {
+          quantity: this.cartQuantities.ebook,
+          action: 'add'
+        });
+      }
+
+      // Add hardcover if quantity > 0
+      if (this.cartQuantities.hardcover > 0) {
+        await updateCartItem(this.projectId, 'hardcover', {
+          size: this.hardcoverSize,
+          quantity: this.cartQuantities.hardcover,
+          action: 'add'
+        });
+      }
+
+      // Close modal and show success
+      this.closeAddToCartModal();
+      
+      // Trigger cart refresh (the cart UI listens for this event)
+      window.dispatchEvent(new CustomEvent('cart-updated'));
+
+    } catch (err) {
+      console.error('[Cart] Failed to add to cart:', err);
+      this.showCartError(err.message || 'Failed to add to cart');
+      
+      if (addBtn) {
+        addBtn.disabled = false;
+        addBtn.textContent = 'Add to Cart';
       }
     }
   }
 
-  updateProductOptions() {
-    if (!this.purchaseStatus?.products) return;
+  showCartError(message) {
+    const errorEl = document.getElementById('cart-modal-error');
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+      setTimeout(() => errorEl.classList.add('hidden'), 5000);
+    }
+  }
 
-    const { ebook, hardcover } = this.purchaseStatus.products;
-    // This method is no longer used - cart modal handles product display
+  // Set the project ID for cart operations
+  setProjectId(projectId) {
+    this.projectId = projectId;
   }
 
   // Dropdown management
