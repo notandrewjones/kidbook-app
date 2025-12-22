@@ -337,6 +337,15 @@ export function initAuthUI() {
     // Optionally redirect or refresh
     window.location.reload();
   });
+
+  // Orders menu button - navigate to orders page
+  $('orders-menu-btn')?.addEventListener('click', async () => {
+    // Close the menu
+    $('account-menu')?.classList.add('hidden');
+    // Navigate to orders
+    const { loadOrdersPage } = await import('./orders.js');
+    loadOrdersPage();
+  });
   
   // Check for password reset flow
   if (window.location.pathname.includes('reset-password') || getAccessTokenFromHash()) {
@@ -351,6 +360,8 @@ function updateAccountUI({ user, isAuthenticated, isLoading }) {
   const accountBtn = $('account-btn');
   const loginBtn = $('login-btn');
   const logoutBtn = $('logout-btn');
+  const ordersBtn = $('orders-menu-btn');
+  const profileBtn = $('profile-btn');
   const accountName = accountBtn?.querySelector('.account-name');
   const accountSub = accountBtn?.querySelector('.account-sub');
   const avatar = accountBtn?.querySelector('.avatar');
@@ -366,12 +377,16 @@ function updateAccountUI({ user, isAuthenticated, isLoading }) {
     if (accountSub) accountSub.textContent = user.email || 'My Books';
     if (loginBtn) loginBtn.classList.add('hidden');
     if (logoutBtn) logoutBtn.classList.remove('hidden');
+    if (ordersBtn) ordersBtn.classList.remove('hidden');
+    if (profileBtn) profileBtn.classList.remove('hidden');
   } else {
     if (avatar) avatar.textContent = 'A';
     if (accountName) accountName.textContent = 'Account';
     if (accountSub) accountSub.textContent = 'Login / Sign up';
     if (loginBtn) loginBtn.classList.remove('hidden');
     if (logoutBtn) logoutBtn.classList.add('hidden');
+    if (ordersBtn) ordersBtn.classList.add('hidden');
+    if (profileBtn) profileBtn.classList.add('hidden');
   }
 }
 
