@@ -2133,9 +2133,12 @@ export class CompositorUI {
     });
 
     // Product selection
-    document.querySelectorAll('.product-option').forEach(opt => {
+    const productOptions = document.querySelectorAll('.product-option');
+    console.log('[Checkout] Found product options:', productOptions.length);
+    productOptions.forEach(opt => {
       opt.addEventListener('click', () => {
         const product = opt.dataset.product;
+        console.log('[Checkout] Product clicked:', product);
         this.selectProduct(product);
       });
     });
@@ -2250,8 +2253,13 @@ export class CompositorUI {
   // ============================================
 
   async openCheckoutModal() {
+    console.log('[Checkout] Opening modal, projectId:', this.projectId);
+    
     const modal = document.getElementById('checkout-modal');
-    if (!modal) return;
+    if (!modal) {
+      console.error('[Checkout] Modal element not found');
+      return;
+    }
 
     // Reset to products step
     this.showCheckoutStep('products');
@@ -2263,11 +2271,16 @@ export class CompositorUI {
     // Fetch current purchase status
     try {
       if (this.projectId) {
+        console.log('[Checkout] Fetching purchase status for:', this.projectId);
         this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
+        console.log('[Checkout] Purchase status received:', this.purchaseStatus);
         this.updateProductOptions();
+      } else {
+        console.error('[Checkout] No projectId set');
+        this.showCheckoutError('Project ID not available. Please reload the page.');
       }
     } catch (err) {
-      console.error('Failed to fetch purchase status:', err);
+      console.error('[Checkout] Failed to fetch purchase status:', err);
       this.showCheckoutError('Unable to load product information. Please try again.');
     }
 
@@ -2359,13 +2372,40 @@ export class CompositorUI {
   }
 
   async selectProduct(productType) {
-    if (!this.purchaseStatus?.products) return;
+    console.log('[Checkout] selectProduct called:', productType);
+    console.log('[Checkout] purchaseStatus:', this.purchaseStatus);
+    console.log('[Checkout] projectId:', this.projectId);
+    
+    // If we don't have purchase status yet, try to fetch it
+    if (!this.purchaseStatus?.products && this.projectId) {
+      console.log('[Checkout] No purchase status, fetching...');
+      try {
+        this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
+        console.log('[Checkout] Fetched purchase status:', this.purchaseStatus);
+      } catch (err) {
+        console.error('[Checkout] Failed to fetch purchase status:', err);
+        this.showCheckoutError('Unable to load product information. Please try again.');
+        return;
+      }
+    }
+    
+    if (!this.purchaseStatus?.products) {
+      console.error('[Checkout] Still no purchase status available');
+      this.showCheckoutError('Unable to load product. Please try again.');
+      return;
+    }
 
     const product = this.purchaseStatus.products[productType];
-    if (!product) return;
+    console.log('[Checkout] Selected product:', product);
+    
+    if (!product) {
+      console.error('[Checkout] Product not found:', productType);
+      return;
+    }
 
     // If already unlocked, go straight to export
     if (product.unlocked) {
+      console.log('[Checkout] Product already unlocked, opening export modal');
       this.closeCheckoutModal();
       this.openExportModal();
       return;
@@ -2376,8 +2416,8 @@ export class CompositorUI {
     // Update payment header
     const productName = document.getElementById('checkout-product-name');
     const productPrice = document.getElementById('checkout-product-price');
-    if (productName) productName.textContent = product.displayName;
-    if (productPrice) productPrice.textContent = product.priceFormatted;
+    if (productName) productName.textContent = product.displayName || productType;
+    if (productPrice) productPrice.textContent = product.priceFormatted || '';
 
     // Show payment step
     this.showCheckoutStep('payment');
@@ -2387,8 +2427,13 @@ export class CompositorUI {
   }
 
   async initializeEmbeddedCheckout(productType) {
+    console.log('[Checkout] Initializing embedded checkout for:', productType);
+    
     const container = document.getElementById('checkout-embed-container');
-    if (!container) return;
+    if (!container) {
+      console.error('[Checkout] Embed container not found');
+      return;
+    }
 
     // Show loading
     container.innerHTML = `
@@ -2400,22 +2445,29 @@ export class CompositorUI {
 
     try {
       // Load Stripe.js
+      console.log('[Checkout] Loading Stripe.js...');
       const stripe = await loadStripe();
+      console.log('[Checkout] Stripe loaded:', !!stripe);
       
       // Create checkout session
+      console.log('[Checkout] Creating checkout session...');
       const { clientSecret } = await initEmbeddedCheckout(this.projectId, productType);
+      console.log('[Checkout] Got client secret:', clientSecret?.substring(0, 20) + '...');
       
       // Initialize embedded checkout
+      console.log('[Checkout] Initializing embedded checkout...');
       this.stripeCheckout = await stripe.initEmbeddedCheckout({
         clientSecret,
       });
+      console.log('[Checkout] Embedded checkout initialized');
 
       // Clear container and mount
       container.innerHTML = '';
       this.stripeCheckout.mount(container);
+      console.log('[Checkout] Checkout mounted');
 
     } catch (err) {
-      console.error('Failed to initialize checkout:', err);
+      console.error('[Checkout] Failed to initialize checkout:', err);
       container.innerHTML = `
         <div class="checkout-error-state">
           <p>Unable to load payment form.</p>
