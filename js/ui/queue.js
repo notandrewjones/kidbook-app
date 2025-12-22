@@ -4,10 +4,14 @@
 import { state } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';
 import { openProjectById } from '../api/projects.js';
+import { openImageModal } from './modals.js';
 
 // Local history storage (will persist to user account)
 let generationHistory = [];
 const MAX_DROPDOWN_ITEMS = 5;
+
+// Track if dropdown is open for auto-refresh
+let isDropdownOpen = false;
 
 // Initialize queue UI
 export function initQueueUI() {
@@ -19,10 +23,12 @@ export function initQueueUI() {
   // Toggle dropdown
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
+    const wasHidden = dropdown.classList.contains("hidden");
     dropdown.classList.toggle("hidden");
+    isDropdownOpen = wasHidden;
     
     // Refresh the list when opening
-    if (!dropdown.classList.contains("hidden")) {
+    if (isDropdownOpen) {
       renderQueueDropdown();
     }
   });
@@ -31,12 +37,14 @@ export function initQueueUI() {
   document.addEventListener("click", (e) => {
     if (!dropdown.contains(e.target) && e.target !== btn) {
       dropdown.classList.add("hidden");
+      isDropdownOpen = false;
     }
   });
   
   // Show all history button
   $("show-all-history")?.addEventListener("click", () => {
     dropdown.classList.add("hidden");
+    isDropdownOpen = false;
     openHistoryModal();
   });
   
@@ -45,6 +53,13 @@ export function initQueueUI() {
   
   $("history-modal")?.addEventListener("click", (e) => {
     if (e.target?.classList?.contains("modal-backdrop")) {
+      closeHistoryModal();
+    }
+  });
+  
+  // Escape key to close history modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
       closeHistoryModal();
     }
   });
@@ -77,8 +92,9 @@ export function addToHistory(item) {
   // Save to localStorage (will sync to server later)
   saveHistory();
   
-  // Update badge
+  // Update badge and refresh dropdown if open
   updateQueueBadge();
+  refreshDropdownIfOpen();
 }
 
 // Update an existing history item status
@@ -90,6 +106,7 @@ export function updateHistoryItem(projectId, page, updates) {
   if (item) {
     Object.assign(item, updates);
     saveHistory();
+    refreshDropdownIfOpen();
   }
 }
 
@@ -110,6 +127,28 @@ export function updateQueueBadge() {
     badge.classList.remove("hidden");
   } else {
     badge.classList.add("hidden");
+  }
+}
+
+// Refresh dropdown if it's currently open
+export function refreshDropdownIfOpen() {
+  if (isDropdownOpen) {
+    renderQueueDropdown();
+  }
+}
+
+// Get thumbnail HTML based on status
+function getThumbnailHtml(item) {
+  if (item.status === 'generating') {
+    return `<div class="queue-thumb-icon generating"><span class="spinner-icon">⟳</span></div>`;
+  } else if (item.status === 'queued') {
+    return `<div class="queue-thumb-icon queued">⏳</div>`;
+  } else if (item.status === 'failed') {
+    return `<div class="queue-thumb-icon failed">✕</div>`;
+  } else if (item.imageUrl) {
+    return `<img src="${item.imageUrl}" alt="Page ${item.page}">`;
+  } else {
+    return `<div class="queue-thumb-icon">📄</div>`;
   }
 }
 
@@ -160,12 +199,9 @@ function renderQueueDropdown() {
   }
   
   list.innerHTML = allItems.map(item => `
-    <div class="queue-item" data-project-id="${item.projectId}" data-page="${item.page}">
+    <div class="queue-item" data-project-id="${item.projectId}" data-page="${item.page}" data-status="${item.status}" data-image-url="${item.imageUrl || ''}">
       <div class="queue-item-thumb">
-        ${item.imageUrl 
-          ? `<img src="${item.imageUrl}" alt="Page ${item.page}">`
-          : `<span style="font-size:18px;">📄</span>`
-        }
+        ${getThumbnailHtml(item)}
       </div>
       <div class="queue-item-info">
         <div class="queue-item-title">${escapeHtml(item.projectTitle)}</div>
@@ -179,9 +215,24 @@ function renderQueueDropdown() {
   list.querySelectorAll(".queue-item").forEach(el => {
     el.addEventListener("click", async () => {
       const projectId = el.dataset.projectId;
-      if (projectId) {
-        $("queue-dropdown")?.classList.add("hidden");
-        await openProjectById(projectId, "storyboard");
+      const page = parseInt(el.dataset.page, 10);
+      const status = el.dataset.status;
+      const imageUrl = el.dataset.imageUrl;
+      
+      if (!projectId) return;
+      
+      $("queue-dropdown")?.classList.add("hidden");
+      isDropdownOpen = false;
+      
+      // Navigate to project
+      await openProjectById(projectId, "storyboard");
+      
+      // If completed with image, open the modal for that page
+      if (status === 'complete' && imageUrl) {
+        // Small delay to let the storyboard render
+        setTimeout(() => {
+          openImageModal(page, imageUrl);
+        }, 300);
       }
     });
   });
@@ -213,17 +264,14 @@ function renderHistoryModal() {
   if (!list) return;
   
   if (generationHistory.length === 0) {
-    list.innerHTML = `<div class="queue-empty">No generation history yet</div>`;
+    list.innerHTML = `<div class="queue-empty queue-empty-centered">No generation history yet</div>`;
     return;
   }
   
   list.innerHTML = generationHistory.map(item => `
-    <div class="history-item" data-project-id="${item.projectId}" data-page="${item.page}">
+    <div class="history-item" data-project-id="${item.projectId}" data-page="${item.page}" data-status="${item.status}" data-image-url="${item.imageUrl || ''}">
       <div class="history-item-thumb">
-        ${item.imageUrl 
-          ? `<img src="${item.imageUrl}" alt="Page ${item.page}">`
-          : `<span style="font-size:24px;">📄</span>`
-        }
+        ${getThumbnailHtml(item)}
       </div>
       <div class="history-item-info">
         <div class="history-item-title">${escapeHtml(item.projectTitle)} - Page ${item.page}</div>
@@ -239,9 +287,23 @@ function renderHistoryModal() {
   list.querySelectorAll(".history-item").forEach(el => {
     el.addEventListener("click", async () => {
       const projectId = el.dataset.projectId;
-      if (projectId) {
-        closeHistoryModal();
-        await openProjectById(projectId, "storyboard");
+      const page = parseInt(el.dataset.page, 10);
+      const status = el.dataset.status;
+      const imageUrl = el.dataset.imageUrl;
+      
+      if (!projectId) return;
+      
+      closeHistoryModal();
+      
+      // Navigate to project
+      await openProjectById(projectId, "storyboard");
+      
+      // If completed with image, open the modal for that page
+      if (status === 'complete' && imageUrl) {
+        // Small delay to let the storyboard render
+        setTimeout(() => {
+          openImageModal(page, imageUrl);
+        }, 300);
       }
     });
   });

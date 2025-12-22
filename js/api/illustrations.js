@@ -6,7 +6,7 @@ import { $, showToast } from '../core/utils.js';
 import { reRenderCurrentView } from '../ui/render.js';
 import { openProjectById, recordCompletedIllustration } from './projects.js';
 import { closeImageModal } from '../ui/modals.js';
-import { addToHistory, updateQueueBadge } from '../ui/queue.js';
+import { addToHistory, updateQueueBadge, refreshDropdownIfOpen } from '../ui/queue.js';
 
 // Queue system
 const MAX_CONCURRENT = 2;
@@ -21,6 +21,7 @@ function processQueue() {
     executeGeneration(next.pageNum, next.pageText, next.isRegeneration);
   }
   updateQueueBadge();
+  refreshDropdownIfOpen();
   reRenderCurrentView();
 }
 

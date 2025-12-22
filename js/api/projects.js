@@ -30,6 +30,11 @@ export function clearCompletedIllustrations(projectId) {
 export async function loadDashboard() {
   setPhase("dashboard");
   setWorkspaceTitle("My Books", "Pick a project to continue, or start a new one.");
+  
+  // Immediately add dashboard-mode to hide sidebar (before any async work)
+  const main = $("main") || document.querySelector(".main");
+  main?.classList.add("dashboard-mode");
+  
   showLoader("Loading your books...");
   
   // Don't clear cachedProject if generations are running - we might come back
