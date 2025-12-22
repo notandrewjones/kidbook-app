@@ -15,6 +15,7 @@ import { initViewControls, initAccountMenu, initSearch } from './ui/controls.js'
 import { initImageModalEvents } from './ui/modals.js';
 import { initAuthUI } from './ui/auth.js';
 import { closeNewStoryModal } from './ui/render.js';
+import { initQueueUI } from './ui/queue.js';
 
 // =====================================================
 // App Initialization
@@ -43,6 +44,7 @@ async function initApp() {
   initImageModalEvents();
   initViewControls();
   initSearch();
+  initQueueUI();
   
   // Initialize auth UI (login/logout buttons, etc.)
   initAuthUI();

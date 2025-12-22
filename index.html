@@ -42,6 +42,25 @@
           <div id="search-dropdown" class="search-dropdown hidden"></div>
         </div>
 
+        <!-- Generation Queue/History Button -->
+        <div class="queue-wrap">
+          <button id="queue-btn" class="icon-btn" title="Generation Queue & History">
+            <span class="icon">⚡</span>
+            <span id="queue-badge" class="queue-badge hidden">0</span>
+          </button>
+          <div id="queue-dropdown" class="queue-dropdown hidden">
+            <div class="queue-header">
+              <span class="queue-title">Generation Activity</span>
+            </div>
+            <div id="queue-list" class="queue-list">
+              <div class="queue-empty">No recent generations</div>
+            </div>
+            <div class="queue-footer">
+              <button id="show-all-history" class="btn btn-ghost btn-sm">Show All History</button>
+            </div>
+          </div>
+        </div>
+
         <button id="theme-toggle" class="icon-btn" title="Toggle theme (placeholder)">
           <span class="icon">☾</span>
         </button>
@@ -68,10 +87,11 @@
     </header>
 
     <!-- Main Content -->
-    <main class="main">
+    <main id="main" class="main dashboard-mode">
       <!-- Left Panel / Controls -->
-      <aside class="panel">
-        <div class="panel-card">
+      <aside class="panel" id="sidebar-panel">
+        <!-- Create new book panel - only used in non-dashboard views -->
+        <div class="panel-card" id="create-book-panel">
           <div class="panel-title">Create a new book</div>
 
           <form id="kid-form" class="form">
@@ -93,7 +113,7 @@
           </div>
         </div>
 
-        <div class="panel-card subtle">
+        <div class="panel-card subtle" id="tips-panel">
           <div class="panel-title">Tips</div>
           <ul class="tips">
             <li>If you have a specific vision for your story, include as much detail as your can in your 'topic' submission.</li>
@@ -267,6 +287,26 @@
             <strong>Tip:</strong> If you have a specific vision for your story, include as much detail as you can in the topic field.
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generation History Modal -->
+  <div id="history-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-history" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Generation History</div>
+          <div class="modal-subtitle">All your illustration generations</div>
+        </div>
+        <button id="close-history-modal" class="icon-btn modal-close-btn" title="Close">✕</button>
+      </div>
+
+      <div class="modal-body modal-body-history">
+        <div id="history-list" class="history-list">
+          <div class="queue-empty">Loading history...</div>
+        </div>
       </div>
     </div>
   </div>

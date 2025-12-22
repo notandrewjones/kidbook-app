@@ -6,6 +6,7 @@ import { $, showToast } from '../core/utils.js';
 import { reRenderCurrentView } from '../ui/render.js';
 import { openProjectById, recordCompletedIllustration } from './projects.js';
 import { closeImageModal } from '../ui/modals.js';
+import { addToHistory, updateQueueBadge } from '../ui/queue.js';
 
 // Queue system
 const MAX_CONCURRENT = 2;
@@ -19,6 +20,7 @@ function processQueue() {
     state.queuedPages.delete(next.pageNum);
     executeGeneration(next.pageNum, next.pageText, next.isRegeneration);
   }
+  updateQueueBadge();
   reRenderCurrentView();
 }
 
@@ -87,6 +89,16 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
       state.cachedProject.illustrations = filteredIllus;
     }
 
+    // Add to generation history
+    addToHistory({
+      projectId,
+      projectTitle: state.cachedProject?.selected_idea?.title || 'Untitled Book',
+      page: pageNum,
+      imageUrl: data.image_url,
+      status: 'complete',
+      timestamp: Date.now(),
+    });
+
     showToast(
       isRegeneration ? "Illustration regenerated" : "Illustration generated",
       `Page ${pageNum}`,
@@ -108,6 +120,17 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
     console.error("Illustration request failed:", err);
     state.generatingPages.delete(pageNum);
     activeGenerations--;
+    
+    // Add failed generation to history
+    addToHistory({
+      projectId,
+      projectTitle: state.cachedProject?.selected_idea?.title || 'Untitled Book',
+      page: pageNum,
+      imageUrl: null,
+      status: 'failed',
+      timestamp: Date.now(),
+    });
+    
     showToast("Network error", `Could not generate page ${pageNum}`, "error");
     if (status) status.textContent = `Failed on page ${pageNum}.`;
     processQueue();
@@ -140,11 +163,13 @@ export function generateSingleIllustration(pageNum, pageText, isRegeneration = f
       "success"
     );
     executeGeneration(pageNum, pageText, isRegeneration);
+    updateQueueBadge();
   } else {
     // Add to queue
     state.queuedPages.add(pageNum);
     generationQueue.push({ pageNum, pageText, isRegeneration });
     showToast("Queued", `Page ${pageNum} will generate next`, "success");
+    updateQueueBadge();
     reRenderCurrentView();
   }
 }

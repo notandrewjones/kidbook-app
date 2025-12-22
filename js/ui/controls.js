@@ -43,10 +43,7 @@ export function initAccountMenu() {
     menu.classList.add("hidden");
   });
 
-  // Placeholder actions
-  $("login-btn")?.addEventListener("click", () => alert("Login UI later"));
-  $("logout-btn")?.addEventListener("click", () => alert("Logout later"));
-  $("orders-btn")?.addEventListener("click", () => alert("Orders UI later"));
+  // Note: Login/logout handlers are now set up in auth.js initAuthUI()
 }
 
 // Initialize global search
