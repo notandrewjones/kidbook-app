@@ -34,7 +34,7 @@ async function handler(req, res) {
     // Get book with unlock status
     const { data: book, error: bookError } = await supabase
       .from("book_projects")
-      .select("id, title, user_id, has_watermark, ebook_unlocked, hardcover_unlocked")
+      .select("id, selected_idea, user_id, has_watermark, ebook_unlocked, hardcover_unlocked")
       .eq("id", bookId)
       .single();
 
@@ -112,7 +112,7 @@ async function handler(req, res) {
 
     return res.status(200).json({
       bookId: book.id,
-      title: book.title,
+      title: book.selected_idea?.title || "Untitled Book",
       hasWatermark: book.has_watermark,
       products: productStatus,
     });

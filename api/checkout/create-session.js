@@ -44,7 +44,7 @@ async function handler(req, res) {
     // 1. Verify the book exists and belongs to this user
     const { data: book, error: bookError } = await supabase
       .from("book_projects")
-      .select("id, title, user_id")
+      .select("id, selected_idea, user_id")
       .eq("id", bookId)
       .single();
 
