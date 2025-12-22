@@ -203,15 +203,68 @@
             <!-- Regeneration controls -->
             <div class="preview-section preview-regen-section">
               <div class="preview-section-label">Regenerate with Notes</div>
-              <div class="form-group">
-                <textarea id="revision-notes" class="textarea textarea-sm" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+              <div id="regen-available" class="regen-controls">
+                <div class="form-group">
+                  <textarea id="revision-notes" class="textarea textarea-sm" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
+                </div>
+                <button id="regen-btn" class="btn btn-primary btn-full">
+                  <span>Regenerate</span>
+                  <span id="regen-remaining" class="pill">2 left</span>
+                </button>
               </div>
-              <button id="regen-btn" class="btn btn-primary btn-full">
-                <span>Regenerate</span>
-                <span class="pill">max 2</span>
-              </button>
+              
+              <!-- Shown when regen limit reached -->
+              <div id="regen-limit-reached" class="regen-limit-msg hidden">
+                <div class="limit-notice">
+                  <span class="limit-icon">⚠️</span>
+                  <span>Regeneration limit reached for this image.</span>
+                </div>
+                <button id="request-human-btn" class="btn btn-secondary btn-full">
+                  <span>🎨 Request Human Review</span>
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Human Review Request Modal -->
+    <div id="human-request-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-dialog auth-modal-dialog" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <div class="modal-title">Request Human Review</div>
+            <div class="modal-subtitle">Our artists will manually fix your illustration</div>
+          </div>
+          <button id="close-human-request-modal" class="icon-btn modal-close-btn" title="Close">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <form id="human-request-form" class="auth-form">
+            <div class="human-request-info">
+              <p>You've reached the regeneration limit for this image. Submit a request and our team will manually review and fix your illustration.</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="human-request-page">Page Number</label>
+              <input id="human-request-page" type="text" readonly />
+            </div>
+
+            <div class="form-group">
+              <label for="human-request-notes">What would you like changed?</label>
+              <textarea id="human-request-notes" class="textarea" placeholder="Please describe what you'd like our artists to fix or change about this illustration..." required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full">
+              <span>Submit Request</span>
+            </button>
+            
+            <div class="modal-tip">
+              <strong>Note:</strong> Human reviews typically take 1-2 business days. You'll receive an email when your updated illustration is ready.
+            </div>
+          </form>
         </div>
       </div>
     </div>

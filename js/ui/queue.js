@@ -6,12 +6,15 @@ import { $, showToast } from '../core/utils.js';
 import { openProjectById } from '../api/projects.js';
 import { openImageModal } from './modals.js';
 
-// Local history storage (will persist to user account)
+// Local history storage (synced with server for logged-in users)
 let generationHistory = [];
 const MAX_DROPDOWN_ITEMS = 5;
 
 // Track if dropdown is open for auto-refresh
 let isDropdownOpen = false;
+
+// Track if we've loaded from server this session
+let hasLoadedFromServer = false;
 
 // Initialize queue UI
 export function initQueueUI() {
@@ -64,12 +67,33 @@ export function initQueueUI() {
     }
   });
   
-  // Load initial history
+  // Load initial history (from localStorage first, then server)
   loadHistory();
 }
 
+// Load history from server (called after auth state changes)
+export async function loadHistoryFromServer() {
+  try {
+    const res = await fetch("/api/generation-history", {
+      credentials: 'include'
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data.history && data.history.length > 0) {
+        generationHistory = data.history;
+        saveHistoryLocal(); // Cache locally
+        hasLoadedFromServer = true;
+        refreshDropdownIfOpen();
+      }
+    }
+  } catch (e) {
+    console.warn("Could not load generation history from server:", e);
+  }
+}
+
 // Add a generation to history
-export function addToHistory(item) {
+export async function addToHistory(item) {
   // item: { projectId, projectTitle, page, imageUrl, status, timestamp }
   const historyItem = {
     id: `${item.projectId}-${item.page}-${Date.now()}`,
@@ -77,24 +101,48 @@ export function addToHistory(item) {
     projectTitle: item.projectTitle || 'Untitled Book',
     page: item.page,
     imageUrl: item.imageUrl,
-    status: item.status || 'complete', // 'generating', 'complete', 'failed', 'queued'
+    status: item.status || 'complete',
     timestamp: item.timestamp || Date.now(),
   };
   
-  // Add to front
+  // Add to front of local history
   generationHistory.unshift(historyItem);
   
-  // Keep only last 50 items
+  // Keep only last 50 items locally
   if (generationHistory.length > 50) {
     generationHistory = generationHistory.slice(0, 50);
   }
   
-  // Save to localStorage (will sync to server later)
-  saveHistory();
+  // Save to localStorage
+  saveHistoryLocal();
   
   // Update badge and refresh dropdown if open
   updateQueueBadge();
   refreshDropdownIfOpen();
+  
+  // Persist to server (non-blocking)
+  persistToServer(item);
+}
+
+// Persist history item to server
+async function persistToServer(item) {
+  try {
+    await fetch("/api/generation-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: 'include',
+      body: JSON.stringify({
+        projectId: item.projectId,
+        projectTitle: item.projectTitle,
+        page: item.page,
+        imageUrl: item.imageUrl,
+        status: item.status,
+      }),
+    });
+  } catch (e) {
+    // Silently fail - local storage is the backup
+    console.warn("Could not persist generation history to server:", e);
+  }
 }
 
 // Update an existing history item status
@@ -105,7 +153,7 @@ export function updateHistoryItem(projectId, page, updates) {
   
   if (item) {
     Object.assign(item, updates);
-    saveHistory();
+    saveHistoryLocal();
     refreshDropdownIfOpen();
   }
 }
@@ -140,7 +188,7 @@ export function refreshDropdownIfOpen() {
 // Get thumbnail HTML based on status
 function getThumbnailHtml(item) {
   if (item.status === 'generating') {
-    return `<div class="queue-thumb-icon generating"><span class="spinner-icon">⟳</span></div>`;
+    return `<div class="queue-thumb-icon generating"><div class="spinner"></div></div>`;
   } else if (item.status === 'queued') {
     return `<div class="queue-thumb-icon queued">⏳</div>`;
   } else if (item.status === 'failed') {
@@ -264,7 +312,7 @@ function renderHistoryModal() {
   if (!list) return;
   
   if (generationHistory.length === 0) {
-    list.innerHTML = `<div class="queue-empty queue-empty-centered">No generation history yet</div>`;
+    list.innerHTML = `<div class="queue-empty">No generation history yet</div>`;
     return;
   }
   
@@ -353,26 +401,30 @@ function escapeHtml(str) {
   }[m]));
 }
 
-// Save history to localStorage
-function saveHistory() {
+// Save history to localStorage (local cache)
+function saveHistoryLocal() {
   try {
     localStorage.setItem('generationHistory', JSON.stringify(generationHistory));
   } catch (e) {
-    console.warn('Could not save generation history:', e);
+    console.warn('Could not save generation history locally:', e);
   }
 }
 
-// Load history from localStorage
+// Load history from localStorage first, then server
 function loadHistory() {
+  // Load from localStorage first (instant)
   try {
     const stored = localStorage.getItem('generationHistory');
     if (stored) {
       generationHistory = JSON.parse(stored);
     }
   } catch (e) {
-    console.warn('Could not load generation history:', e);
+    console.warn('Could not load generation history from localStorage:', e);
     generationHistory = [];
   }
+  
+  // Then try to load from server (async, will update if user is logged in)
+  loadHistoryFromServer();
 }
 
 // Export for use by illustrations.js

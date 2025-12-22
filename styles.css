@@ -375,7 +375,6 @@ body::before {
 }
 .queue-thumb-icon.generating {
   background: rgba(124, 92, 255, 0.15);
-  color: var(--brand);
 }
 .queue-thumb-icon.queued {
   background: rgba(255, 255, 255, 0.06);
@@ -386,14 +385,10 @@ body::before {
   color: #ff6b6b;
 }
 
-/* Spinning animation for generating */
-.spinner-icon {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Spinner for queue items - matches existing spinner */
+.queue-thumb-icon .spinner {
+  width: 20px;
+  height: 20px;
 }
 
 .queue-item {
@@ -485,14 +480,27 @@ body::before {
   max-height: calc(100vh - 100px);
 }
 .modal-body-history {
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding: 0;
   max-height: 500px;
+  min-height: 250px;
   overflow-y: auto;
 }
 
 .history-list {
   padding: 8px 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-list .queue-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
 }
 
 .history-item {
@@ -1100,6 +1108,53 @@ body[data-phase="storyboard"] #results {
 .textarea-sm{
   min-height: 80px;
 }
+
+/* Regeneration limit styles */
+.regen-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.regen-controls.hidden {
+  display: none;
+}
+.regen-limit-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.regen-limit-msg.hidden {
+  display: none;
+}
+.limit-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  border-radius: 12px;
+  font-size: 13px;
+  color: #ffc107;
+}
+.limit-icon {
+  font-size: 16px;
+}
+
+/* Human request modal info */
+.human-request-info {
+  padding: 14px;
+  background: rgba(124, 92, 255, 0.1);
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.human-request-info p {
+  margin: 0;
+}
+
 .modal-image-wrap{
   border-radius: 16px;
   overflow:hidden;

@@ -49,6 +49,28 @@ export function openImageModal(pageNum, imageUrl) {
   
   const revisionHistory = illustration?.revision_history || [];
   const currentRevision = illustration?.revisions || 0;
+  
+  // Handle regeneration limit (max 2 regenerations = revisions 0, 1, 2 = 3 total versions)
+  const MAX_REGENERATIONS = 2;
+  const canRegenerate = currentRevision < MAX_REGENERATIONS;
+  const remainingRegens = Math.max(0, MAX_REGENERATIONS - currentRevision);
+  
+  const regenAvailable = $("regen-available");
+  const regenLimitReached = $("regen-limit-reached");
+  const regenRemaining = $("regen-remaining");
+  
+  if (regenAvailable && regenLimitReached) {
+    if (canRegenerate) {
+      regenAvailable.classList.remove("hidden");
+      regenLimitReached.classList.add("hidden");
+      if (regenRemaining) {
+        regenRemaining.textContent = `${remainingRegens} left`;
+      }
+    } else {
+      regenAvailable.classList.add("hidden");
+      regenLimitReached.classList.remove("hidden");
+    }
+  }
 
   // Render current version indicator
   const currentIndicator = $("current-version-indicator");
@@ -168,6 +190,69 @@ export function closeImageModal() {
   currentPageNum = null;
 }
 
+// =====================================================
+// Human Request Modal
+// =====================================================
+
+function openHumanRequestModal() {
+  const modal = $("human-request-modal");
+  if (!modal) return;
+  
+  // Set the page number
+  const pageInput = $("human-request-page");
+  if (pageInput && currentPageNum) {
+    pageInput.value = `Page ${currentPageNum}`;
+  }
+  
+  // Clear notes
+  const notesInput = $("human-request-notes");
+  if (notesInput) notesInput.value = "";
+  
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  
+  // Focus notes textarea
+  notesInput?.focus();
+}
+
+function closeHumanRequestModal() {
+  const modal = $("human-request-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+async function handleHumanRequestSubmit(e) {
+  e.preventDefault();
+  
+  const projectId = localStorage.getItem("projectId");
+  const notes = $("human-request-notes")?.value?.trim();
+  
+  if (!projectId || !currentPageNum || !notes) {
+    return;
+  }
+  
+  // For now, just show a success message and close
+  // TODO: Connect to email/notification system
+  const { showToast } = await import('../core/utils.js');
+  
+  showToast(
+    "Request submitted",
+    "Our team will review your illustration",
+    "success"
+  );
+  
+  closeHumanRequestModal();
+  closeImageModal();
+  
+  // In the future, this would send to an API:
+  // await fetch('/api/human-review-request', {
+  //   method: 'POST',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({ projectId, page: currentPageNum, notes })
+  // });
+}
+
 export function initImageModalEvents() {
   $("close-modal")?.addEventListener("click", closeImageModal);
 
@@ -179,11 +264,24 @@ export function initImageModalEvents() {
   
   // Wire up "Use This Version" button
   $("use-version-btn")?.addEventListener("click", handleSetIllustration);
+  
+  // Wire up "Request Human" button
+  $("request-human-btn")?.addEventListener("click", openHumanRequestModal);
+  
+  // Human request modal events
+  $("close-human-request-modal")?.addEventListener("click", closeHumanRequestModal);
+  
+  $("human-request-modal")?.addEventListener("click", (e) => {
+    if (e.target?.classList?.contains("modal-backdrop")) closeHumanRequestModal();
+  });
+  
+  $("human-request-form")?.addEventListener("submit", handleHumanRequestSubmit);
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeImageModal();
       closeUploadModal();
+      closeHumanRequestModal();
     }
   });
 }

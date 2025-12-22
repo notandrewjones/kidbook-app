@@ -26,10 +26,17 @@ async function initApp() {
   await checkSession();
   
   // Subscribe to auth changes to refresh dashboard on login
-  onAuthChange(({ isAuthenticated }) => {
-    // If user just logged in and we're on dashboard, refresh it
-    if (isAuthenticated && state.currentPhase === "dashboard") {
-      loadDashboard();
+  onAuthChange(async ({ isAuthenticated }) => {
+    // If user just logged in
+    if (isAuthenticated) {
+      // Load generation history from server
+      const { loadHistoryFromServer } = await import('./ui/queue.js');
+      loadHistoryFromServer();
+      
+      // Refresh dashboard if we're on it
+      if (state.currentPhase === "dashboard") {
+        loadDashboard();
+      }
     }
   });
   
