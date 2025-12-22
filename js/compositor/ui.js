@@ -14,12 +14,14 @@ import { bookExporter, EXPORT_FORMATS } from './exporter.js';
 import { state } from '../core/state.js';
 import { 
   getBookPurchaseStatus, 
-  initEmbeddedCheckout, 
-  loadStripe,
   checkPaymentReturn,
   clearPaymentParams,
   formatPrice
 } from '../api/checkout.js';
+import { 
+  updateCartItem,
+  getHardcoverSizes 
+} from '../api/cart.js';
 
 export class CompositorUI {
   constructor(containerId) {
@@ -83,11 +85,13 @@ export class CompositorUI {
     this.redoStack = [];
     this.maxUndoSteps = 50;
     
-    // Checkout state
+    // Cart modal state
     this.purchaseStatus = null;
-    this.selectedProduct = null;
-    this.stripeCheckout = null;
     this.projectId = null;
+    this.cartQuantities = { ebook: 0, hardcover: 0 };
+    this.hardcoverSize = 'square-medium';
+    this.hardcoverSizes = [];
+    this.productPrices = { ebook: 999, hardcover: 2999 };
     
     // Callbacks
     this.onExportComplete = null;
@@ -298,9 +302,9 @@ export class CompositorUI {
             
             <button id="checkout-btn" class="topbar-btn topbar-btn-primary">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
               </svg>
-              <span>Get My Book</span>
+              <span>Add to Cart</span>
             </button>
           </div>
         </header>
@@ -365,72 +369,71 @@ export class CompositorUI {
           </main>
         </div>
 
-        <!-- Checkout Modal -->
-        <div id="checkout-modal" class="modal hidden">
+        <!-- Add to Cart Modal -->
+        <div id="add-to-cart-modal" class="modal hidden">
           <div class="modal-backdrop"></div>
           <div class="modal-dialog modal-dialog-lg">
             <div class="modal-header">
-              <h3 id="checkout-modal-title">Get Your Book</h3>
-              <button id="close-checkout-modal" class="modal-close">×</button>
+              <h3>Add to Cart</h3>
+              <button id="close-cart-modal" class="modal-close">×</button>
             </div>
             <div class="modal-body">
-              <!-- Step 1: Product Selection -->
-              <div id="checkout-step-products" class="checkout-step">
-                <p class="checkout-subtitle">Choose your format</p>
-                <div class="product-options-grid">
-                  <div class="product-option" data-product="ebook">
-                    <div class="product-option-badge">Digital</div>
-                    <div class="product-option-icon">📱</div>
-                    <div class="product-option-name">Ebook</div>
-                    <div class="product-option-desc">High-quality PDF download</div>
-                    <div class="product-option-price" id="ebook-price">$9.99</div>
-                    <div class="product-option-status" id="ebook-status"></div>
-                  </div>
-                  <div class="product-option" data-product="hardcover">
-                    <div class="product-option-badge">Print</div>
-                    <div class="product-option-icon">📚</div>
-                    <div class="product-option-name">Hardcover</div>
-                    <div class="product-option-desc">Beautiful printed book</div>
-                    <div class="product-option-price" id="hardcover-price">$29.99</div>
-                    <div class="product-option-status" id="hardcover-status"></div>
-                  </div>
+              <p class="cart-modal-subtitle">Select products to add to your cart</p>
+              
+              <!-- Ebook Row -->
+              <div class="cart-product-row">
+                <div class="cart-product-icon">📱</div>
+                <div class="cart-product-info">
+                  <div class="cart-product-name">Digital Ebook</div>
+                  <div class="cart-product-desc">High-quality PDF download</div>
                 </div>
-                <div id="checkout-error" class="checkout-error hidden"></div>
+                <div class="cart-product-price" id="cart-ebook-price">$9.99</div>
+                <div class="cart-product-qty">
+                  <button class="qty-btn cart-qty-minus" data-product="ebook">−</button>
+                  <span class="qty-value" id="cart-ebook-qty">0</span>
+                  <button class="qty-btn cart-qty-plus" data-product="ebook">+</button>
+                </div>
               </div>
               
-              <!-- Step 2: Embedded Payment -->
-              <div id="checkout-step-payment" class="checkout-step hidden">
-                <button id="checkout-back-btn" class="checkout-back-btn">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+              <!-- Hardcover Row -->
+              <div class="cart-product-row cart-product-hardcover">
+                <div class="cart-product-icon">📚</div>
+                <div class="cart-product-info">
+                  <div class="cart-product-name">Printed Hardcover</div>
+                  <div class="cart-product-desc">Beautiful printed book shipped to you</div>
+                  <div class="cart-product-size">
+                    <label>Size:</label>
+                    <select id="hardcover-size-select">
+                      <option value="square-small">7" × 7" - Small Square</option>
+                      <option value="square-medium" selected>8" × 8" - Medium Square</option>
+                      <option value="square-large">10" × 10" - Large Square</option>
+                      <option value="portrait">7" × 9" - Portrait</option>
+                      <option value="landscape">10" × 7" - Landscape</option>
+                      <option value="standard">8.5" × 11" - Standard</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cart-product-price" id="cart-hardcover-price">$29.99</div>
+                <div class="cart-product-qty">
+                  <button class="qty-btn cart-qty-minus" data-product="hardcover">−</button>
+                  <span class="qty-value" id="cart-hardcover-qty">0</span>
+                  <button class="qty-btn cart-qty-plus" data-product="hardcover">+</button>
+                </div>
+              </div>
+
+              <div id="cart-modal-error" class="checkout-error hidden"></div>
+              
+              <div class="cart-modal-footer">
+                <div class="cart-modal-total">
+                  <span>Subtotal:</span>
+                  <span id="cart-modal-subtotal">$0.00</span>
+                </div>
+                <button id="add-to-cart-btn" class="add-to-cart-btn" disabled>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
                   </svg>
-                  Back to products
+                  Add to Cart
                 </button>
-                <div class="checkout-payment-header">
-                  <span id="checkout-product-name">Ebook</span>
-                  <span id="checkout-product-price">$9.99</span>
-                </div>
-                <div id="checkout-embed-container" class="checkout-embed-container">
-                  <div class="checkout-loading">
-                    <div class="spinner"></div>
-                    <span>Loading payment form...</span>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Step 3: Success -->
-              <div id="checkout-step-success" class="checkout-step hidden">
-                <div class="checkout-success">
-                  <div class="checkout-success-icon">✓</div>
-                  <h4>Payment Successful!</h4>
-                  <p>Your book is ready to download.</p>
-                  <button id="checkout-download-btn" class="checkout-download-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                    </svg>
-                    Download Now
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -2123,35 +2126,43 @@ export class CompositorUI {
       this.renderThumbnails();
     });
 
-    // Checkout button - opens checkout modal
+    // Add to Cart button - opens cart modal
     document.getElementById('checkout-btn')?.addEventListener('click', () => {
-      this.openCheckoutModal();
+      this.openAddToCartModal();
     });
 
-    document.getElementById('close-checkout-modal')?.addEventListener('click', () => {
-      this.closeCheckoutModal();
+    document.getElementById('close-cart-modal')?.addEventListener('click', () => {
+      this.closeAddToCartModal();
     });
 
-    // Product selection
-    const productOptions = document.querySelectorAll('.product-option');
-    console.log('[Checkout] Found product options:', productOptions.length);
-    productOptions.forEach(opt => {
-      opt.addEventListener('click', () => {
-        const product = opt.dataset.product;
-        console.log('[Checkout] Product clicked:', product);
-        this.selectProduct(product);
+    document.querySelector('#add-to-cart-modal .modal-backdrop')?.addEventListener('click', () => {
+      this.closeAddToCartModal();
+    });
+
+    // Quantity buttons in cart modal
+    document.querySelectorAll('.cart-qty-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const product = btn.dataset.product;
+        this.updateCartQuantity(product, -1);
       });
     });
 
-    // Back button in payment step
-    document.getElementById('checkout-back-btn')?.addEventListener('click', () => {
-      this.showCheckoutStep('products');
+    document.querySelectorAll('.cart-qty-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const product = btn.dataset.product;
+        this.updateCartQuantity(product, 1);
+      });
     });
 
-    // Download button after successful purchase
-    document.getElementById('checkout-download-btn')?.addEventListener('click', () => {
-      this.closeCheckoutModal();
-      this.openExportModal();
+    // Hardcover size selector
+    document.getElementById('hardcover-size-select')?.addEventListener('change', (e) => {
+      this.hardcoverSize = e.target.value;
+      this.updateHardcoverPrice();
+    });
+
+    // Add to Cart submit button
+    document.getElementById('add-to-cart-btn')?.addEventListener('click', () => {
+      this.submitAddToCart();
     });
 
     // Legacy export modal handlers
@@ -2161,10 +2172,6 @@ export class CompositorUI {
 
     document.querySelector('#export-modal .modal-backdrop')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.add('hidden');
-    });
-
-    document.querySelector('#checkout-modal .modal-backdrop')?.addEventListener('click', () => {
-      this.closeCheckoutModal();
     });
 
     document.querySelectorAll('.export-option').forEach(opt => {
@@ -2350,165 +2357,6 @@ export class CompositorUI {
     if (!this.purchaseStatus?.products) return;
 
     const { ebook, hardcover } = this.purchaseStatus.products;
-
-    // Update ebook option
-    const ebookPrice = document.getElementById('ebook-price');
-    const ebookStatus = document.getElementById('ebook-status');
-    const ebookOption = document.querySelector('[data-product="ebook"]');
-    
-    if (ebookPrice && ebook) {
-      ebookPrice.textContent = ebook.priceFormatted;
-    }
-    if (ebookStatus && ebook?.unlocked) {
-      ebookStatus.textContent = '✓ Purchased';
-      ebookStatus.classList.add('purchased');
-      ebookOption?.classList.add('unlocked');
-    }
-
-    // Update hardcover option
-    const hardcoverPrice = document.getElementById('hardcover-price');
-    const hardcoverStatus = document.getElementById('hardcover-status');
-    const hardcoverOption = document.querySelector('[data-product="hardcover"]');
-    
-    if (hardcoverPrice && hardcover) {
-      hardcoverPrice.textContent = hardcover.priceFormatted;
-    }
-    if (hardcoverStatus && hardcover?.unlocked) {
-      hardcoverStatus.textContent = '✓ Purchased';
-      hardcoverStatus.classList.add('purchased');
-      hardcoverOption?.classList.add('unlocked');
-    }
-  }
-
-  async selectProduct(productType) {
-    console.log('[Checkout] selectProduct called:', productType);
-    console.log('[Checkout] purchaseStatus:', this.purchaseStatus);
-    console.log('[Checkout] projectId:', this.projectId);
-    
-    // If we don't have purchase status yet, try to fetch it
-    if (!this.purchaseStatus?.products && this.projectId) {
-      console.log('[Checkout] No purchase status, fetching...');
-      try {
-        this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
-        console.log('[Checkout] Fetched purchase status:', this.purchaseStatus);
-      } catch (err) {
-        console.error('[Checkout] Failed to fetch purchase status:', err);
-        this.showCheckoutError('Unable to load product information. Please try again.');
-        return;
-      }
-    }
-    
-    if (!this.purchaseStatus?.products) {
-      console.error('[Checkout] Still no purchase status available');
-      this.showCheckoutError('Unable to load product. Please try again.');
-      return;
-    }
-
-    const product = this.purchaseStatus.products[productType];
-    console.log('[Checkout] Selected product:', product);
-    
-    if (!product) {
-      console.error('[Checkout] Product not found:', productType);
-      return;
-    }
-
-    // If already unlocked, go straight to export
-    if (product.unlocked) {
-      console.log('[Checkout] Product already unlocked, opening export modal');
-      this.closeCheckoutModal();
-      this.openExportModal();
-      return;
-    }
-
-    this.selectedProduct = productType;
-
-    // Update payment header
-    const productName = document.getElementById('checkout-product-name');
-    const productPrice = document.getElementById('checkout-product-price');
-    if (productName) productName.textContent = product.displayName || productType;
-    if (productPrice) productPrice.textContent = product.priceFormatted || '';
-
-    // Show payment step
-    this.showCheckoutStep('payment');
-
-    // Initialize embedded checkout
-    await this.initializeEmbeddedCheckout(productType);
-  }
-
-  async initializeEmbeddedCheckout(productType) {
-    console.log('[Checkout] Initializing embedded checkout for:', productType);
-    
-    const container = document.getElementById('checkout-embed-container');
-    if (!container) {
-      console.error('[Checkout] Embed container not found');
-      return;
-    }
-
-    // Show loading
-    container.innerHTML = `
-      <div class="checkout-loading">
-        <div class="spinner"></div>
-        <span>Loading payment form...</span>
-      </div>
-    `;
-
-    try {
-      // Load Stripe.js
-      console.log('[Checkout] Loading Stripe.js...');
-      const stripe = await loadStripe();
-      console.log('[Checkout] Stripe loaded:', !!stripe);
-      
-      // Create checkout session
-      console.log('[Checkout] Creating checkout session...');
-      const { clientSecret } = await initEmbeddedCheckout(this.projectId, productType);
-      console.log('[Checkout] Got client secret:', clientSecret?.substring(0, 20) + '...');
-      
-      // Initialize embedded checkout
-      console.log('[Checkout] Initializing embedded checkout...');
-      this.stripeCheckout = await stripe.initEmbeddedCheckout({
-        clientSecret,
-      });
-      console.log('[Checkout] Embedded checkout initialized');
-
-      // Clear container and mount
-      container.innerHTML = '';
-      this.stripeCheckout.mount(container);
-      console.log('[Checkout] Checkout mounted');
-
-    } catch (err) {
-      console.error('[Checkout] Failed to initialize checkout:', err);
-      container.innerHTML = `
-        <div class="checkout-error-state">
-          <p>Unable to load payment form.</p>
-          <p class="error-detail">${err.message}</p>
-          <button onclick="this.closest('.checkout-embed-container').parentElement.querySelector('#checkout-back-btn').click()">
-            Go Back
-          </button>
-        </div>
-      `;
-    }
-  }
-
-  showCheckoutError(message) {
-    const errorEl = document.getElementById('checkout-error');
-    if (errorEl) {
-      errorEl.textContent = message;
-      errorEl.classList.remove('hidden');
-      setTimeout(() => errorEl.classList.add('hidden'), 5000);
-    }
-  }
-
-  // Set the project ID for checkout operations
-  setProjectId(projectId) {
-    this.projectId = projectId;
-  }
-
-  async preloadFonts(additionalFonts = []) {
-    const tmpl = getTemplate(this.selectedTemplate);
-    const fonts = [tmpl.typography?.fontFamily, ...additionalFonts].filter(Boolean);
-    await this.renderer.preloadFonts(fonts);
-  }
-
   // Dropdown management
   toggleDropdown(dropdownId) {
     const dropdown = document.getElementById(dropdownId);

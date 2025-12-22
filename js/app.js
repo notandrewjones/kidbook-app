@@ -16,6 +16,7 @@ import { initImageModalEvents } from './ui/modals.js';
 import { initAuthUI } from './ui/auth.js';
 import { closeNewStoryModal } from './ui/render.js';
 import { initQueueUI } from './ui/queue.js';
+import { initCart, refreshCart } from './ui/cart.js';
 
 // =====================================================
 // App Initialization
@@ -32,6 +33,9 @@ async function initApp() {
       // Load generation history from server
       const { loadHistoryFromServer } = await import('./ui/queue.js');
       loadHistoryFromServer();
+      
+      // Refresh cart
+      refreshCart();
       
       // Refresh dashboard if we're on it
       if (state.currentPhase === "dashboard") {
@@ -52,6 +56,7 @@ async function initApp() {
   initViewControls();
   initSearch();
   initQueueUI();
+  initCart();
   
   // Initialize auth UI (login/logout buttons, etc.)
   initAuthUI();

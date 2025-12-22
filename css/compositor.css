@@ -1500,6 +1500,156 @@
 }
 
 /* ============================================
+   Add to Cart Modal Styles
+   ============================================ */
+.cart-modal-subtitle {
+  color: var(--comp-text-muted);
+  font-size: 13px;
+  margin: 0 0 16px 0;
+}
+
+.cart-product-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  background: var(--comp-surface-hover);
+  border-radius: var(--comp-radius);
+  margin-bottom: 10px;
+}
+
+.cart-product-icon {
+  font-size: 28px;
+}
+
+.cart-product-info {
+  min-width: 0;
+}
+
+.cart-product-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.cart-product-desc {
+  font-size: 11px;
+  color: var(--comp-text-muted);
+}
+
+.cart-product-size {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cart-product-size label {
+  font-size: 11px;
+  color: var(--comp-text-muted);
+}
+
+.cart-product-size select {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--comp-surface);
+  border: 1px solid var(--comp-border);
+  border-radius: var(--comp-radius);
+  color: var(--comp-text);
+  font-size: 11px;
+}
+
+.cart-product-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--comp-primary);
+  min-width: 60px;
+  text-align: right;
+}
+
+.cart-product-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cart-product-qty .qty-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--comp-surface);
+  border: 1px solid var(--comp-border);
+  border-radius: var(--comp-radius);
+  color: var(--comp-text);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cart-product-qty .qty-btn:hover {
+  background: var(--comp-primary);
+  border-color: var(--comp-primary);
+}
+
+.cart-product-qty .qty-value {
+  min-width: 28px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cart-modal-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--comp-border);
+}
+
+.cart-modal-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+#cart-modal-subtotal {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--comp-primary);
+}
+
+.add-to-cart-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--comp-primary), #7c3aed);
+  border: none;
+  border-radius: var(--comp-radius);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.add-to-cart-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.add-to-cart-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============================================
    Checkout Modal Styles
    ============================================ */
 .compositor-wrap .modal-dialog-lg {

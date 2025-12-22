@@ -100,8 +100,86 @@ async function handler(req, res) {
  * Handle successful checkout
  */
 async function handleCheckoutCompleted(session) {
-  const { order_id, book_id, product_type, user_id } = session.metadata;
+  const { order_id, order_ids, book_id, book_ids, product_type, user_id, cart_checkout } = session.metadata;
 
+  // Handle cart checkout with multiple orders
+  if (cart_checkout === "true" && order_ids) {
+    console.log(`Processing cart checkout with orders: ${order_ids}`);
+    const orderIdList = order_ids.split(",");
+    const bookIdList = book_ids ? book_ids.split(",") : [];
+
+    for (const orderId of orderIdList) {
+      // Get order details to determine product type and book
+      const { data: order, error: fetchError } = await supabase
+        .from("orders")
+        .select("id, book_id, product_id, products(name)")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchError || !order) {
+        console.error(`Failed to fetch order ${orderId}:`, fetchError);
+        continue;
+      }
+
+      const orderProductType = order.products?.name;
+      const orderBookId = order.book_id;
+
+      // Update order status
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          status: "paid",
+          stripe_payment_intent_id: session.payment_intent,
+          paid_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+
+      if (orderError) {
+        console.error(`Failed to update order ${orderId}:`, orderError);
+        continue;
+      }
+
+      // Unlock the book
+      if (orderProductType && orderBookId) {
+        const unlockField = orderProductType === "ebook" ? "ebook_unlocked" : "hardcover_unlocked";
+        
+        await supabase
+          .from("book_projects")
+          .update({
+            [unlockField]: true,
+            has_watermark: false,
+          })
+          .eq("id", orderBookId);
+
+        // Create export record
+        await supabase
+          .from("book_exports")
+          .insert({
+            book_id: orderBookId,
+            order_id: orderId,
+            user_id,
+            product_type: orderProductType,
+            download_count: 0,
+            max_downloads: orderProductType === "ebook" ? 10 : 5,
+          });
+      }
+
+      console.log(`Order ${orderId} processed successfully`);
+    }
+
+    // Clear the user's cart after successful checkout
+    if (user_id) {
+      await supabase
+        .from("cart_items")
+        .delete()
+        .eq("user_id", user_id);
+      console.log(`Cart cleared for user ${user_id}`);
+    }
+
+    return;
+  }
+
+  // Handle single order checkout (legacy/direct)
   if (!order_id) {
     console.error("No order_id in session metadata");
     return;
