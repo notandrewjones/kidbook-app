@@ -88,8 +88,8 @@ export class CompositorUI {
     // Cart modal state
     this.purchaseStatus = null;
     this.projectId = null;
-    this.cartQuantities = { ebook: 0, hardcover: 0 };
-    this.hardcoverSize = 'square-medium';
+    this.cartEbookQty = 0;
+    this.hardcoverItems = []; // Array of { size: string, qty: number, price: number }
     this.hardcoverSizes = [];
     this.productPrices = { ebook: 999, hardcover: 2999 };
     
@@ -372,53 +372,53 @@ export class CompositorUI {
         <!-- Add to Cart Modal -->
         <div id="add-to-cart-modal" class="modal hidden">
           <div class="modal-backdrop"></div>
-          <div class="modal-dialog modal-dialog-lg">
+          <div class="modal-dialog cart-modal-dialog">
             <div class="modal-header">
               <h3>Add to Cart</h3>
               <button id="close-cart-modal" class="modal-close">×</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body cart-modal-body">
               <p class="cart-modal-subtitle">Select products to add to your cart</p>
               
-              <!-- Ebook Row -->
-              <div class="cart-product-row">
-                <div class="cart-product-icon">📱</div>
-                <div class="cart-product-info">
-                  <div class="cart-product-name">Digital Ebook</div>
-                  <div class="cart-product-desc">High-quality PDF download</div>
+              <!-- Ebook Section -->
+              <div class="cart-section">
+                <div class="cart-section-header">
+                  <div class="cart-section-icon">📱</div>
+                  <div class="cart-section-info">
+                    <div class="cart-section-title">Digital Ebook</div>
+                    <div class="cart-section-desc">High-quality PDF download</div>
+                  </div>
+                  <div class="cart-section-price" id="cart-ebook-price">$9.99</div>
                 </div>
-                <div class="cart-product-price" id="cart-ebook-price">$9.99</div>
-                <div class="cart-product-qty">
-                  <button class="qty-btn cart-qty-minus" data-product="ebook">−</button>
-                  <span class="qty-value" id="cart-ebook-qty">0</span>
-                  <button class="qty-btn cart-qty-plus" data-product="ebook">+</button>
-                </div>
-              </div>
-              
-              <!-- Hardcover Row -->
-              <div class="cart-product-row cart-product-hardcover">
-                <div class="cart-product-icon">📚</div>
-                <div class="cart-product-info">
-                  <div class="cart-product-name">Printed Hardcover</div>
-                  <div class="cart-product-desc">Beautiful printed book shipped to you</div>
-                  <div class="cart-product-size">
-                    <label>Size:</label>
-                    <select id="hardcover-size-select">
-                      <option value="square-small">7" × 7" - Small Square</option>
-                      <option value="square-medium" selected>8" × 8" - Medium Square</option>
-                      <option value="square-large">10" × 10" - Large Square</option>
-                      <option value="portrait">7" × 9" - Portrait</option>
-                      <option value="landscape">10" × 7" - Landscape</option>
-                      <option value="standard">8.5" × 11" - Standard</option>
-                    </select>
+                <div class="cart-section-controls">
+                  <div class="cart-qty-control">
+                    <button class="qty-btn cart-qty-minus" data-product="ebook">−</button>
+                    <span class="qty-value" id="cart-ebook-qty">0</span>
+                    <button class="qty-btn cart-qty-plus" data-product="ebook">+</button>
                   </div>
                 </div>
-                <div class="cart-product-price" id="cart-hardcover-price">$29.99</div>
-                <div class="cart-product-qty">
-                  <button class="qty-btn cart-qty-minus" data-product="hardcover">−</button>
-                  <span class="qty-value" id="cart-hardcover-qty">0</span>
-                  <button class="qty-btn cart-qty-plus" data-product="hardcover">+</button>
+              </div>
+
+              <!-- Hardcover Section -->
+              <div class="cart-section cart-section-hardcover">
+                <div class="cart-section-header">
+                  <div class="cart-section-icon">📚</div>
+                  <div class="cart-section-info">
+                    <div class="cart-section-title">Printed Hardcover</div>
+                    <div class="cart-section-desc">Beautiful printed book shipped to you</div>
+                  </div>
                 </div>
+                
+                <div id="hardcover-sizes-container">
+                  <!-- Hardcover size rows will be inserted here -->
+                </div>
+                
+                <button type="button" id="add-another-size-btn" class="add-another-size-btn hidden">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  Add Another Size
+                </button>
               </div>
 
               <div id="cart-modal-error" class="checkout-error hidden"></div>
@@ -2139,25 +2139,20 @@ export class CompositorUI {
       this.closeAddToCartModal();
     });
 
-    // Quantity buttons in cart modal
-    document.querySelectorAll('.cart-qty-minus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const product = btn.dataset.product;
-        this.updateCartQuantity(product, -1);
-      });
+    // Ebook quantity buttons
+    document.querySelector('.cart-qty-minus[data-product="ebook"]')?.addEventListener('click', () => {
+      this.cartEbookQty = Math.max(0, this.cartEbookQty - 1);
+      this.updateCartModalUI();
     });
 
-    document.querySelectorAll('.cart-qty-plus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const product = btn.dataset.product;
-        this.updateCartQuantity(product, 1);
-      });
+    document.querySelector('.cart-qty-plus[data-product="ebook"]')?.addEventListener('click', () => {
+      this.cartEbookQty++;
+      this.updateCartModalUI();
     });
 
-    // Hardcover size selector
-    document.getElementById('hardcover-size-select')?.addEventListener('change', (e) => {
-      this.hardcoverSize = e.target.value;
-      this.updateHardcoverPrice();
+    // Add another size button
+    document.getElementById('add-another-size-btn')?.addEventListener('click', () => {
+      this.addHardcoverSizeRow();
     });
 
     // Add to Cart submit button
@@ -2271,14 +2266,14 @@ export class CompositorUI {
     const modal = document.getElementById('add-to-cart-modal');
     if (!modal) return;
 
-    // Reset quantities
-    this.cartQuantities = { ebook: 0, hardcover: 0 };
-    this.updateCartModalUI();
+    // Reset state
+    this.cartEbookQty = 0;
+    this.hardcoverItems = [];
     
     // Show modal
     modal.classList.remove('hidden');
 
-    // Fetch prices
+    // Fetch prices and sizes
     try {
       if (this.projectId) {
         this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
@@ -2286,24 +2281,34 @@ export class CompositorUI {
           this.productPrices.ebook = this.purchaseStatus.products.ebook?.priceCents || 999;
           this.productPrices.hardcover = this.purchaseStatus.products.hardcover?.priceCents || 2999;
           
-          // Update displayed prices
+          // Update ebook price
           const ebookPrice = document.getElementById('cart-ebook-price');
-          const hardcoverPrice = document.getElementById('cart-hardcover-price');
           if (ebookPrice) ebookPrice.textContent = formatPrice(this.productPrices.ebook);
-          if (hardcoverPrice) hardcoverPrice.textContent = formatPrice(this.productPrices.hardcover);
         }
       }
       
-      // Try to load hardcover sizes
+      // Load hardcover sizes
       try {
         const { sizes } = await getHardcoverSizes();
         if (sizes) {
           this.hardcoverSizes = sizes;
-          this.populateHardcoverSizes();
         }
       } catch (e) {
         console.log('[Cart] Could not load hardcover sizes, using defaults');
+        this.hardcoverSizes = [
+          { size_code: 'square-small', display_name: 'Small Square', dimensions: '7" × 7"', price_cents: 2499, priceFormatted: '$24.99' },
+          { size_code: 'square-medium', display_name: 'Medium Square', dimensions: '8" × 8"', price_cents: 2999, priceFormatted: '$29.99' },
+          { size_code: 'square-large', display_name: 'Large Square', dimensions: '10" × 10"', price_cents: 3999, priceFormatted: '$39.99' },
+          { size_code: 'portrait', display_name: 'Portrait', dimensions: '7" × 9"', price_cents: 2999, priceFormatted: '$29.99' },
+          { size_code: 'landscape', display_name: 'Landscape', dimensions: '10" × 7"', price_cents: 3499, priceFormatted: '$34.99' },
+          { size_code: 'standard', display_name: 'Standard', dimensions: '8.5" × 11"', price_cents: 3499, priceFormatted: '$34.99' },
+        ];
       }
+      
+      // Add initial hardcover row
+      this.addHardcoverSizeRow();
+      this.updateCartModalUI();
+      
     } catch (err) {
       console.error('[Cart] Failed to fetch product info:', err);
     }
@@ -2312,62 +2317,154 @@ export class CompositorUI {
   closeAddToCartModal() {
     const modal = document.getElementById('add-to-cart-modal');
     modal?.classList.add('hidden');
+    
+    // Clear hardcover container
+    const container = document.getElementById('hardcover-sizes-container');
+    if (container) container.innerHTML = '';
   }
 
   openExportModal() {
     document.getElementById('export-modal')?.classList.remove('hidden');
   }
 
-  populateHardcoverSizes() {
-    const select = document.getElementById('hardcover-size-select');
-    if (!select || !this.hardcoverSizes.length) return;
+  addHardcoverSizeRow(selectedSize = 'square-medium') {
+    const container = document.getElementById('hardcover-sizes-container');
+    if (!container) return;
 
-    select.innerHTML = this.hardcoverSizes.map(size => 
-      `<option value="${size.size_code}" ${size.size_code === this.hardcoverSize ? 'selected' : ''}>
-        ${size.dimensions} - ${size.display_name} (${size.priceFormatted})
-      </option>`
-    ).join('');
+    const rowIndex = this.hardcoverItems.length;
+    const sizeInfo = this.hardcoverSizes.find(s => s.size_code === selectedSize) || this.hardcoverSizes[1];
+    
+    // Add to items array
+    this.hardcoverItems.push({
+      size: selectedSize,
+      qty: 0,
+      price: sizeInfo?.price_cents || 2999
+    });
+
+    const row = document.createElement('div');
+    row.className = 'hardcover-size-row';
+    row.dataset.index = rowIndex;
+    row.innerHTML = `
+      <div class="hardcover-size-select-wrap">
+        <select class="hardcover-size-select" data-index="${rowIndex}">
+          ${this.hardcoverSizes.map(size => 
+            `<option value="${size.size_code}" ${size.size_code === selectedSize ? 'selected' : ''} data-price="${size.price_cents}">
+              ${size.dimensions} - ${size.display_name}
+            </option>`
+          ).join('')}
+        </select>
+        <span class="hardcover-row-price">${sizeInfo?.priceFormatted || '$29.99'}</span>
+      </div>
+      <div class="hardcover-size-controls">
+        <div class="cart-qty-control">
+          <button type="button" class="qty-btn hardcover-qty-minus" data-index="${rowIndex}">−</button>
+          <span class="qty-value hardcover-qty-value" data-index="${rowIndex}">0</span>
+          <button type="button" class="qty-btn hardcover-qty-plus" data-index="${rowIndex}">+</button>
+        </div>
+        ${rowIndex > 0 ? `<button type="button" class="hardcover-remove-btn" data-index="${rowIndex}" title="Remove">×</button>` : ''}
+      </div>
+    `;
+
+    container.appendChild(row);
+
+    // Bind events for this row
+    row.querySelector('.hardcover-size-select')?.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.index);
+      const newSize = e.target.value;
+      const sizeInfo = this.hardcoverSizes.find(s => s.size_code === newSize);
+      this.hardcoverItems[idx].size = newSize;
+      this.hardcoverItems[idx].price = sizeInfo?.price_cents || 2999;
+      row.querySelector('.hardcover-row-price').textContent = sizeInfo?.priceFormatted || '$29.99';
+      this.updateCartModalUI();
+    });
+
+    row.querySelector('.hardcover-qty-minus')?.addEventListener('click', () => {
+      const idx = parseInt(row.dataset.index);
+      this.hardcoverItems[idx].qty = Math.max(0, this.hardcoverItems[idx].qty - 1);
+      this.updateCartModalUI();
+    });
+
+    row.querySelector('.hardcover-qty-plus')?.addEventListener('click', () => {
+      const idx = parseInt(row.dataset.index);
+      this.hardcoverItems[idx].qty++;
+      this.updateCartModalUI();
+    });
+
+    row.querySelector('.hardcover-remove-btn')?.addEventListener('click', () => {
+      const idx = parseInt(row.dataset.index);
+      this.removeHardcoverSizeRow(idx);
+    });
+
+    this.updateCartModalUI();
   }
 
-  updateHardcoverPrice() {
-    const selectedSize = this.hardcoverSizes.find(s => s.size_code === this.hardcoverSize);
-    if (selectedSize) {
-      this.productPrices.hardcover = selectedSize.price_cents;
-      const priceEl = document.getElementById('cart-hardcover-price');
-      if (priceEl) priceEl.textContent = selectedSize.priceFormatted;
+  removeHardcoverSizeRow(index) {
+    const container = document.getElementById('hardcover-sizes-container');
+    const row = container?.querySelector(`.hardcover-size-row[data-index="${index}"]`);
+    if (row) {
+      row.remove();
+      this.hardcoverItems[index] = null; // Mark as removed
+      this.updateCartModalUI();
     }
-    this.updateCartModalUI();
-  }
-
-  updateCartQuantity(product, delta) {
-    const newQty = Math.max(0, (this.cartQuantities[product] || 0) + delta);
-    this.cartQuantities[product] = newQty;
-    this.updateCartModalUI();
   }
 
   updateCartModalUI() {
-    // Update quantity displays
+    // Update ebook quantity display
     const ebookQty = document.getElementById('cart-ebook-qty');
-    const hardcoverQty = document.getElementById('cart-hardcover-qty');
-    if (ebookQty) ebookQty.textContent = this.cartQuantities.ebook;
-    if (hardcoverQty) hardcoverQty.textContent = this.cartQuantities.hardcover;
+    if (ebookQty) ebookQty.textContent = this.cartEbookQty;
+
+    // Update hardcover quantity displays
+    this.hardcoverItems.forEach((item, idx) => {
+      if (!item) return;
+      const qtyEl = document.querySelector(`.hardcover-qty-value[data-index="${idx}"]`);
+      if (qtyEl) qtyEl.textContent = item.qty;
+    });
 
     // Calculate subtotal
-    const subtotal = 
-      (this.cartQuantities.ebook * this.productPrices.ebook) +
-      (this.cartQuantities.hardcover * this.productPrices.hardcover);
+    let subtotal = this.cartEbookQty * this.productPrices.ebook;
+    let totalHardcoverQty = 0;
     
+    this.hardcoverItems.forEach(item => {
+      if (item && item.qty > 0) {
+        subtotal += item.qty * item.price;
+        totalHardcoverQty += item.qty;
+      }
+    });
+
     const subtotalEl = document.getElementById('cart-modal-subtotal');
     if (subtotalEl) subtotalEl.textContent = formatPrice(subtotal);
 
+    // Show/hide "Add Another Size" button
+    const addAnotherBtn = document.getElementById('add-another-size-btn');
+    if (addAnotherBtn) {
+      // Show if at least one hardcover has qty > 0
+      if (totalHardcoverQty > 0) {
+        addAnotherBtn.classList.remove('hidden');
+      } else {
+        addAnotherBtn.classList.add('hidden');
+      }
+    }
+
     // Enable/disable add to cart button
     const addBtn = document.getElementById('add-to-cart-btn');
-    const hasItems = this.cartQuantities.ebook > 0 || this.cartQuantities.hardcover > 0;
+    const hasItems = this.cartEbookQty > 0 || totalHardcoverQty > 0;
     if (addBtn) {
       addBtn.disabled = !hasItems;
-      addBtn.textContent = hasItems 
-        ? `Add to Cart (${formatPrice(subtotal)})` 
-        : 'Add to Cart';
+      if (hasItems) {
+        addBtn.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
+          </svg>
+          Add to Cart (${formatPrice(subtotal)})
+        `;
+      } else {
+        addBtn.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
+          </svg>
+          Add to Cart
+        `;
+      }
     }
   }
 
@@ -2380,31 +2477,33 @@ export class CompositorUI {
     const addBtn = document.getElementById('add-to-cart-btn');
     if (addBtn) {
       addBtn.disabled = true;
-      addBtn.textContent = 'Adding...';
+      addBtn.innerHTML = 'Adding...';
     }
 
     try {
       // Add ebook if quantity > 0
-      if (this.cartQuantities.ebook > 0) {
+      if (this.cartEbookQty > 0) {
         await updateCartItem(this.projectId, 'ebook', {
-          quantity: this.cartQuantities.ebook,
+          quantity: this.cartEbookQty,
           action: 'add'
         });
       }
 
-      // Add hardcover if quantity > 0
-      if (this.cartQuantities.hardcover > 0) {
-        await updateCartItem(this.projectId, 'hardcover', {
-          size: this.hardcoverSize,
-          quantity: this.cartQuantities.hardcover,
-          action: 'add'
-        });
+      // Add each hardcover size with quantity > 0
+      for (const item of this.hardcoverItems) {
+        if (item && item.qty > 0) {
+          await updateCartItem(this.projectId, 'hardcover', {
+            size: item.size,
+            quantity: item.qty,
+            action: 'add'
+          });
+        }
       }
 
       // Close modal and show success
       this.closeAddToCartModal();
       
-      // Trigger cart refresh (the cart UI listens for this event)
+      // Trigger cart refresh
       window.dispatchEvent(new CustomEvent('cart-updated'));
 
     } catch (err) {
@@ -2413,7 +2512,12 @@ export class CompositorUI {
       
       if (addBtn) {
         addBtn.disabled = false;
-        addBtn.textContent = 'Add to Cart';
+        addBtn.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
+          </svg>
+          Add to Cart
+        `;
       }
     }
   }

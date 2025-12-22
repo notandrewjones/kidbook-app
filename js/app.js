@@ -131,9 +131,6 @@ async function initApp() {
   // Dashboard button (topbar)
   $("nav-dashboard")?.addEventListener("click", loadDashboard);
 
-  // Orders button (topbar)
-  $("nav-orders")?.addEventListener("click", loadOrdersPage);
-
   // Initialize router (parses URL and navigates to correct view)
   initRouter();
 }

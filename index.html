@@ -36,10 +36,6 @@
         <button id="nav-dashboard" class="btn btn-secondary nav-btn">
           <span>Dashboard</span>
         </button>
-
-        <button id="nav-orders" class="btn btn-secondary nav-btn">
-          <span>Orders</span>
-        </button>
       </div>
 
       <div class="topbar-right">
@@ -83,9 +79,8 @@
 
           <div id="account-menu" class="account-menu hidden">
             <button class="menu-item" id="login-btn">Log In</button>
-            <button class="menu-item hidden" id="profile-btn">My Profile</button>
             <button class="menu-item hidden" id="orders-menu-btn">My Orders</button>
-            <div class="menu-sep"></div>
+            <div class="menu-sep hidden" id="menu-sep-auth"></div>
             <button class="menu-item hidden" id="logout-btn">Log Out</button>
           </div>
         </div>
@@ -141,13 +136,6 @@
               <button class="seg-btn active" data-view="grid" id="view-grid">Grid</button>
               <button class="seg-btn" data-view="list" id="view-list">List</button>
             </div>
-
-            <select id="page-filter" class="select">
-              <option value="all">All pages</option>
-              <option value="missing">Missing</option>
-              <option value="ready">Ready</option>
-              <option value="errors">Errors</option>
-            </select>
           </div>
         </div>
 

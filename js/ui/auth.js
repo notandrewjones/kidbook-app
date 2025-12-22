@@ -361,7 +361,7 @@ function updateAccountUI({ user, isAuthenticated, isLoading }) {
   const loginBtn = $('login-btn');
   const logoutBtn = $('logout-btn');
   const ordersBtn = $('orders-menu-btn');
-  const profileBtn = $('profile-btn');
+  const menuSep = $('menu-sep-auth');
   const accountName = accountBtn?.querySelector('.account-name');
   const accountSub = accountBtn?.querySelector('.account-sub');
   const avatar = accountBtn?.querySelector('.avatar');
@@ -378,7 +378,7 @@ function updateAccountUI({ user, isAuthenticated, isLoading }) {
     if (loginBtn) loginBtn.classList.add('hidden');
     if (logoutBtn) logoutBtn.classList.remove('hidden');
     if (ordersBtn) ordersBtn.classList.remove('hidden');
-    if (profileBtn) profileBtn.classList.remove('hidden');
+    if (menuSep) menuSep.classList.remove('hidden');
   } else {
     if (avatar) avatar.textContent = 'A';
     if (accountName) accountName.textContent = 'Account';
@@ -386,7 +386,7 @@ function updateAccountUI({ user, isAuthenticated, isLoading }) {
     if (loginBtn) loginBtn.classList.remove('hidden');
     if (logoutBtn) logoutBtn.classList.add('hidden');
     if (ordersBtn) ordersBtn.classList.add('hidden');
-    if (profileBtn) profileBtn.classList.add('hidden');
+    if (menuSep) menuSep.classList.add('hidden');
   }
 }
 
