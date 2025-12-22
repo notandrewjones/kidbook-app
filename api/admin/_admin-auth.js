@@ -21,14 +21,6 @@ const ADMIN_EMAILS = [
 async function isAdmin(req, res) {
   const { user, error } = await getCurrentUser(req, res);
   
-  console.log("Admin auth check:", {
-    hasUser: !!user,
-    userEmail: user?.email,
-    adminEmails: ADMIN_EMAILS,
-    isMatch: user?.email ? ADMIN_EMAILS.includes(user.email) : false,
-    error
-  });
-  
   if (!user) {
     return { isAdmin: false, error: error || "Not authenticated" };
   }
