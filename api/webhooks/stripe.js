@@ -11,42 +11,55 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Stripe sends raw body, need to disable body parsing
+// Helper to get raw body as buffer
 async function getRawBody(req) {
   return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-    });
-    req.on("end", () => {
-      resolve(data);
-    });
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }
 
 async function handler(req, res) {
+  console.log(`Webhook received: ${req.method}`);
+  
+  // Allow POST only
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method Not Allowed" });
   }
 
   const sig = req.headers["stripe-signature"];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  console.log("Signature present:", !!sig);
+  console.log("Webhook secret configured:", !!webhookSecret);
 
   if (!webhookSecret) {
     console.error("STRIPE_WEBHOOK_SECRET not configured");
     return res.status(500).json({ error: "Webhook not configured" });
   }
 
+  if (!sig) {
+    console.error("No stripe-signature header");
+    return res.status(400).json({ error: "No signature" });
+  }
+
   let event;
-  let rawBody;
 
   try {
     // Get raw body for signature verification
-    rawBody = await getRawBody(req);
+    const rawBody = await getRawBody(req);
+    console.log("Raw body length:", rawBody.length);
     
     // Verify webhook signature
     event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    console.log("Event verified:", event.type);
   } catch (err) {
     console.error("Webhook signature verification failed:", err.message);
     return res.status(400).json({ error: `Webhook Error: ${err.message}` });
@@ -79,7 +92,6 @@ async function handler(req, res) {
   } catch (err) {
     console.error(`Error processing ${event.type}:`, err);
     // Return 200 to acknowledge receipt (Stripe will retry on 4xx/5xx)
-    // Log the error for investigation
     return res.status(200).json({ received: true, error: err.message });
   }
 }
@@ -229,7 +241,7 @@ async function handleRefund(charge) {
 
 module.exports = handler;
 
-// Disable body parsing - Stripe needs raw body for signature verification
+// Disable Vercel's body parsing - Stripe needs raw body for signature verification
 module.exports.config = {
   api: {
     bodyParser: false,
