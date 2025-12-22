@@ -544,6 +544,15 @@ export function renderStoryboard(project) {
     // Dynamic import the compositor to avoid loading it until needed
     const { CompositorUI, projectToBookData } = await import('../compositor/index.js');
     
+    // Update phase FIRST so CSS rules apply before compositor renders
+    document.body.dataset.phase = "compositor";
+    
+    // Update workspace title
+    const title = $("workspace-title");
+    const subtitle = $("workspace-subtitle");
+    if (title) title.textContent = "Book Layout";
+    if (subtitle) subtitle.textContent = "Choose a template and export your book";
+    
     // Convert project to book data format
     const bookData = projectToBookData(project);
     
@@ -564,15 +573,6 @@ export function renderStoryboard(project) {
     compositor.onTemplateChange = (templateId) => {
       console.log("Template changed to:", templateId);
     };
-    
-    // Update phase
-    document.body.dataset.phase = "compositor";
-    
-    // Update workspace title
-    const title = $("workspace-title");
-    const subtitle = $("workspace-subtitle");
-    if (title) title.textContent = "Book Layout";
-    if (subtitle) subtitle.textContent = "Choose a template and export your book";
   });
 
   initUploadModal();
