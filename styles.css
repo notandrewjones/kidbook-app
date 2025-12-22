@@ -786,6 +786,7 @@ body::before {
    ============================================= */
 body[data-phase="storyboard"] .main {
   grid-template-columns: 1fr;
+  padding: 18px;
 }
 
 body[data-phase="storyboard"] .panel {
@@ -797,12 +798,14 @@ body[data-phase="storyboard"] .workspace-body {
   grid-template-columns: 340px 1fr;
   grid-template-rows: 1fr;
   min-height: 0;
+  gap: 0;
 }
 
 body[data-phase="storyboard"] .character-panel {
   display: block;
   grid-column: 1;
   grid-row: 1;
+  padding: 20px;
 }
 
 body[data-phase="storyboard"] #results {
@@ -811,6 +814,16 @@ body[data-phase="storyboard"] #results {
   width: 100%;
   min-width: 0;
   overflow: auto;
+  padding: 20px 24px;
+}
+
+/* Storyboard top actions bar */
+.storyboard-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  align-items: center;
 }
 
 .workspace-title h2{margin:0}
@@ -856,7 +869,13 @@ body[data-phase="storyboard"] #results {
 .grid{
   display:grid;
   grid-template-columns: repeat( auto-fill, minmax(220px, 1fr) );
-  gap: 14px;
+  gap: 16px;
+}
+
+/* Storyboard grid - slightly wider cards */
+body[data-phase="storyboard"] .grid {
+  grid-template-columns: repeat( auto-fill, minmax(240px, 1fr) );
+  gap: 18px;
 }
 
 /* New Story Card */

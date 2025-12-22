@@ -382,7 +382,7 @@ export function renderStoryboard(project) {
 
   // Header actions - conditionally enable based on protagonist
   const topActions = `
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+    <div class="storyboard-actions">
       ${hasProtagonist ? `
         <button id="generate-illustrations-btn" class="btn btn-primary">Generate All Illustrations</button>
       ` : `
