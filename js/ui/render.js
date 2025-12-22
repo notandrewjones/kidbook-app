@@ -551,6 +551,11 @@ export function renderStoryboard(project) {
     const compositor = new CompositorUI("results");
     compositor.initialize(bookData);
     
+    // Set the project ID for checkout operations
+    if (project.id) {
+      compositor.setProjectId(project.id);
+    }
+    
     // Set up callbacks
     compositor.onExportComplete = (format) => {
       showToast("Export complete", `Your book has been exported as ${format.toUpperCase()}`, "success");

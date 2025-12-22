@@ -2253,6 +2253,15 @@ export class CompositorUI {
   // ============================================
 
   async openCheckoutModal() {
+    // Try to get projectId from URL if not already set
+    if (!this.projectId) {
+      const pathMatch = window.location.pathname.match(/\/p\/([^\/]+)/);
+      if (pathMatch) {
+        this.projectId = pathMatch[1];
+        console.log('[Checkout] Got projectId from URL:', this.projectId);
+      }
+    }
+    
     console.log('[Checkout] Opening modal, projectId:', this.projectId);
     
     const modal = document.getElementById('checkout-modal');
