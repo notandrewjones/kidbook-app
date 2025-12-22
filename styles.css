@@ -569,9 +569,34 @@ body::before {
   padding: 10px 12px;
   cursor:pointer;
   transition: transform var(--speed) var(--ease), background var(--speed) var(--ease);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .icon-btn:hover{transform: translateY(-1px); background: rgba(255,255,255,0.09);}
 .icon-btn:active{transform: translateY(0px) scale(0.98);}
+
+/* SVG icons */
+.icon-svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.btn-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.empty-icon svg {
+  width: 48px;
+  height: 48px;
+  stroke: var(--brand);
+}
+.search-result-thumb svg {
+  width: 24px;
+  height: 24px;
+  stroke: var(--muted);
+}
 
 /* Account menu */
 .account{position:relative}

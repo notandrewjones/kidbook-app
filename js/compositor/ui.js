@@ -150,15 +150,13 @@ export class CompositorUI {
             </button>
             <div class="topbar-divider"></div>
             <button id="undo-btn" class="topbar-btn" title="Undo (Ctrl+Z)" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 7v6h6"/>
-                <path d="M3 13a9 9 0 1 0 2.5-6.5L3 7"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
               </svg>
             </button>
             <button id="redo-btn" class="topbar-btn" title="Redo (Ctrl+Shift+Z)" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 7v6h-6"/>
-                <path d="M21 13a9 9 0 1 1-2.5-6.5L21 7"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3" />
               </svg>
             </button>
             <div class="topbar-divider"></div>
