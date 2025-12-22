@@ -1,7 +1,7 @@
 // js/ui/cart.js
 // Shopping cart UI component
 
-import { getCart, updateCartItem, removeCartItem, clearCart, checkoutCart, formatPrice } from '../api/cart.js';
+import { getCart, updateCartItem, removeCartItem, checkoutCart, formatPrice } from '../api/cart.js';
 
 let cartData = { items: [], itemCount: 0, totalCents: 0 };
 let isCartOpen = false;
@@ -15,8 +15,8 @@ export function initCart() {
   const topbarRight = document.querySelector('.topbar-right');
   if (!topbarRight) return;
 
-  // Find the theme toggle to insert before it
-  const themeToggle = document.getElementById('theme-toggle');
+  // Find the account button to insert before it
+  const accountBtn = document.querySelector('.account');
   
   const cartWrap = document.createElement('div');
   cartWrap.className = 'cart-wrap';
@@ -43,13 +43,12 @@ export function initCart() {
         <button id="cart-checkout-btn" class="cart-checkout-btn">
           Checkout
         </button>
-        <button id="cart-clear-btn" class="cart-clear-btn">Clear Cart</button>
       </div>
     </div>
   `;
 
-  if (themeToggle) {
-    topbarRight.insertBefore(cartWrap, themeToggle);
+  if (accountBtn) {
+    topbarRight.insertBefore(cartWrap, accountBtn);
   } else {
     topbarRight.appendChild(cartWrap);
   }
@@ -72,7 +71,6 @@ function bindCartEvents() {
   const cartClose = document.getElementById('cart-close');
   const cartDropdown = document.getElementById('cart-dropdown');
   const checkoutBtn = document.getElementById('cart-checkout-btn');
-  const clearBtn = document.getElementById('cart-clear-btn');
 
   // Toggle cart
   cartBtn?.addEventListener('click', (e) => {
@@ -94,14 +92,6 @@ function bindCartEvents() {
 
   // Checkout button
   checkoutBtn?.addEventListener('click', handleCheckout);
-
-  // Clear cart
-  clearBtn?.addEventListener('click', async () => {
-    if (confirm('Clear all items from cart?')) {
-      await clearCart();
-      refreshCart();
-    }
-  });
 }
 
 /**
