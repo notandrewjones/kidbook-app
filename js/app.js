@@ -17,6 +17,7 @@ import { initAuthUI } from './ui/auth.js';
 import { closeNewStoryModal } from './ui/render.js';
 import { initQueueUI } from './ui/queue.js';
 import { initCart, refreshCart } from './ui/cart.js';
+import { initOrderConfirmation } from './ui/order-confirmation.js';
 
 // =====================================================
 // App Initialization
@@ -57,6 +58,7 @@ async function initApp() {
   initSearch();
   initQueueUI();
   initCart();
+  initOrderConfirmation();
   
   // Initialize auth UI (login/logout buttons, etc.)
   initAuthUI();

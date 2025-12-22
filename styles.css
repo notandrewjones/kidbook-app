@@ -2544,3 +2544,258 @@ body[data-phase="compositor"] .compositor-wrap {
     display: none;
   }
 }
+
+
+/* =============================================
+   ORDER CONFIRMATION MODAL
+   ============================================= */
+
+.order-modal-dialog {
+  max-width: 420px;
+  width: 90%;
+  background: #0b0f19;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  overflow: hidden;
+}
+
+.order-modal-content {
+  padding: 32px;
+  text-align: center;
+}
+
+.order-success-icon {
+  width: 200px;
+  height: 130px;
+  margin: 0 auto 24px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Truck Animation - Scoped with order- prefix */
+.order-truck-wrapper {
+  width: 200px;
+  height: 100px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  align-items: center;
+  justify-content: flex-end;
+  overflow-x: hidden;
+}
+
+.order-truck-body {
+  width: 130px;
+  height: fit-content;
+  margin-bottom: 6px;
+  animation: orderTruckMotion 1s linear infinite;
+}
+
+.order-truck-body svg {
+  width: 100%;
+  height: auto;
+}
+
+@keyframes orderTruckMotion {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(3px); }
+  100% { transform: translateY(0px); }
+}
+
+.order-truck-tires {
+  width: 130px;
+  height: fit-content;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 10px 0px 15px;
+  position: absolute;
+  bottom: 0;
+}
+
+.order-truck-tires svg {
+  width: 24px;
+}
+
+.order-road {
+  width: 100%;
+  height: 1.5px;
+  background-color: #282828;
+  position: relative;
+  bottom: 0;
+  align-self: flex-end;
+  border-radius: 3px;
+}
+
+.order-road::before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 100%;
+  background-color: #282828;
+  right: -50%;
+  border-radius: 3px;
+  animation: orderRoadAnimation 1.4s linear infinite;
+  border-left: 10px solid #0b0f19;
+}
+
+.order-road::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 100%;
+  background-color: #282828;
+  right: -65%;
+  border-radius: 3px;
+  animation: orderRoadAnimation 1.4s linear infinite;
+  border-left: 4px solid #0b0f19;
+}
+
+.order-lamp-post {
+  position: absolute;
+  bottom: 0;
+  right: -90%;
+  height: 90px;
+  animation: orderRoadAnimation 1.4s linear infinite;
+  fill: #4b5563;
+}
+
+@keyframes orderRoadAnimation {
+  0% { transform: translateX(0px); }
+  100% { transform: translateX(-350px); }
+}
+
+/* Success Checkmark - appears after animation completes */
+.order-success-checkmark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 80px;
+  height: 80px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.order-success-checkmark.show {
+  animation: orderCheckmarkAppear 0.5s ease-out forwards;
+}
+
+.order-checkmark-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.order-checkmark-circle {
+  stroke: #22c55e;
+  stroke-width: 2;
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+}
+
+.order-success-checkmark.show .order-checkmark-circle {
+  animation: orderCheckmarkCircle 0.6s ease-out 0.2s forwards;
+}
+
+.order-checkmark-check {
+  stroke: #22c55e;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+}
+
+.order-success-checkmark.show .order-checkmark-check {
+  animation: orderCheckmarkStroke 0.3s ease-out 0.6s forwards;
+}
+
+@keyframes orderCheckmarkAppear {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes orderCheckmarkCircle {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes orderCheckmarkStroke {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Modal text styles */
+.order-modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.order-modal-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+
+.order-details {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.order-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.order-detail-row:not(:last-child) {
+  border-bottom: 1px solid var(--stroke);
+}
+
+.order-detail-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.order-detail-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.order-status-badge {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(109, 40, 217, 0.2));
+  color: #a78bfa;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.order-modal-info {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+/* Hide truck wrapper when checkmark is shown */
+.order-success-icon.complete .order-truck-wrapper {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
