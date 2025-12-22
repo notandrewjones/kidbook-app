@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Portal - KidBook Creator</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --panel: #12121a;
+      --stroke: rgba(255,255,255,0.08);
+      --text: #f0f0f5;
+      --muted: #888;
+      --accent: #8b5cf6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .admin-header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--stroke);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .admin-title {
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-title span {
+      background: var(--accent);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .admin-user {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .admin-main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .filter-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    select, input, textarea {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Orders Table */
+    .orders-table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .orders-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .orders-table th,
+    .orders-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .orders-table th {
+      background: rgba(255,255,255,0.02);
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .orders-table tr:hover {
+      background: rgba(255,255,255,0.02);
+    }
+
+    .orders-table tr.has-cancellation-request {
+      background: rgba(245, 158, 11, 0.1);
+    }
+
+    .order-id {
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .status-paid { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .status-refunded { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+    .status-pending { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+    .status-processing { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+    .status-shipped { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+    .status-delivered { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .status-cancelled { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+    .cancellation-flag {
+      background: var(--warning);
+      color: black;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #7c3aed;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: var(--text);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 90vh;
+      overflow: auto;
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--stroke);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--stroke);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 2000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--danger); }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--stroke);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 12px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Auth screen */
+    .auth-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .auth-screen h1 {
+      font-size: 24px;
+    }
+
+    .auth-screen p {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="auth-screen">
+      <h1>🔐 Admin Portal</h1>
+      <p>Checking authentication...</p>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let orders = [];
+    let currentOrder = null;
+    let filters = {
+      status: '',
+      fulfillment_status: '',
+      has_cancellation_request: '',
+    };
+
+    // Check auth and load page
+    async function init() {
+      try {
+        const res = await fetch('/api/admin/orders?limit=1', { credentials: 'include' });
+        if (res.status === 403) {
+          showAuthError();
+          return;
+        }
+        if (!res.ok) throw new Error('Auth check failed');
+        
+        renderApp();
+        loadOrders();
+      } catch (err) {
+        showAuthError();
+      }
+    }
+
+    function showAuthError() {
+      document.getElementById('app').innerHTML = `
+        <div class="auth-screen">
+          <h1>🔒 Access Denied</h1>
+          <p>You must be logged in as an admin to access this page.</p>
+          <a href="/" class="btn btn-primary">Go to Main Site</a>
+        </div>
+      `;
+    }
+
+    function renderApp() {
+      document.getElementById('app').innerHTML = `
+        <header class="admin-header">
+          <div class="admin-title">
+            KidBook Creator <span>Admin</span>
+          </div>
+          <div class="admin-user">Order Management Portal</div>
+        </header>
+        
+        <main class="admin-main">
+          <div class="filters">
+            <div class="filter-group">
+              <span class="filter-label">Payment Status</span>
+              <select id="filter-status" onchange="updateFilter('status', this.value)">
+                <option value="">All</option>
+                <option value="paid">Paid</option>
+                <option value="refunded">Refunded</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Fulfillment</span>
+              <select id="filter-fulfillment" onchange="updateFilter('fulfillment_status', this.value)">
+                <option value="">All</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="printed">Printed</option>
+                <option value="shipped">Shipped</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Cancellation Requests</span>
+              <select id="filter-cancellation" onchange="updateFilter('has_cancellation_request', this.value)">
+                <option value="">All</option>
+                <option value="true">Has Request</option>
+              </select>
+            </div>
+            <div class="filter-group" style="justify-content: flex-end;">
+              <button class="btn btn-secondary" onclick="loadOrders()">🔄 Refresh</button>
+            </div>
+          </div>
+
+          <div class="stats" id="stats"></div>
+
+          <div class="orders-table-wrap">
+            <table class="orders-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Product</th>
+                  <th>Amount</th>
+                  <th>Payment</th>
+                  <th>Fulfillment</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body">
+                <tr><td colspan="8" class="loading">Loading orders</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </main>
+
+        <!-- Edit Order Modal -->
+        <div class="modal-overlay" id="edit-modal">
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-title">Update Order</div>
+              <button class="modal-close" onclick="closeModal('edit-modal')">&times;</button>
+            </div>
+            <div class="modal-body" id="edit-modal-body"></div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
+              <button class="btn btn-primary" onclick="saveOrderUpdate()">Save Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Refund Modal -->
+        <div class="modal-overlay" id="refund-modal">
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-title">Process Refund</div>
+              <button class="modal-close" onclick="closeModal('refund-modal')">&times;</button>
+            </div>
+            <div class="modal-body" id="refund-modal-body"></div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeModal('refund-modal')">Cancel</button>
+              <button class="btn btn-danger" onclick="processRefund()">Process Refund</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+      `;
+    }
+
+    function updateFilter(key, value) {
+      filters[key] = value;
+      loadOrders();
+    }
+
+    async function loadOrders() {
+      const tbody = document.getElementById('orders-body');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading orders</td></tr>';
+
+      try {
+        const params = new URLSearchParams();
+        params.set('limit', '100');
+        if (filters.status) params.set('status', filters.status);
+        if (filters.fulfillment_status) params.set('fulfillment_status', filters.fulfillment_status);
+        if (filters.has_cancellation_request) params.set('has_cancellation_request', filters.has_cancellation_request);
+
+        const res = await fetch(`/api/admin/orders?${params}`, { credentials: 'include' });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error);
+        
+        orders = data.orders;
+        renderOrders();
+        renderStats();
+      } catch (err) {
+        showToast('Failed to load orders: ' + err.message, 'error');
+      }
+    }
+
+    function renderStats() {
+      const stats = document.getElementById('stats');
+      const paid = orders.filter(o => o.status === 'paid').length;
+      const pendingFulfillment = orders.filter(o => o.status === 'paid' && o.fulfillmentStatus === 'pending').length;
+      const cancellationRequests = orders.filter(o => o.cancellationRequestedAt).length;
+      const totalRevenue = orders.filter(o => o.status === 'paid').reduce((sum, o) => sum + o.amountCents, 0);
+
+      stats.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${orders.length}</div>
+          <div class="stat-label">Total Orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${pendingFulfillment}</div>
+          <div class="stat-label">Pending Fulfillment</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--warning)">${cancellationRequests}</div>
+          <div class="stat-label">Cancellation Requests</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--success)">$${(totalRevenue / 100).toFixed(2)}</div>
+          <div class="stat-label">Total Revenue</div>
+        </div>
+      `;
+    }
+
+    function renderOrders() {
+      const tbody = document.getElementById('orders-body');
+      
+      if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--muted)">No orders found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = orders.map(order => `
+        <tr class="${order.cancellationRequestedAt ? 'has-cancellation-request' : ''}">
+          <td>
+            <span class="order-id">${order.id.substring(0, 8).toUpperCase()}</span>
+            ${order.cancellationRequestedAt ? '<span class="cancellation-flag">CANCEL REQ</span>' : ''}
+          </td>
+          <td>${new Date(order.createdAt).toLocaleDateString()}</td>
+          <td>${order.userEmail}</td>
+          <td>${order.productDisplayName}${order.size ? ` (${order.size})` : ''}</td>
+          <td>$${(order.amountCents / 100).toFixed(2)}</td>
+          <td><span class="status-badge status-${order.status}">${order.status}</span></td>
+          <td><span class="status-badge status-${order.fulfillmentStatus}">${order.fulfillmentStatus}</span></td>
+          <td>
+            <div class="actions">
+              <button class="btn btn-sm btn-secondary" onclick="openEditModal('${order.id}')">Edit</button>
+              ${order.status === 'paid' ? `<button class="btn btn-sm btn-danger" onclick="openRefundModal('${order.id}')">Refund</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openEditModal(orderId) {
+      currentOrder = orders.find(o => o.id === orderId);
+      if (!currentOrder) return;
+
+      document.getElementById('edit-modal-body').innerHTML = `
+        <div class="form-group">
+          <label>Order ID</label>
+          <input type="text" value="${currentOrder.id}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Customer</label>
+          <input type="text" value="${currentOrder.userEmail}" disabled />
+        </div>
+        ${currentOrder.cancellationRequestedAt ? `
+          <div class="form-group" style="background: rgba(245,158,11,0.1); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+            <strong style="color: var(--warning)">⚠️ Cancellation Requested</strong>
+            <p style="margin: 8px 0 0; font-size: 13px; color: var(--muted)">
+              Reason: ${currentOrder.cancellationRequestedReason || 'No reason provided'}
+            </p>
+          </div>
+        ` : ''}
+        <div class="form-group">
+          <label>Fulfillment Status</label>
+          <select id="edit-fulfillment-status">
+            <option value="pending" ${currentOrder.fulfillmentStatus === 'pending' ? 'selected' : ''}>Pending</option>
+            <option value="processing" ${currentOrder.fulfillmentStatus === 'processing' ? 'selected' : ''}>Processing</option>
+            <option value="printed" ${currentOrder.fulfillmentStatus === 'printed' ? 'selected' : ''}>Printed</option>
+            <option value="shipped" ${currentOrder.fulfillmentStatus === 'shipped' ? 'selected' : ''}>Shipped</option>
+            <option value="delivered" ${currentOrder.fulfillmentStatus === 'delivered' ? 'selected' : ''}>Delivered</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Shipping Carrier</label>
+            <input type="text" id="edit-carrier" value="${currentOrder.shippingCarrier || ''}" placeholder="e.g., USPS, UPS, FedEx" />
+          </div>
+          <div class="form-group">
+            <label>Tracking Number</label>
+            <input type="text" id="edit-tracking" value="${currentOrder.trackingNumber || ''}" placeholder="Tracking #" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Tracking URL</label>
+          <input type="text" id="edit-tracking-url" value="${currentOrder.trackingUrl || ''}" placeholder="https://..." />
+        </div>
+        <div class="form-group">
+          <label>Estimated Delivery Date</label>
+          <input type="date" id="edit-delivery-date" value="${currentOrder.estimatedDeliveryDate || ''}" />
+        </div>
+      `;
+
+      document.getElementById('edit-modal').classList.add('active');
+    }
+
+    async function saveOrderUpdate() {
+      if (!currentOrder) return;
+
+      const data = {
+        orderId: currentOrder.id,
+        fulfillmentStatus: document.getElementById('edit-fulfillment-status').value,
+        shippingCarrier: document.getElementById('edit-carrier').value,
+        trackingNumber: document.getElementById('edit-tracking').value,
+        trackingUrl: document.getElementById('edit-tracking-url').value,
+        estimatedDeliveryDate: document.getElementById('edit-delivery-date').value || null,
+      };
+
+      try {
+        const res = await fetch('/api/admin/order-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        });
+
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
+
+        showToast('Order updated successfully', 'success');
+        closeModal('edit-modal');
+        loadOrders();
+      } catch (err) {
+        showToast('Failed to update: ' + err.message, 'error');
+      }
+    }
+
+    function openRefundModal(orderId) {
+      currentOrder = orders.find(o => o.id === orderId);
+      if (!currentOrder) return;
+
+      document.getElementById('refund-modal-body').innerHTML = `
+        <div class="form-group">
+          <label>Order ID</label>
+          <input type="text" value="${currentOrder.id}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Customer</label>
+          <input type="text" value="${currentOrder.userEmail}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="text" value="$${(currentOrder.amountCents / 100).toFixed(2)}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Refund Reason</label>
+          <select id="refund-reason">
+            <option value="requested_by_customer">Requested by Customer</option>
+            <option value="duplicate">Duplicate Order</option>
+            <option value="fraudulent">Fraudulent</option>
+          </select>
+        </div>
+        <div style="background: rgba(239,68,68,0.1); padding: 12px; border-radius: 8px; margin-top: 16px;">
+          <strong style="color: var(--danger)">⚠️ Warning</strong>
+          <p style="margin: 8px 0 0; font-size: 13px; color: var(--muted)">
+            This will process a full refund through Stripe and mark the order as cancelled. This action cannot be undone.
+          </p>
+        </div>
+      `;
+
+      document.getElementById('refund-modal').classList.add('active');
+    }
+
+    async function processRefund() {
+      if (!currentOrder) return;
+
+      const reason = document.getElementById('refund-reason').value;
+
+      try {
+        const res = await fetch('/api/admin/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            orderId: currentOrder.id,
+            reason: reason,
+          }),
+        });
+
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || result.message);
+
+        showToast('Refund processed successfully', 'success');
+        closeModal('refund-modal');
+        loadOrders();
+      } catch (err) {
+        showToast('Refund failed: ' + err.message, 'error');
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+      currentOrder = null;
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast show ' + type;
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

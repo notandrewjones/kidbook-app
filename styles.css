@@ -3264,3 +3264,12 @@ body[data-phase="compositor"] .compositor-wrap {
     gap: 12px;
   }
 }
+
+/* Cancelled/Refunded order cards - muted appearance */
+.order-card-cancelled {
+  opacity: 0.7;
+}
+
+.order-card-cancelled .order-product-thumb img {
+  filter: grayscale(50%);
+}

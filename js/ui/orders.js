@@ -92,13 +92,16 @@ function renderOrdersList(orders) {
  * Render a single order card
  */
 function renderOrderCard(order) {
-  const statusInfo = getFulfillmentStatusInfo(order.fulfillmentStatus);
+  const statusInfo = getFulfillmentStatusInfo(order.fulfillmentStatus, order.status);
   const hasTracking = order.trackingNumber && order.trackingUrl;
   const isDelivered = order.fulfillmentStatus === 'delivered';
-  const canCancel = !['shipped', 'delivered', 'cancelled'].includes(order.fulfillmentStatus) && !order.cancellationRequestedAt;
+  const isRefunded = order.status === 'refunded';
+  const isCancelled = order.fulfillmentStatus === 'cancelled' || isRefunded;
+  const canCancel = !isCancelled && !['shipped', 'delivered'].includes(order.fulfillmentStatus) && !order.cancellationRequestedAt;
+  const canReorder = isDelivered || isCancelled; // Can reorder if delivered or cancelled/refunded
 
   return `
-    <div class="order-card" data-order-id="${order.id}">
+    <div class="order-card ${isCancelled ? 'order-card-cancelled' : ''}" data-order-id="${order.id}">
       <div class="order-card-header">
         <div class="order-card-info">
           <span class="order-number">Order #${order.id.substring(0, 8).toUpperCase()}</span>
@@ -127,7 +130,7 @@ function renderOrderCard(order) {
           </div>
         </div>
 
-        ${hasTracking ? `
+        ${hasTracking && !isCancelled ? `
           <div class="order-tracking">
             <div class="tracking-label">
               <span class="tracking-carrier">${order.shippingCarrier || 'Carrier'}</span>
@@ -158,10 +161,12 @@ function renderOrderCard(order) {
         <button class="btn btn-sm btn-ghost order-details-btn" data-order-id="${order.id}">
           View Details
         </button>
-        ${isDelivered ? `
+        ${canReorder ? `
           <button class="btn btn-sm btn-primary order-reorder-btn" data-order-id="${order.id}">
             Reorder
           </button>
+        ` : ''}
+        ${(isDelivered || isCancelled) ? `
           <button class="btn btn-sm btn-secondary order-support-btn" data-order-id="${order.id}">
             Get Help
           </button>

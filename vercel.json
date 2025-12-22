@@ -5,6 +5,7 @@
     { "source": "/api/:path*", "destination": "/api/:path*" },
     { "source": "/dashboard", "destination": "/index.html" },
     { "source": "/orders", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/admin.html" },
     { "source": "/reset-password", "destination": "/index.html" },
     { "source": "/p/:projectId", "destination": "/index.html" },
     { "source": "/p/:projectId/:phase", "destination": "/index.html" },

@@ -103,7 +103,17 @@ export async function createSupportTicket(orderId, subject, message, category = 
 /**
  * Get fulfillment status display info
  */
-export function getFulfillmentStatusInfo(status) {
+export function getFulfillmentStatusInfo(status, paymentStatus = 'paid') {
+  // If payment was refunded, show that status
+  if (paymentStatus === 'refunded') {
+    return {
+      label: 'Refunded',
+      color: '#6b7280',
+      icon: '💰',
+      description: 'This order has been refunded',
+    };
+  }
+
   const statusMap = {
     pending: {
       label: 'Processing',
