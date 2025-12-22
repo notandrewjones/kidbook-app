@@ -18,6 +18,7 @@ import { closeNewStoryModal } from './ui/render.js';
 import { initQueueUI } from './ui/queue.js';
 import { initCart, refreshCart } from './ui/cart.js';
 import { initOrderConfirmation } from './ui/order-confirmation.js';
+import { loadOrdersPage } from './ui/orders.js';
 
 // =====================================================
 // App Initialization
@@ -49,6 +50,7 @@ async function initApp() {
   setRouteHandlers({
     dashboard: loadDashboard,
     project: openProjectById,
+    orders: loadOrdersPage,
   });
 
   // Initialize UI components
@@ -128,6 +130,9 @@ async function initApp() {
 
   // Dashboard button (topbar)
   $("nav-dashboard")?.addEventListener("click", loadDashboard);
+
+  // Orders button (topbar)
+  $("nav-orders")?.addEventListener("click", loadOrdersPage);
 
   // Initialize router (parses URL and navigates to correct view)
   initRouter();

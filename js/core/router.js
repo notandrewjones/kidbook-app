@@ -6,6 +6,7 @@ import { state } from './state.js';
 // Route patterns
 const ROUTES = {
   dashboard: /^\/(?:dashboard)?$/,
+  orders: /^\/orders$/,
   project: /^\/p\/([a-zA-Z0-9-]+)$/,
   projectPhase: /^\/p\/([a-zA-Z0-9-]+)\/(storyboard|ideas|select-idea|compositor)$/,
 };
@@ -14,6 +15,7 @@ const ROUTES = {
 let routeHandlers = {
   dashboard: null,
   project: null,
+  orders: null,
 };
 
 // Register route handlers
@@ -28,6 +30,11 @@ export function parseRoute(path) {
   // Dashboard: / or /dashboard
   if (ROUTES.dashboard.test(path)) {
     return { route: "dashboard", projectId: null, phase: "dashboard" };
+  }
+
+  // Orders: /orders
+  if (ROUTES.orders.test(path)) {
+    return { route: "orders", projectId: null, phase: "orders" };
   }
 
   // Project with phase: /p/:projectId/:phase
@@ -48,6 +55,10 @@ export function parseRoute(path) {
 
 // Build URL path from phase and projectId
 export function buildPath(phase, projectId = null) {
+  if (phase === "orders") {
+    return "/orders";
+  }
+
   if (!projectId || phase === "dashboard") {
     return "/dashboard";
   }
@@ -91,6 +102,8 @@ export function routeFromCurrentURL() {
 
   if (parsed.route === "dashboard") {
     routeHandlers.dashboard?.();
+  } else if (parsed.route === "orders") {
+    routeHandlers.orders?.();
   } else if (parsed.projectId) {
     routeHandlers.project?.(parsed.projectId, parsed.phase);
   } else {
