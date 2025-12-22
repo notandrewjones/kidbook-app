@@ -2357,6 +2357,9 @@ export class CompositorUI {
     if (!this.purchaseStatus?.products) return;
 
     const { ebook, hardcover } = this.purchaseStatus.products;
+    // This method is no longer used - cart modal handles product display
+  }
+
   // Dropdown management
   toggleDropdown(dropdownId) {
     const dropdown = document.getElementById(dropdownId);
