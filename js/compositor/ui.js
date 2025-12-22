@@ -12,6 +12,14 @@ import {
 import { PageRenderer, PAGE_DIMENSIONS } from './renderer.js';
 import { bookExporter, EXPORT_FORMATS } from './exporter.js';
 import { state } from '../core/state.js';
+import { 
+  getBookPurchaseStatus, 
+  initEmbeddedCheckout, 
+  loadStripe,
+  checkPaymentReturn,
+  clearPaymentParams,
+  formatPrice
+} from '../api/checkout.js';
 
 export class CompositorUI {
   constructor(containerId) {
@@ -74,6 +82,12 @@ export class CompositorUI {
     this.undoStack = [];
     this.redoStack = [];
     this.maxUndoSteps = 50;
+    
+    // Checkout state
+    this.purchaseStatus = null;
+    this.selectedProduct = null;
+    this.stripeCheckout = null;
+    this.projectId = null;
     
     // Callbacks
     this.onExportComplete = null;
@@ -282,11 +296,11 @@ export class CompositorUI {
               </div>
             </div>
             
-            <button id="export-btn" class="topbar-btn topbar-btn-primary">
+            <button id="checkout-btn" class="topbar-btn topbar-btn-primary">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
               </svg>
-              <span>Export</span>
+              <span>Get My Book</span>
             </button>
           </div>
         </header>
@@ -351,7 +365,78 @@ export class CompositorUI {
           </main>
         </div>
 
-        <!-- Export Modal -->
+        <!-- Checkout Modal -->
+        <div id="checkout-modal" class="modal hidden">
+          <div class="modal-backdrop"></div>
+          <div class="modal-dialog modal-dialog-lg">
+            <div class="modal-header">
+              <h3 id="checkout-modal-title">Get Your Book</h3>
+              <button id="close-checkout-modal" class="modal-close">×</button>
+            </div>
+            <div class="modal-body">
+              <!-- Step 1: Product Selection -->
+              <div id="checkout-step-products" class="checkout-step">
+                <p class="checkout-subtitle">Choose your format</p>
+                <div class="product-options-grid">
+                  <div class="product-option" data-product="ebook">
+                    <div class="product-option-badge">Digital</div>
+                    <div class="product-option-icon">📱</div>
+                    <div class="product-option-name">Ebook</div>
+                    <div class="product-option-desc">High-quality PDF download</div>
+                    <div class="product-option-price" id="ebook-price">$9.99</div>
+                    <div class="product-option-status" id="ebook-status"></div>
+                  </div>
+                  <div class="product-option" data-product="hardcover">
+                    <div class="product-option-badge">Print</div>
+                    <div class="product-option-icon">📚</div>
+                    <div class="product-option-name">Hardcover</div>
+                    <div class="product-option-desc">Beautiful printed book</div>
+                    <div class="product-option-price" id="hardcover-price">$29.99</div>
+                    <div class="product-option-status" id="hardcover-status"></div>
+                  </div>
+                </div>
+                <div id="checkout-error" class="checkout-error hidden"></div>
+              </div>
+              
+              <!-- Step 2: Embedded Payment -->
+              <div id="checkout-step-payment" class="checkout-step hidden">
+                <button id="checkout-back-btn" class="checkout-back-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                  Back to products
+                </button>
+                <div class="checkout-payment-header">
+                  <span id="checkout-product-name">Ebook</span>
+                  <span id="checkout-product-price">$9.99</span>
+                </div>
+                <div id="checkout-embed-container" class="checkout-embed-container">
+                  <div class="checkout-loading">
+                    <div class="spinner"></div>
+                    <span>Loading payment form...</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Step 3: Success -->
+              <div id="checkout-step-success" class="checkout-step hidden">
+                <div class="checkout-success">
+                  <div class="checkout-success-icon">✓</div>
+                  <h4>Payment Successful!</h4>
+                  <p>Your book is ready to download.</p>
+                  <button id="checkout-download-btn" class="checkout-download-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Download Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Legacy Export Modal (for unlocked books) -->
         <div id="export-modal" class="modal hidden">
           <div class="modal-backdrop"></div>
           <div class="modal-dialog">
@@ -2038,17 +2123,45 @@ export class CompositorUI {
       this.renderThumbnails();
     });
 
-    document.getElementById('export-btn')?.addEventListener('click', () => {
-      document.getElementById('export-modal')?.classList.remove('hidden');
+    // Checkout button - opens checkout modal
+    document.getElementById('checkout-btn')?.addEventListener('click', () => {
+      this.openCheckoutModal();
     });
 
+    document.getElementById('close-checkout-modal')?.addEventListener('click', () => {
+      this.closeCheckoutModal();
+    });
+
+    // Product selection
+    document.querySelectorAll('.product-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const product = opt.dataset.product;
+        this.selectProduct(product);
+      });
+    });
+
+    // Back button in payment step
+    document.getElementById('checkout-back-btn')?.addEventListener('click', () => {
+      this.showCheckoutStep('products');
+    });
+
+    // Download button after successful purchase
+    document.getElementById('checkout-download-btn')?.addEventListener('click', () => {
+      this.closeCheckoutModal();
+      this.openExportModal();
+    });
+
+    // Legacy export modal handlers
     document.getElementById('close-export-modal')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.add('hidden');
     });
 
-    document.querySelector('.modal-backdrop')?.addEventListener('click', () => {
+    document.querySelector('#export-modal .modal-backdrop')?.addEventListener('click', () => {
       document.getElementById('export-modal')?.classList.add('hidden');
-      document.getElementById('ab-confirm-modal')?.classList.add('hidden');
+    });
+
+    document.querySelector('#checkout-modal .modal-backdrop')?.addEventListener('click', () => {
+      this.closeCheckoutModal();
     });
 
     document.querySelectorAll('.export-option').forEach(opt => {
@@ -2130,6 +2243,203 @@ export class CompositorUI {
     } finally {
       this.isExporting = false;
     }
+  }
+
+  // ============================================
+  // Checkout & Payment Methods
+  // ============================================
+
+  async openCheckoutModal() {
+    const modal = document.getElementById('checkout-modal');
+    if (!modal) return;
+
+    // Reset to products step
+    this.showCheckoutStep('products');
+    this.selectedProduct = null;
+    
+    // Show modal
+    modal.classList.remove('hidden');
+
+    // Fetch current purchase status
+    try {
+      if (this.projectId) {
+        this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
+        this.updateProductOptions();
+      }
+    } catch (err) {
+      console.error('Failed to fetch purchase status:', err);
+      this.showCheckoutError('Unable to load product information. Please try again.');
+    }
+
+    // Check if returning from successful payment
+    const paymentReturn = checkPaymentReturn();
+    if (paymentReturn.success) {
+      clearPaymentParams();
+      this.showCheckoutStep('success');
+      // Refresh status
+      if (this.projectId) {
+        this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
+      }
+    }
+  }
+
+  closeCheckoutModal() {
+    const modal = document.getElementById('checkout-modal');
+    modal?.classList.add('hidden');
+    
+    // Clean up Stripe checkout if mounted
+    if (this.stripeCheckout) {
+      this.stripeCheckout.destroy();
+      this.stripeCheckout = null;
+    }
+  }
+
+  openExportModal() {
+    document.getElementById('export-modal')?.classList.remove('hidden');
+  }
+
+  showCheckoutStep(step) {
+    const steps = ['products', 'payment', 'success'];
+    steps.forEach(s => {
+      const el = document.getElementById(`checkout-step-${s}`);
+      if (el) {
+        el.classList.toggle('hidden', s !== step);
+      }
+    });
+
+    // Update modal title based on step
+    const title = document.getElementById('checkout-modal-title');
+    if (title) {
+      switch (step) {
+        case 'products':
+          title.textContent = 'Get Your Book';
+          break;
+        case 'payment':
+          title.textContent = 'Complete Purchase';
+          break;
+        case 'success':
+          title.textContent = 'Success!';
+          break;
+      }
+    }
+  }
+
+  updateProductOptions() {
+    if (!this.purchaseStatus?.products) return;
+
+    const { ebook, hardcover } = this.purchaseStatus.products;
+
+    // Update ebook option
+    const ebookPrice = document.getElementById('ebook-price');
+    const ebookStatus = document.getElementById('ebook-status');
+    const ebookOption = document.querySelector('[data-product="ebook"]');
+    
+    if (ebookPrice && ebook) {
+      ebookPrice.textContent = ebook.priceFormatted;
+    }
+    if (ebookStatus && ebook?.unlocked) {
+      ebookStatus.textContent = '✓ Purchased';
+      ebookStatus.classList.add('purchased');
+      ebookOption?.classList.add('unlocked');
+    }
+
+    // Update hardcover option
+    const hardcoverPrice = document.getElementById('hardcover-price');
+    const hardcoverStatus = document.getElementById('hardcover-status');
+    const hardcoverOption = document.querySelector('[data-product="hardcover"]');
+    
+    if (hardcoverPrice && hardcover) {
+      hardcoverPrice.textContent = hardcover.priceFormatted;
+    }
+    if (hardcoverStatus && hardcover?.unlocked) {
+      hardcoverStatus.textContent = '✓ Purchased';
+      hardcoverStatus.classList.add('purchased');
+      hardcoverOption?.classList.add('unlocked');
+    }
+  }
+
+  async selectProduct(productType) {
+    if (!this.purchaseStatus?.products) return;
+
+    const product = this.purchaseStatus.products[productType];
+    if (!product) return;
+
+    // If already unlocked, go straight to export
+    if (product.unlocked) {
+      this.closeCheckoutModal();
+      this.openExportModal();
+      return;
+    }
+
+    this.selectedProduct = productType;
+
+    // Update payment header
+    const productName = document.getElementById('checkout-product-name');
+    const productPrice = document.getElementById('checkout-product-price');
+    if (productName) productName.textContent = product.displayName;
+    if (productPrice) productPrice.textContent = product.priceFormatted;
+
+    // Show payment step
+    this.showCheckoutStep('payment');
+
+    // Initialize embedded checkout
+    await this.initializeEmbeddedCheckout(productType);
+  }
+
+  async initializeEmbeddedCheckout(productType) {
+    const container = document.getElementById('checkout-embed-container');
+    if (!container) return;
+
+    // Show loading
+    container.innerHTML = `
+      <div class="checkout-loading">
+        <div class="spinner"></div>
+        <span>Loading payment form...</span>
+      </div>
+    `;
+
+    try {
+      // Load Stripe.js
+      const stripe = await loadStripe();
+      
+      // Create checkout session
+      const { clientSecret } = await initEmbeddedCheckout(this.projectId, productType);
+      
+      // Initialize embedded checkout
+      this.stripeCheckout = await stripe.initEmbeddedCheckout({
+        clientSecret,
+      });
+
+      // Clear container and mount
+      container.innerHTML = '';
+      this.stripeCheckout.mount(container);
+
+    } catch (err) {
+      console.error('Failed to initialize checkout:', err);
+      container.innerHTML = `
+        <div class="checkout-error-state">
+          <p>Unable to load payment form.</p>
+          <p class="error-detail">${err.message}</p>
+          <button onclick="this.closest('.checkout-embed-container').parentElement.querySelector('#checkout-back-btn').click()">
+            Go Back
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  showCheckoutError(message) {
+    const errorEl = document.getElementById('checkout-error');
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+      setTimeout(() => errorEl.classList.add('hidden'), 5000);
+    }
+  }
+
+  // Set the project ID for checkout operations
+  setProjectId(projectId) {
+    this.projectId = projectId;
   }
 
   async preloadFonts(additionalFonts = []) {

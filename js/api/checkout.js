@@ -20,19 +20,20 @@ export async function getBookPurchaseStatus(bookId) {
 }
 
 /**
- * Initiate checkout for a product
+ * Create a checkout session (supports both hosted and embedded modes)
  * @param {string} bookId 
  * @param {'ebook' | 'hardcover'} productType 
- * @returns {Promise<{checkoutUrl: string, orderId: string}>}
+ * @param {boolean} embedded - If true, creates embedded checkout session
+ * @returns {Promise<{clientSecret?: string, checkoutUrl?: string, orderId: string}>}
  */
-export async function createCheckoutSession(bookId, productType) {
+export async function createCheckoutSession(bookId, productType, embedded = false) {
   const response = await fetch('/api/checkout/create-session', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     credentials: 'include',
-    body: JSON.stringify({ bookId, productType }),
+    body: JSON.stringify({ bookId, productType, embedded }),
   });
 
   if (!response.ok) {
@@ -44,13 +45,13 @@ export async function createCheckoutSession(bookId, productType) {
 }
 
 /**
- * Redirect to Stripe Checkout
+ * Redirect to Stripe Checkout (hosted mode)
  * @param {string} bookId 
  * @param {'ebook' | 'hardcover'} productType 
  */
 export async function redirectToCheckout(bookId, productType) {
   try {
-    const { checkoutUrl } = await createCheckoutSession(bookId, productType);
+    const { checkoutUrl } = await createCheckoutSession(bookId, productType, false);
     window.location.href = checkoutUrl;
   } catch (err) {
     console.error('Checkout error:', err);
@@ -59,8 +60,18 @@ export async function redirectToCheckout(bookId, productType) {
 }
 
 /**
+ * Initialize embedded checkout
+ * @param {string} bookId 
+ * @param {'ebook' | 'hardcover'} productType 
+ * @returns {Promise<{clientSecret: string, orderId: string}>}
+ */
+export async function initEmbeddedCheckout(bookId, productType) {
+  return createCheckoutSession(bookId, productType, true);
+}
+
+/**
  * Check if returning from a successful payment
- * @returns {{ success: boolean, orderId: string | null, cancelled: boolean }}
+ * @returns {{ success: boolean, orderId: string | null, cancelled: boolean, sessionId: string | null }}
  */
 export function checkPaymentReturn() {
   const params = new URLSearchParams(window.location.search);
@@ -69,6 +80,7 @@ export function checkPaymentReturn() {
     success: params.get('payment') === 'success',
     cancelled: params.get('payment') === 'cancelled',
     orderId: params.get('order'),
+    sessionId: params.get('session_id'),
   };
 }
 
@@ -79,6 +91,7 @@ export function clearPaymentParams() {
   const url = new URL(window.location.href);
   url.searchParams.delete('payment');
   url.searchParams.delete('order');
+  url.searchParams.delete('session_id');
   window.history.replaceState({}, '', url.toString());
 }
 
@@ -89,4 +102,35 @@ export function clearPaymentParams() {
  */
 export function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Load Stripe.js dynamically
+ * @returns {Promise<Stripe>}
+ */
+let stripePromise = null;
+export async function loadStripe() {
+  if (stripePromise) return stripePromise;
+  
+  // Load Stripe.js from CDN if not already loaded
+  if (!window.Stripe) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Failed to load Stripe.js'));
+      document.head.appendChild(script);
+    });
+  }
+  
+  // Get publishable key from a meta tag or environment
+  const publishableKey = document.querySelector('meta[name="stripe-publishable-key"]')?.content 
+    || window.STRIPE_PUBLISHABLE_KEY;
+  
+  if (!publishableKey) {
+    throw new Error('Stripe publishable key not configured');
+  }
+  
+  stripePromise = window.Stripe(publishableKey);
+  return stripePromise;
 }

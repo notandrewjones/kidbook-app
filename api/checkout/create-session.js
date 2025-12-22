@@ -27,7 +27,7 @@ async function handler(req, res) {
     });
   }
 
-  const { bookId, productType } = req.body;
+  const { bookId, productType, embedded } = req.body;
 
   // Validate input
   if (!bookId) {
@@ -156,7 +156,10 @@ async function handler(req, res) {
       ? `https://${process.env.VERCEL_URL}` 
       : process.env.BASE_URL || "http://localhost:3000";
 
-    const session = await stripe.checkout.sessions.create({
+    // Determine UI mode based on request
+    const uiMode = embedded ? "embedded" : "hosted";
+    
+    const sessionConfig = {
       customer: stripeCustomerId,
       payment_method_types: ["card"],
       line_items: [
@@ -166,22 +169,33 @@ async function handler(req, res) {
         },
       ],
       mode: "payment",
-      success_url: `${baseUrl}/p/${bookId}/compositor?payment=success&order=${order.id}`,
-      cancel_url: `${baseUrl}/p/${bookId}/compositor?payment=cancelled`,
       metadata: {
         order_id: order.id,
         book_id: bookId,
         product_type: productType,
         user_id: user.id,
       },
+    };
+
+    if (uiMode === "embedded") {
+      // Embedded checkout - returns to same page
+      sessionConfig.ui_mode = "embedded";
+      sessionConfig.return_url = `${baseUrl}/p/${bookId}/compositor?payment=success&session_id={CHECKOUT_SESSION_ID}`;
+    } else {
+      // Hosted checkout - redirects to Stripe
+      sessionConfig.success_url = `${baseUrl}/p/${bookId}/compositor?payment=success&order=${order.id}`;
+      sessionConfig.cancel_url = `${baseUrl}/p/${bookId}/compositor?payment=cancelled`;
+      
       // Optional: collect billing address for hardcover shipping
-      ...(productType === "hardcover" && {
-        billing_address_collection: "required",
-        shipping_address_collection: {
-          allowed_countries: ["US", "CA", "GB", "AU"], // Adjust as needed
-        },
-      }),
-    });
+      if (productType === "hardcover") {
+        sessionConfig.billing_address_collection = "required";
+        sessionConfig.shipping_address_collection = {
+          allowed_countries: ["US", "CA", "GB", "AU"],
+        };
+      }
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     // 7. Update order with session ID
     await supabase
@@ -189,12 +203,20 @@ async function handler(req, res) {
       .update({ stripe_checkout_session_id: session.id })
       .eq("id", order.id);
 
-    // 8. Return checkout URL
-    return res.status(200).json({
-      checkoutUrl: session.url,
-      sessionId: session.id,
-      orderId: order.id,
-    });
+    // 8. Return appropriate response based on mode
+    if (uiMode === "embedded") {
+      return res.status(200).json({
+        clientSecret: session.client_secret,
+        sessionId: session.id,
+        orderId: order.id,
+      });
+    } else {
+      return res.status(200).json({
+        checkoutUrl: session.url,
+        sessionId: session.id,
+        orderId: order.id,
+      });
+    }
 
   } catch (err) {
     console.error("CHECKOUT ERROR:", err);

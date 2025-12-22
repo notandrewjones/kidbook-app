@@ -200,6 +200,43 @@ Add these to your Vercel project:
 
 ## Frontend Integration
 
+### Stripe Publishable Key
+
+Add your Stripe publishable key to `index.html`:
+
+```html
+<meta name="stripe-publishable-key" content="pk_test_YOUR_KEY_HERE" />
+```
+
+### Embedded Checkout (Recommended)
+
+The compositor now uses Stripe's embedded checkout, which keeps users on your site:
+
+```javascript
+import { initEmbeddedCheckout, loadStripe } from './js/api/checkout.js';
+
+// Load Stripe.js
+const stripe = await loadStripe();
+
+// Create embedded checkout session
+const { clientSecret } = await initEmbeddedCheckout(bookId, 'ebook');
+
+// Initialize and mount
+const checkout = await stripe.initEmbeddedCheckout({ clientSecret });
+checkout.mount('#checkout-container');
+```
+
+### Hosted Checkout (Alternative)
+
+If you prefer redirecting to Stripe's hosted page:
+
+```javascript
+import { redirectToCheckout } from './js/api/checkout.js';
+
+await redirectToCheckout(bookId, 'ebook');
+// User is redirected to Stripe
+```
+
 ### Check Status
 ```javascript
 import { getBookPurchaseStatus } from './js/api/checkout.js';
@@ -209,25 +246,6 @@ if (status.products.ebook.unlocked) {
   // Generate clean export
 } else {
   // Show purchase modal
-}
-```
-
-### Initiate Checkout
-```javascript
-import { redirectToCheckout } from './js/api/checkout.js';
-
-await redirectToCheckout(bookId, 'ebook');
-// User is redirected to Stripe
-```
-
-### Handle Return
-```javascript
-import { checkPaymentReturn, clearPaymentParams } from './js/api/checkout.js';
-
-const { success, cancelled, orderId } = checkPaymentReturn();
-if (success) {
-  showSuccessMessage();
-  clearPaymentParams();
 }
 ```
 

@@ -34,6 +34,11 @@ export function initCompositorPhase() {
   compositorInstance = new CompositorUI("results");
   compositorInstance.initialize(bookData);
   
+  // Set the project ID for checkout operations
+  if (project.id) {
+    compositorInstance.setProjectId(project.id);
+  }
+  
   // Set up callbacks
   compositorInstance.onExportComplete = (format) => {
     showToast("Export complete", `Your book has been exported as ${format.toUpperCase()}`, "success");
