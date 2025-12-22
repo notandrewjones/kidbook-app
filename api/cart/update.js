@@ -56,13 +56,21 @@ async function handler(req, res) {
     // Handle different actions
     if (action === "remove" || quantity === 0) {
       // Remove item from cart
-      const { error: deleteError } = await supabase
+      let query = supabase
         .from("cart_items")
         .delete()
         .eq("user_id", user.id)
         .eq("book_id", bookId)
-        .eq("product_type", productType)
-        .is("size", itemSize);
+        .eq("product_type", productType);
+      
+      // Handle size matching - use .is() for null, .eq() for actual values
+      if (itemSize === null) {
+        query = query.is("size", null);
+      } else {
+        query = query.eq("size", itemSize);
+      }
+
+      const { error: deleteError } = await query;
 
       if (deleteError) throw deleteError;
 
@@ -71,14 +79,21 @@ async function handler(req, res) {
 
     if (action === "set" || action === "add") {
       // Check if item already exists
-      const { data: existing } = await supabase
+      let existingQuery = supabase
         .from("cart_items")
         .select("id, quantity")
         .eq("user_id", user.id)
         .eq("book_id", bookId)
-        .eq("product_type", productType)
-        .is("size", itemSize)
-        .maybeSingle();
+        .eq("product_type", productType);
+      
+      // Handle size matching - use .is() for null, .eq() for actual values
+      if (itemSize === null) {
+        existingQuery = existingQuery.is("size", null);
+      } else {
+        existingQuery = existingQuery.eq("size", itemSize);
+      }
+      
+      const { data: existing } = await existingQuery.maybeSingle();
 
       if (existing) {
         // Update existing item
