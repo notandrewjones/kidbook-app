@@ -2201,18 +2201,36 @@ body[data-phase="edit-story"] #results {
 /* =============================================
    COMPOSITOR PHASE LAYOUT
    ============================================= */
+body[data-phase="compositor"] .app-shell {
+  height: 100vh;
+  max-height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
 body[data-phase="compositor"] .main {
   grid-template-columns: 1fr !important;
+  padding: 18px;
+  height: 100%;
+  min-height: 0;
 }
 
 body[data-phase="compositor"] .panel {
   display: none !important;
 }
 
+body[data-phase="compositor"] .workspace {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 body[data-phase="compositor"] .workspace-body {
   display: block;
   height: 100%;
+  min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 body[data-phase="compositor"] .character-panel,
@@ -2231,6 +2249,7 @@ body[data-phase="compositor"] aside:not(.compositor-sidebar) {
 body[data-phase="compositor"] #results {
   padding: 0;
   height: 100%;
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
