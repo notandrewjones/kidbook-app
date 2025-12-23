@@ -349,17 +349,51 @@ function hasProtagonistModel(project) {
   return characterModels.some(cm => cm.is_protagonist || cm.role === "protagonist");
 }
 
-// Check if project is ready for composition (has enough illustrations)
+// Check if project is ready for composition (ALL pages must have illustrations)
 function isProjectReadyForComposition(project) {
   if (!project) return false;
   if (!project.story_json?.length) return false;
   if (!project.illustrations?.length) return false;
   
-  // Check if at least 50% of pages have illustrations
-  const pageCount = project.story_json.length;
-  const illustratedCount = project.illustrations.filter(i => i.image_url).length;
+  // Build a map of pages with illustrations
+  const illustratedPages = new Set(
+    project.illustrations
+      .filter(i => i.image_url)
+      .map(i => Number(i.page))
+  );
   
-  return illustratedCount >= Math.ceil(pageCount / 2);
+  // Check if ALL pages have illustrations
+  return project.story_json.every(
+    page => illustratedPages.has(Number(page.page))
+  );
+}
+
+// Get composition status details for UI messaging
+function getCompositionStatus(project) {
+  if (!project || !project.story_json?.length) {
+    return { ready: false, message: "No story pages found", missing: 0, total: 0 };
+  }
+  
+  const illustratedPages = new Set(
+    (project.illustrations || [])
+      .filter(i => i.image_url)
+      .map(i => Number(i.page))
+  );
+  
+  const pageCount = project.story_json.length;
+  const illustratedCount = illustratedPages.size;
+  const missingCount = pageCount - illustratedCount;
+  
+  if (missingCount === 0) {
+    return { ready: true, message: "All pages ready!", missing: 0, total: pageCount };
+  }
+  
+  return { 
+    ready: false, 
+    message: `${missingCount} of ${pageCount} pages need illustrations`,
+    missing: missingCount,
+    total: pageCount
+  };
 }
 
 // Render the storyboard
@@ -377,8 +411,9 @@ export function renderStoryboard(project) {
   // Check if protagonist model exists - required for generation
   const hasProtagonist = hasProtagonistModel(project);
   
-  // Check if ready for book layout/export
+  // Check if ready for book layout/export with detailed status
   const isReadyForComposition = isProjectReadyForComposition(project);
+  const compositionStatus = getCompositionStatus(project);
 
   // Header actions - conditionally enable based on protagonist
   const topActions = `
@@ -393,14 +428,22 @@ export function renderStoryboard(project) {
       `}
       
       <!-- Layout & Export button -->
-      <button 
-        id="open-compositor-btn" 
-        class="btn ${isReadyForComposition ? 'btn-secondary' : 'btn-ghost'}"
-        ${!isReadyForComposition ? 'disabled title="Generate more illustrations first"' : ''}
-      >
-        <span>📖</span>
-        <span>Layout & Export</span>
-      </button>
+      <div class="compositor-btn-wrap">
+        <button 
+          id="open-compositor-btn" 
+          class="btn ${isReadyForComposition ? 'btn-secondary' : 'btn-ghost'}"
+          ${!isReadyForComposition ? 'disabled' : ''}
+        >
+          <span>📖</span>
+          <span>Layout & Export</span>
+          ${!isReadyForComposition && compositionStatus.missing > 0 ? `
+            <span class="btn-badge">${compositionStatus.missing} left</span>
+          ` : ''}
+        </button>
+        ${!isReadyForComposition ? `
+          <span class="compositor-status-text">${compositionStatus.message}</span>
+        ` : ''}
+      </div>
     </div>
     ${!hasProtagonist ? `
       <div class="protagonist-required-notice">

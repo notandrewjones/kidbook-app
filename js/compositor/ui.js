@@ -375,26 +375,34 @@ export class CompositorUI {
           <div class="modal-dialog cart-modal-dialog">
             <div class="modal-header">
               <h3>Add to Cart</h3>
-              <button id="close-cart-modal" class="modal-close">×</button>
+              <button id="close-cart-modal" class="modal-close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
             </div>
             <div class="modal-body cart-modal-body">
-              <p class="cart-modal-subtitle">Select products to add to your cart</p>
+              <p class="cart-modal-subtitle">Choose your preferred format and quantity below</p>
               
               <!-- Ebook Section -->
               <div class="cart-section">
                 <div class="cart-section-header">
-                  <div class="cart-section-icon">📱</div>
+                  <div class="cart-section-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
+                    </svg>
+                  </div>
                   <div class="cart-section-info">
                     <div class="cart-section-title">Digital Ebook</div>
-                    <div class="cart-section-desc">High-quality PDF download</div>
+                    <div class="cart-section-desc">Instant PDF download • Read on any device</div>
                   </div>
                   <div class="cart-section-price" id="cart-ebook-price">$9.99</div>
                 </div>
                 <div class="cart-section-controls">
                   <div class="cart-qty-control">
-                    <button class="qty-btn cart-qty-minus" data-product="ebook">−</button>
+                    <button class="qty-btn cart-qty-minus" data-product="ebook" aria-label="Decrease quantity">−</button>
                     <span class="qty-value" id="cart-ebook-qty">0</span>
-                    <button class="qty-btn cart-qty-plus" data-product="ebook">+</button>
+                    <button class="qty-btn cart-qty-plus" data-product="ebook" aria-label="Increase quantity">+</button>
                   </div>
                 </div>
               </div>
@@ -402,10 +410,15 @@ export class CompositorUI {
               <!-- Hardcover Section -->
               <div class="cart-section cart-section-hardcover">
                 <div class="cart-section-header">
-                  <div class="cart-section-icon">📚</div>
+                  <div class="cart-section-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
+                      <rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                  </div>
                   <div class="cart-section-info">
                     <div class="cart-section-title">Printed Hardcover</div>
-                    <div class="cart-section-desc">Beautiful printed book shipped to you</div>
+                    <div class="cart-section-desc">Premium quality • Ships in 5-7 days</div>
                   </div>
                 </div>
                 
@@ -422,19 +435,19 @@ export class CompositorUI {
               </div>
 
               <div id="cart-modal-error" class="checkout-error hidden"></div>
-              
-              <div class="cart-modal-footer">
-                <div class="cart-modal-total">
-                  <span>Subtotal:</span>
-                  <span id="cart-modal-subtotal">$0.00</span>
-                </div>
-                <button id="add-to-cart-btn" class="add-to-cart-btn" disabled>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
-                  </svg>
-                  Add to Cart
-                </button>
+            </div>
+            
+            <div class="cart-modal-footer">
+              <div class="cart-modal-total">
+                <span>Subtotal</span>
+                <span id="cart-modal-subtotal">$0.00</span>
               </div>
+              <button id="add-to-cart-btn" class="add-to-cart-btn" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
+                </svg>
+                Add to Cart
+              </button>
             </div>
           </div>
         </div>
@@ -2142,12 +2155,12 @@ export class CompositorUI {
     // Ebook quantity buttons
     document.querySelector('.cart-qty-minus[data-product="ebook"]')?.addEventListener('click', () => {
       this.cartEbookQty = Math.max(0, this.cartEbookQty - 1);
-      this.updateCartModalUI();
+      this.updateCartModalUI(true);
     });
 
     document.querySelector('.cart-qty-plus[data-product="ebook"]')?.addEventListener('click', () => {
       this.cartEbookQty++;
-      this.updateCartModalUI();
+      this.updateCartModalUI(true);
     });
 
     // Add another size button
@@ -2346,10 +2359,10 @@ export class CompositorUI {
     row.dataset.index = rowIndex;
     row.innerHTML = `
       <div class="hardcover-size-select-wrap">
-        <select class="hardcover-size-select" data-index="${rowIndex}">
+        <select class="hardcover-size-select" data-index="${rowIndex}" aria-label="Select book size">
           ${this.hardcoverSizes.map(size => 
             `<option value="${size.size_code}" ${size.size_code === selectedSize ? 'selected' : ''} data-price="${size.price_cents}">
-              ${size.dimensions} - ${size.display_name}
+              ${size.display_name} (${size.dimensions})
             </option>`
           ).join('')}
         </select>
@@ -2357,11 +2370,17 @@ export class CompositorUI {
       </div>
       <div class="hardcover-size-controls">
         <div class="cart-qty-control">
-          <button type="button" class="qty-btn hardcover-qty-minus" data-index="${rowIndex}">−</button>
+          <button type="button" class="qty-btn hardcover-qty-minus" data-index="${rowIndex}" aria-label="Decrease quantity">−</button>
           <span class="qty-value hardcover-qty-value" data-index="${rowIndex}">0</span>
-          <button type="button" class="qty-btn hardcover-qty-plus" data-index="${rowIndex}">+</button>
+          <button type="button" class="qty-btn hardcover-qty-plus" data-index="${rowIndex}" aria-label="Increase quantity">+</button>
         </div>
-        ${rowIndex > 0 ? `<button type="button" class="hardcover-remove-btn" data-index="${rowIndex}" title="Remove">×</button>` : ''}
+        ${rowIndex > 0 ? `
+          <button type="button" class="hardcover-remove-btn" data-index="${rowIndex}" title="Remove this size" aria-label="Remove this size">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        ` : ''}
       </div>
     `;
 
@@ -2381,13 +2400,13 @@ export class CompositorUI {
     row.querySelector('.hardcover-qty-minus')?.addEventListener('click', () => {
       const idx = parseInt(row.dataset.index);
       this.hardcoverItems[idx].qty = Math.max(0, this.hardcoverItems[idx].qty - 1);
-      this.updateCartModalUI();
+      this.updateCartModalUI(true);
     });
 
     row.querySelector('.hardcover-qty-plus')?.addEventListener('click', () => {
       const idx = parseInt(row.dataset.index);
       this.hardcoverItems[idx].qty++;
-      this.updateCartModalUI();
+      this.updateCartModalUI(true);
     });
 
     row.querySelector('.hardcover-remove-btn')?.addEventListener('click', () => {
@@ -2408,16 +2427,35 @@ export class CompositorUI {
     }
   }
 
-  updateCartModalUI() {
+  // Trigger quantity bump animation
+  triggerQtyBump(element) {
+    if (!element) return;
+    element.classList.add('bump');
+    setTimeout(() => element.classList.remove('bump'), 150);
+  }
+
+  updateCartModalUI(animate = false) {
     // Update ebook quantity display
     const ebookQty = document.getElementById('cart-ebook-qty');
-    if (ebookQty) ebookQty.textContent = this.cartEbookQty;
+    if (ebookQty) {
+      const oldValue = parseInt(ebookQty.textContent) || 0;
+      ebookQty.textContent = this.cartEbookQty;
+      if (animate && oldValue !== this.cartEbookQty) {
+        this.triggerQtyBump(ebookQty);
+      }
+    }
 
     // Update hardcover quantity displays
     this.hardcoverItems.forEach((item, idx) => {
       if (!item) return;
       const qtyEl = document.querySelector(`.hardcover-qty-value[data-index="${idx}"]`);
-      if (qtyEl) qtyEl.textContent = item.qty;
+      if (qtyEl) {
+        const oldValue = parseInt(qtyEl.textContent) || 0;
+        qtyEl.textContent = item.qty;
+        if (animate && oldValue !== item.qty) {
+          this.triggerQtyBump(qtyEl);
+        }
+      }
     });
 
     // Calculate subtotal
@@ -2432,7 +2470,13 @@ export class CompositorUI {
     });
 
     const subtotalEl = document.getElementById('cart-modal-subtotal');
-    if (subtotalEl) subtotalEl.textContent = formatPrice(subtotal);
+    if (subtotalEl) {
+      subtotalEl.textContent = formatPrice(subtotal);
+      if (animate) {
+        subtotalEl.classList.add('updated');
+        setTimeout(() => subtotalEl.classList.remove('updated'), 300);
+      }
+    }
 
     // Show/hide "Add Another Size" button
     const addAnotherBtn = document.getElementById('add-another-size-btn');
@@ -2455,7 +2499,7 @@ export class CompositorUI {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
           </svg>
-          Add to Cart (${formatPrice(subtotal)})
+          Add to Cart · ${formatPrice(subtotal)}
         `;
       } else {
         addBtn.innerHTML = `
@@ -2477,10 +2521,23 @@ export class CompositorUI {
     const addBtn = document.getElementById('add-to-cart-btn');
     if (addBtn) {
       addBtn.disabled = true;
-      addBtn.innerHTML = 'Adding...';
+      addBtn.classList.add('loading');
+      addBtn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+          <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+          <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+        </svg>
+        Adding to Cart...
+      `;
     }
 
     try {
+      // Count total items being added for success message
+      let totalItems = this.cartEbookQty;
+      for (const item of this.hardcoverItems) {
+        if (item && item.qty > 0) totalItems += item.qty;
+      }
+
       // Add ebook if quantity > 0
       if (this.cartEbookQty > 0) {
         await updateCartItem(this.projectId, 'ebook', {
@@ -2500,8 +2557,11 @@ export class CompositorUI {
         }
       }
 
-      // Close modal and show success
+      // Close modal
       this.closeAddToCartModal();
+      
+      // Show success toast
+      this.showCartSuccess(totalItems);
       
       // Trigger cart refresh
       window.dispatchEvent(new CustomEvent('cart-updated'));
@@ -2512,6 +2572,7 @@ export class CompositorUI {
       
       if (addBtn) {
         addBtn.disabled = false;
+        addBtn.classList.remove('loading');
         addBtn.innerHTML = `
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/>
@@ -2520,6 +2581,31 @@ export class CompositorUI {
         `;
       }
     }
+  }
+
+  showCartSuccess(itemCount) {
+    // Create a floating toast notification
+    const toast = document.createElement('div');
+    toast.className = 'cart-success-toast';
+    toast.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 12l2 2 4-4"/>
+        <circle cx="12" cy="12" r="10"/>
+      </svg>
+      <span>${itemCount} item${itemCount > 1 ? 's' : ''} added to cart</span>
+    `;
+    document.body.appendChild(toast);
+    
+    // Trigger animation
+    requestAnimationFrame(() => {
+      toast.classList.add('show');
+    });
+    
+    // Remove after animation
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 2500);
   }
 
   showCartError(message) {
