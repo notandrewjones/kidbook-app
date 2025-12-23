@@ -3590,7 +3590,7 @@ body[data-phase="compositor"] .compositor-wrap {
   max-width: 480px;
   width: 94%;
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .cart-modal-body {
@@ -3598,8 +3598,7 @@ body[data-phase="compositor"] .compositor-wrap {
   flex-direction: column !important;
   padding: 0 !important;
   gap: 0 !important;
-  max-height: 70vh;
-  overflow-y: auto;
+  overflow: visible !important;
 }
 
 .cart-modal-subtitle {
@@ -3841,7 +3840,7 @@ body[data-phase="compositor"] .compositor-wrap {
   display: none;
 }
 
-/* Cart modal footer - refined */
+/* Cart modal footer - inside body now */
 .cart-modal-footer {
   display: flex;
   justify-content: space-between;
@@ -3850,6 +3849,7 @@ body[data-phase="compositor"] .compositor-wrap {
   background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid var(--stroke);
   gap: 16px;
+  margin-top: auto;
 }
 
 .cart-modal-total {

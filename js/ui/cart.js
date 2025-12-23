@@ -178,9 +178,9 @@ function renderCartItems() {
         <div class="cart-item-price">${formatPrice(item.unit_price_cents)} each</div>
       </div>
       <div class="cart-item-quantity">
-        <button class="qty-btn qty-minus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}">−</button>
+        <button class="qty-btn qty-minus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" data-qty="${item.quantity}">−</button>
         <span class="qty-value">${item.quantity}</span>
-        <button class="qty-btn qty-plus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}">+</button>
+        <button class="qty-btn qty-plus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" data-qty="${item.quantity}">+</button>
       </div>
       <div class="cart-item-line-total">${formatPrice(item.line_total_cents)}</div>
       <button class="cart-item-remove" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" title="Remove">×</button>
@@ -189,18 +189,16 @@ function renderCartItems() {
 
   // Bind quantity buttons with optimistic updates
   container.querySelectorAll('.qty-minus').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const { book, type, size } = btn.dataset;
-      const item = cartData.items.find(i => 
-        i.book_id === book && i.product_type === type && (i.size || '') === size
-      );
-      if (!item) return;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent click from bubbling to close handler
+      const { book, type, size, qty } = btn.dataset;
+      const currentQty = parseInt(qty);
       
-      if (item.quantity > 1) {
+      if (currentQty > 1) {
         // Optimistic update - decrease quantity
-        optimisticUpdateQuantity(book, type, size, item.quantity - 1);
+        optimisticUpdateQuantity(book, type, size, currentQty - 1);
         // Fire and forget the API call
-        updateCartItem(book, type, { size: size || null, quantity: item.quantity - 1, action: 'set' })
+        updateCartItem(book, type, { size: size || null, quantity: currentQty - 1, action: 'set' })
           .catch(err => {
             console.error('Failed to update cart:', err);
             refreshCart(); // Revert on error
@@ -219,15 +217,13 @@ function renderCartItems() {
   });
 
   container.querySelectorAll('.qty-plus').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const { book, type, size } = btn.dataset;
-      const item = cartData.items.find(i => 
-        i.book_id === book && i.product_type === type && (i.size || '') === size
-      );
-      if (!item) return;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent click from bubbling to close handler
+      const { book, type, size, qty } = btn.dataset;
+      const currentQty = parseInt(qty);
       
       // Optimistic update - increase quantity
-      optimisticUpdateQuantity(book, type, size, item.quantity + 1);
+      optimisticUpdateQuantity(book, type, size, currentQty + 1);
       // Fire and forget the API call
       updateCartItem(book, type, { size: size || null, quantity: 1, action: 'add' })
         .catch(err => {
@@ -238,7 +234,8 @@ function renderCartItems() {
   });
 
   container.querySelectorAll('.cart-item-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent click from bubbling to close handler
       const { book, type, size } = btn.dataset;
       
       // Optimistic update - remove item immediately
