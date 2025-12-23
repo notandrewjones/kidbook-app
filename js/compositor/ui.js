@@ -2439,13 +2439,6 @@ export class CompositorUI {
           <span class="qty-value hardcover-qty-value" data-index="${rowIndex}">0</span>
           <button type="button" class="qty-btn hardcover-qty-plus" data-index="${rowIndex}" aria-label="Increase quantity">+</button>
         </div>
-        ${rowIndex > 0 ? `
-          <button type="button" class="hardcover-remove-btn" data-index="${rowIndex}" title="Remove this size" aria-label="Remove this size">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        ` : ''}
       </div>
     `;
 
@@ -2496,19 +2489,21 @@ export class CompositorUI {
 
     row.querySelector('.hardcover-qty-minus')?.addEventListener('click', () => {
       const idx = parseInt(row.dataset.index);
-      this.hardcoverItems[idx].qty = Math.max(0, this.hardcoverItems[idx].qty - 1);
-      this.updateCartModalUI(true);
+      const newQty = Math.max(0, this.hardcoverItems[idx].qty - 1);
+      this.hardcoverItems[idx].qty = newQty;
+      
+      // If quantity reaches 0 and this isn't the first row, remove it
+      if (newQty === 0 && idx > 0) {
+        this.removeHardcoverSizeRow(idx);
+      } else {
+        this.updateCartModalUI(true);
+      }
     });
 
     row.querySelector('.hardcover-qty-plus')?.addEventListener('click', () => {
       const idx = parseInt(row.dataset.index);
       this.hardcoverItems[idx].qty++;
       this.updateCartModalUI(true);
-    });
-
-    row.querySelector('.hardcover-remove-btn')?.addEventListener('click', () => {
-      const idx = parseInt(row.dataset.index);
-      this.removeHardcoverSizeRow(idx);
     });
 
     this.updateCartModalUI();

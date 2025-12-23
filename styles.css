@@ -4195,11 +4195,11 @@ body[data-phase="compositor"] .compositor-wrap {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: var(--card);
+  background: #1e1e2e;
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-  z-index: 100;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  z-index: 10002;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-8px);
@@ -4221,7 +4221,8 @@ body[data-phase="compositor"] .compositor-wrap {
   padding: 14px 16px;
   cursor: pointer;
   transition: background 0.1s;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
 }
 
 .custom-select-option:last-child {
@@ -4229,11 +4230,11 @@ body[data-phase="compositor"] .compositor-wrap {
 }
 
 .custom-select-option:hover {
-  background: rgba(139, 92, 246, 0.1);
+  background: rgba(139, 92, 246, 0.15);
 }
 
 .custom-select-option.selected {
-  background: rgba(139, 92, 246, 0.15);
+  background: rgba(139, 92, 246, 0.2);
 }
 
 .custom-select-option .option-name {

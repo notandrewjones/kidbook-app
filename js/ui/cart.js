@@ -187,37 +187,118 @@ function renderCartItems() {
     </div>
   `).join('');
 
-  // Bind quantity buttons
+  // Bind quantity buttons with optimistic updates
   container.querySelectorAll('.qty-minus').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const { book, type, size } = btn.dataset;
       const item = cartData.items.find(i => 
         i.book_id === book && i.product_type === type && (i.size || '') === size
       );
-      if (item && item.quantity > 1) {
-        await updateCartItem(book, type, { size: size || null, quantity: item.quantity - 1, action: 'set' });
+      if (!item) return;
+      
+      if (item.quantity > 1) {
+        // Optimistic update - decrease quantity
+        optimisticUpdateQuantity(book, type, size, item.quantity - 1);
+        // Fire and forget the API call
+        updateCartItem(book, type, { size: size || null, quantity: item.quantity - 1, action: 'set' })
+          .catch(err => {
+            console.error('Failed to update cart:', err);
+            refreshCart(); // Revert on error
+          });
       } else {
-        await removeCartItem(book, type, size || null);
+        // Optimistic update - remove item
+        optimisticRemoveItem(book, type, size);
+        // Fire and forget the API call
+        removeCartItem(book, type, size || null)
+          .catch(err => {
+            console.error('Failed to remove item:', err);
+            refreshCart(); // Revert on error
+          });
       }
-      refreshCart();
     });
   });
 
   container.querySelectorAll('.qty-plus').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const { book, type, size } = btn.dataset;
-      await updateCartItem(book, type, { size: size || null, quantity: 1, action: 'add' });
-      refreshCart();
+      const item = cartData.items.find(i => 
+        i.book_id === book && i.product_type === type && (i.size || '') === size
+      );
+      if (!item) return;
+      
+      // Optimistic update - increase quantity
+      optimisticUpdateQuantity(book, type, size, item.quantity + 1);
+      // Fire and forget the API call
+      updateCartItem(book, type, { size: size || null, quantity: 1, action: 'add' })
+        .catch(err => {
+          console.error('Failed to update cart:', err);
+          refreshCart(); // Revert on error
+        });
     });
   });
 
   container.querySelectorAll('.cart-item-remove').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const { book, type, size } = btn.dataset;
-      await removeCartItem(book, type, size || null);
-      refreshCart();
+      
+      // Optimistic update - remove item immediately
+      optimisticRemoveItem(book, type, size);
+      // Fire and forget the API call
+      removeCartItem(book, type, size || null)
+        .catch(err => {
+          console.error('Failed to remove item:', err);
+          refreshCart(); // Revert on error
+        });
     });
   });
+}
+
+/**
+ * Optimistically update item quantity in local state and re-render
+ */
+function optimisticUpdateQuantity(bookId, productType, size, newQuantity) {
+  const item = cartData.items.find(i => 
+    i.book_id === bookId && i.product_type === productType && (i.size || '') === size
+  );
+  if (!item) return;
+  
+  const oldQuantity = item.quantity;
+  const priceDiff = (newQuantity - oldQuantity) * item.unit_price_cents;
+  
+  item.quantity = newQuantity;
+  item.line_total_cents = newQuantity * item.unit_price_cents;
+  
+  // Update totals
+  cartData.totalCents += priceDiff;
+  cartData.totalFormatted = formatPrice(cartData.totalCents);
+  
+  // Re-render
+  renderCartItems();
+  updateCartBadge();
+}
+
+/**
+ * Optimistically remove item from local state and re-render
+ */
+function optimisticRemoveItem(bookId, productType, size) {
+  const itemIndex = cartData.items.findIndex(i => 
+    i.book_id === bookId && i.product_type === productType && (i.size || '') === size
+  );
+  if (itemIndex === -1) return;
+  
+  const item = cartData.items[itemIndex];
+  
+  // Update totals
+  cartData.totalCents -= item.line_total_cents;
+  cartData.totalFormatted = formatPrice(cartData.totalCents);
+  cartData.itemCount -= item.quantity;
+  
+  // Remove from array
+  cartData.items.splice(itemIndex, 1);
+  
+  // Re-render
+  renderCartItems();
+  updateCartBadge();
 }
 
 /**
