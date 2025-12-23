@@ -3973,18 +3973,6 @@ body[data-phase="compositor"] .compositor-wrap {
 /* Button loading state */
 .add-to-cart-btn.loading {
   pointer-events: none;
-  position: relative;
-}
-
-.add-to-cart-btn.loading::after {
-  content: '';
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
 }
 
 @keyframes spin {

@@ -2283,10 +2283,35 @@ export class CompositorUI {
     this.cartEbookQty = 0;
     this.hardcoverItems = [];
     
+    // Clear any existing hardcover rows
+    const container = document.getElementById('hardcover-sizes-container');
+    if (container) container.innerHTML = '';
+    
+    // Use cached sizes if available, otherwise use defaults immediately
+    if (!this.hardcoverSizes || this.hardcoverSizes.length === 0) {
+      this.hardcoverSizes = [
+        { size_code: 'square-small', display_name: 'Small Square', dimensions: '7" × 7"', price_cents: 2499, priceFormatted: '$24.99' },
+        { size_code: 'square-medium', display_name: 'Medium Square', dimensions: '8" × 8"', price_cents: 2999, priceFormatted: '$29.99' },
+        { size_code: 'square-large', display_name: 'Large Square', dimensions: '10" × 10"', price_cents: 3999, priceFormatted: '$39.99' },
+        { size_code: 'portrait', display_name: 'Portrait', dimensions: '7" × 9"', price_cents: 2999, priceFormatted: '$29.99' },
+        { size_code: 'landscape', display_name: 'Landscape', dimensions: '10" × 7"', price_cents: 3499, priceFormatted: '$34.99' },
+        { size_code: 'standard', display_name: 'Standard', dimensions: '8.5" × 11"', price_cents: 3499, priceFormatted: '$34.99' },
+      ];
+    }
+    
+    // Add initial hardcover row IMMEDIATELY (before async calls)
+    this.addHardcoverSizeRow();
+    this.updateCartModalUI();
+    
     // Show modal
     modal.classList.remove('hidden');
 
-    // Fetch prices and sizes
+    // Fetch prices and sizes in background (non-blocking)
+    this.fetchCartPricesInBackground();
+  }
+  
+  // Separate async function for background price fetching
+  async fetchCartPricesInBackground() {
     try {
       if (this.projectId) {
         this.purchaseStatus = await getBookPurchaseStatus(this.projectId);
@@ -2294,37 +2319,51 @@ export class CompositorUI {
           this.productPrices.ebook = this.purchaseStatus.products.ebook?.priceCents || 999;
           this.productPrices.hardcover = this.purchaseStatus.products.hardcover?.priceCents || 2999;
           
-          // Update ebook price
+          // Update ebook price display
           const ebookPrice = document.getElementById('cart-ebook-price');
           if (ebookPrice) ebookPrice.textContent = formatPrice(this.productPrices.ebook);
         }
       }
       
-      // Load hardcover sizes
+      // Try to load updated hardcover sizes
       try {
         const { sizes } = await getHardcoverSizes();
-        if (sizes) {
+        if (sizes && sizes.length > 0) {
           this.hardcoverSizes = sizes;
+          // Update the existing dropdown if modal is still open
+          this.refreshHardcoverDropdowns();
         }
       } catch (e) {
-        console.log('[Cart] Could not load hardcover sizes, using defaults');
-        this.hardcoverSizes = [
-          { size_code: 'square-small', display_name: 'Small Square', dimensions: '7" × 7"', price_cents: 2499, priceFormatted: '$24.99' },
-          { size_code: 'square-medium', display_name: 'Medium Square', dimensions: '8" × 8"', price_cents: 2999, priceFormatted: '$29.99' },
-          { size_code: 'square-large', display_name: 'Large Square', dimensions: '10" × 10"', price_cents: 3999, priceFormatted: '$39.99' },
-          { size_code: 'portrait', display_name: 'Portrait', dimensions: '7" × 9"', price_cents: 2999, priceFormatted: '$29.99' },
-          { size_code: 'landscape', display_name: 'Landscape', dimensions: '10" × 7"', price_cents: 3499, priceFormatted: '$34.99' },
-          { size_code: 'standard', display_name: 'Standard', dimensions: '8.5" × 11"', price_cents: 3499, priceFormatted: '$34.99' },
-        ];
+        console.log('[Cart] Using default hardcover sizes');
       }
-      
-      // Add initial hardcover row
-      this.addHardcoverSizeRow();
-      this.updateCartModalUI();
       
     } catch (err) {
       console.error('[Cart] Failed to fetch product info:', err);
     }
+  }
+  
+  // Refresh hardcover dropdowns with updated sizes (if fetched from API)
+  refreshHardcoverDropdowns() {
+    const selects = document.querySelectorAll('.hardcover-size-select');
+    selects.forEach((select, idx) => {
+      const currentValue = select.value;
+      select.innerHTML = this.hardcoverSizes.map(size => 
+        `<option value="${size.size_code}" ${size.size_code === currentValue ? 'selected' : ''} data-price="${size.price_cents}">
+          ${size.display_name} (${size.dimensions})
+        </option>`
+      ).join('');
+      
+      // Update price display
+      const row = select.closest('.hardcover-size-row');
+      const priceEl = row?.querySelector('.hardcover-row-price');
+      const sizeInfo = this.hardcoverSizes.find(s => s.size_code === currentValue);
+      if (priceEl && sizeInfo) {
+        priceEl.textContent = sizeInfo.priceFormatted;
+        if (this.hardcoverItems[idx]) {
+          this.hardcoverItems[idx].price = sizeInfo.price_cents;
+        }
+      }
+    });
   }
 
   closeAddToCartModal() {
