@@ -4062,3 +4062,210 @@ body[data-phase="compositor"] .compositor-wrap {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* =============================================
+   EBOOK CHECKBOX TOGGLE
+   ============================================= */
+.cart-section-ebook {
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.cart-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.cart-checkbox-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cart-checkbox-box {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 2px solid var(--stroke);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.cart-checkbox-box svg {
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.15s;
+  color: white;
+}
+
+.cart-checkbox-input:checked + .cart-checkbox-box {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  border-color: #8b5cf6;
+}
+
+.cart-checkbox-input:checked + .cart-checkbox-box svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.cart-section-ebook:hover .cart-checkbox-box {
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.cart-section-ebook.selected {
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.cart-section-toggle .cart-section-icon {
+  width: 44px;
+  height: 44px;
+}
+
+.cart-section-toggle .cart-section-info {
+  flex: 1;
+}
+
+.cart-section-toggle .cart-section-price {
+  font-size: 17px;
+}
+
+/* =============================================
+   CUSTOM SELECT DROPDOWN
+   ============================================= */
+.custom-select {
+  position: relative;
+  width: 100%;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.custom-select-trigger:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.custom-select.open .custom-select-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.custom-select-value {
+  font-weight: 500;
+}
+
+.custom-select-dims {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.custom-select-arrow {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.custom-select.open .custom-select-arrow {
+  transform: rotate(180deg);
+}
+
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.2s ease-out;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.custom-select.open .custom-select-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.custom-select-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.custom-select-option:last-child {
+  border-bottom: none;
+}
+
+.custom-select-option:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.custom-select-option.selected {
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.custom-select-option .option-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.custom-select-option .option-dims {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.custom-select-option .option-price {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.custom-select-option .option-check {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.custom-select-option.selected .option-check {
+  opacity: 1;
+}
+
+/* Hide native select styles that might still exist */
+.hardcover-size-select {
+  display: none;
+}

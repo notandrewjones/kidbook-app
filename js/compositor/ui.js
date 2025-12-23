@@ -385,8 +385,14 @@ export class CompositorUI {
               <p class="cart-modal-subtitle">Choose your preferred format and quantity below</p>
               
               <!-- Ebook Section -->
-              <div class="cart-section">
-                <div class="cart-section-header">
+              <div class="cart-section cart-section-ebook" id="ebook-section">
+                <label class="cart-section-toggle">
+                  <input type="checkbox" id="cart-ebook-checkbox" class="cart-checkbox-input">
+                  <div class="cart-checkbox-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <path d="M5 12l5 5L20 7"/>
+                    </svg>
+                  </div>
                   <div class="cart-section-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                       <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
@@ -397,14 +403,7 @@ export class CompositorUI {
                     <div class="cart-section-desc">Instant PDF download • Read on any device</div>
                   </div>
                   <div class="cart-section-price" id="cart-ebook-price">$9.99</div>
-                </div>
-                <div class="cart-section-controls">
-                  <div class="cart-qty-control">
-                    <button class="qty-btn cart-qty-minus" data-product="ebook" aria-label="Decrease quantity">−</button>
-                    <span class="qty-value" id="cart-ebook-qty">0</span>
-                    <button class="qty-btn cart-qty-plus" data-product="ebook" aria-label="Increase quantity">+</button>
-                  </div>
-                </div>
+                </label>
               </div>
 
               <!-- Hardcover Section -->
@@ -2152,14 +2151,21 @@ export class CompositorUI {
       this.closeAddToCartModal();
     });
 
-    // Ebook quantity buttons
-    document.querySelector('.cart-qty-minus[data-product="ebook"]')?.addEventListener('click', () => {
-      this.cartEbookQty = Math.max(0, this.cartEbookQty - 1);
-      this.updateCartModalUI(true);
+    // Close custom selects when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.custom-select')) {
+        document.querySelectorAll('.custom-select.open').forEach(s => {
+          s.classList.remove('open');
+          s.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
+        });
+      }
     });
 
-    document.querySelector('.cart-qty-plus[data-product="ebook"]')?.addEventListener('click', () => {
-      this.cartEbookQty++;
+    // Ebook checkbox toggle
+    document.getElementById('cart-ebook-checkbox')?.addEventListener('change', (e) => {
+      this.cartEbookQty = e.target.checked ? 1 : 0;
+      const section = document.getElementById('ebook-section');
+      section?.classList.toggle('selected', e.target.checked);
       this.updateCartModalUI(true);
     });
 
@@ -2398,13 +2404,33 @@ export class CompositorUI {
     row.dataset.index = rowIndex;
     row.innerHTML = `
       <div class="hardcover-size-select-wrap">
-        <select class="hardcover-size-select" data-index="${rowIndex}" aria-label="Select book size">
-          ${this.hardcoverSizes.map(size => 
-            `<option value="${size.size_code}" ${size.size_code === selectedSize ? 'selected' : ''} data-price="${size.price_cents}">
-              ${size.display_name} (${size.dimensions})
-            </option>`
-          ).join('')}
-        </select>
+        <div class="custom-select" data-index="${rowIndex}">
+          <button type="button" class="custom-select-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="custom-select-value">${sizeInfo?.display_name || 'Medium Square'}</span>
+            <span class="custom-select-dims">${sizeInfo?.dimensions || '8" × 8"'}</span>
+            <svg class="custom-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+          <div class="custom-select-dropdown" role="listbox">
+            ${this.hardcoverSizes.map(size => 
+              `<div class="custom-select-option ${size.size_code === selectedSize ? 'selected' : ''}" 
+                   data-value="${size.size_code}" 
+                   data-price="${size.price_cents}"
+                   data-display="${size.display_name}"
+                   data-dims="${size.dimensions}"
+                   data-formatted="${size.priceFormatted}"
+                   role="option">
+                <span class="option-name">${size.display_name}</span>
+                <span class="option-dims">${size.dimensions}</span>
+                <span class="option-price">${size.priceFormatted}</span>
+                <svg class="option-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M5 12l5 5L20 7"/>
+                </svg>
+              </div>`
+            ).join('')}
+          </div>
+        </div>
         <span class="hardcover-row-price">${sizeInfo?.priceFormatted || '$29.99'}</span>
       </div>
       <div class="hardcover-size-controls">
@@ -2425,15 +2451,47 @@ export class CompositorUI {
 
     container.appendChild(row);
 
-    // Bind events for this row
-    row.querySelector('.hardcover-size-select')?.addEventListener('change', (e) => {
-      const idx = parseInt(e.target.dataset.index);
-      const newSize = e.target.value;
-      const sizeInfo = this.hardcoverSizes.find(s => s.size_code === newSize);
-      this.hardcoverItems[idx].size = newSize;
-      this.hardcoverItems[idx].price = sizeInfo?.price_cents || 2999;
-      row.querySelector('.hardcover-row-price').textContent = sizeInfo?.priceFormatted || '$29.99';
-      this.updateCartModalUI();
+    // Bind custom select events
+    const customSelect = row.querySelector('.custom-select');
+    const trigger = row.querySelector('.custom-select-trigger');
+    const dropdown = row.querySelector('.custom-select-dropdown');
+    
+    trigger?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Close all other dropdowns first
+      document.querySelectorAll('.custom-select.open').forEach(s => {
+        if (s !== customSelect) s.classList.remove('open');
+      });
+      customSelect.classList.toggle('open');
+      trigger.setAttribute('aria-expanded', customSelect.classList.contains('open'));
+    });
+    
+    // Option selection
+    dropdown?.querySelectorAll('.custom-select-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const idx = parseInt(customSelect.dataset.index);
+        const newSize = option.dataset.value;
+        const sizeInfo = this.hardcoverSizes.find(s => s.size_code === newSize);
+        
+        // Update data
+        this.hardcoverItems[idx].size = newSize;
+        this.hardcoverItems[idx].price = sizeInfo?.price_cents || 2999;
+        
+        // Update UI
+        row.querySelector('.custom-select-value').textContent = option.dataset.display;
+        row.querySelector('.custom-select-dims').textContent = option.dataset.dims;
+        row.querySelector('.hardcover-row-price').textContent = option.dataset.formatted;
+        
+        // Update selected state
+        dropdown.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        
+        // Close dropdown
+        customSelect.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        
+        this.updateCartModalUI();
+      });
     });
 
     row.querySelector('.hardcover-qty-minus')?.addEventListener('click', () => {
@@ -2474,14 +2532,14 @@ export class CompositorUI {
   }
 
   updateCartModalUI(animate = false) {
-    // Update ebook quantity display
-    const ebookQty = document.getElementById('cart-ebook-qty');
-    if (ebookQty) {
-      const oldValue = parseInt(ebookQty.textContent) || 0;
-      ebookQty.textContent = this.cartEbookQty;
-      if (animate && oldValue !== this.cartEbookQty) {
-        this.triggerQtyBump(ebookQty);
-      }
+    // Update ebook checkbox state
+    const ebookCheckbox = document.getElementById('cart-ebook-checkbox');
+    const ebookSection = document.getElementById('ebook-section');
+    if (ebookCheckbox) {
+      ebookCheckbox.checked = this.cartEbookQty > 0;
+    }
+    if (ebookSection) {
+      ebookSection.classList.toggle('selected', this.cartEbookQty > 0);
     }
 
     // Update hardcover quantity displays
