@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { uploadToR2 } from "./_r2.js";
 
-// Supabase client (service role required for uploads)
+// Supabase client (for database operations)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -62,25 +63,16 @@ export default async function handler(req, res) {
     const ext = fileInfo.filename.split(".").pop();
     const filePath = `source_photos/${projectId}.${ext}`;
 
-    const { data, error } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, fileBuffer, {
-        contentType: fileInfo.mimeType,
-        upsert: true, // overwrite if needed
-      });
+    // Upload to R2
+    const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
 
-    if (error) {
-      console.error("Supabase upload error:", error);
+    if (!uploadResult.success) {
+      console.error("R2 upload error:", uploadResult.error);
       return res.status(500).json({ error: "Upload failed" });
     }
 
-    // Generate public URL
-    const { data: publicUrlData } = supabase.storage
-  .from("book_images")
-  .getPublicUrl(filePath);
-
-	const photoUrl = publicUrlData.publicUrl;
-	console.log("Returning public image URL:", photoUrl);
+    const photoUrl = uploadResult.publicUrl;
+    console.log("Returning public image URL:", photoUrl);
 
 
     // Save into book_projects

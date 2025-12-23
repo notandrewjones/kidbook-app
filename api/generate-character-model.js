@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
+import { uploadToR2 } from "./_r2.js";
 
 const DEV_MODE = process.env.DEV_MODE === "true";
 const DEV_MODEL_URL = process.env.DEV_CHARACTER_MODEL_URL;
@@ -200,24 +201,17 @@ export default async function handler(req, res) {
 
     const pngBuffer = Buffer.from(imageCall.result, "base64");
 
-    // Upload to Supabase storage with character-specific path
+    // Upload to R2 storage with character-specific path
     const filePath = `character_models/${projectId}/${characterKey}.png`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, pngBuffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
+    const uploadResult = await uploadToR2(filePath, pngBuffer, "image/png");
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
+    if (!uploadResult.success) {
+      console.error("R2 upload error:", uploadResult.error);
       return res.status(500).json({ error: "Upload failed." });
     }
 
-    const { data: publicUrl } = supabase.storage
-      .from("book_images")
-      .getPublicUrl(filePath);
+    const modelUrl = uploadResult.publicUrl;
 
     // -------------------------------------------------------------
     // Update character_models array
@@ -234,7 +228,7 @@ export default async function handler(req, res) {
       character_key: characterKey,
       name: characterName,
       role: role,
-      model_url: publicUrl.publicUrl,
+      model_url: modelUrl,
       source_photo_url: sourcePhotoUrl,
       visual_source: "user",
       created_at: new Date().toISOString(),
@@ -267,7 +261,7 @@ export default async function handler(req, res) {
         character_models: characterModels,
         props_registry: [registry],
         // Keep legacy field updated for protagonist (backward compatibility)
-        ...(isProtagonist ? { character_model_url: publicUrl.publicUrl } : {}),
+        ...(isProtagonist ? { character_model_url: modelUrl } : {}),
       })
       .eq("id", projectId);
 

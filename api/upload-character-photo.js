@@ -2,6 +2,7 @@
 // Upload a photo for any character (not just the protagonist)
 
 import { createClient } from "@supabase/supabase-js";
+import { uploadToR2 } from "./_r2.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -81,23 +82,15 @@ export default async function handler(req, res) {
     const ext = fileInfo.filename?.split(".").pop() || "png";
     const filePath = `source_photos/${projectId}/${characterKey}.${ext}`;
 
-    const { data, error } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, fileBuffer, {
-        contentType: fileInfo.mimeType,
-        upsert: true,
-      });
+    // Upload to R2
+    const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
 
-    if (error) {
-      console.error("Supabase upload error:", error);
+    if (!uploadResult.success) {
+      console.error("R2 upload error:", uploadResult.error);
       return res.status(500).json({ error: "Upload failed" });
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from("book_images")
-      .getPublicUrl(filePath);
-
-    const photoUrl = publicUrlData.publicUrl;
+    const photoUrl = uploadResult.publicUrl;
     console.log("Character photo uploaded:", photoUrl);
 
     // Update the project's pending_character_photos to track uploads before model generation

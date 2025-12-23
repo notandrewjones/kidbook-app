@@ -4,6 +4,7 @@
 
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
+const { uploadToR2 } = require("./_r2.js");
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -416,20 +417,18 @@ Generate the illustration now.
 
     const sceneBuffer = Buffer.from(imgCall.result, "base64");
 
-    // 9. Upload image
+    // 9. Upload image to R2
     const newRevisions = isRegen ? previousRevisions + 1 : 0;
     const filePath = `illustrations/${projectId}-page-${page}-r${newRevisions}.png`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("book_images")
-      .upload(filePath, sceneBuffer, { contentType: "image/png", upsert: true });
+    const uploadResult = await uploadToR2(filePath, sceneBuffer, "image/png");
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
+    if (!uploadResult.success) {
+      console.error("R2 upload error:", uploadResult.error);
       return res.status(500).json({ error: "Failed to upload illustration." });
     }
 
-    const { data: urlData } = supabase.storage.from("book_images").getPublicUrl(filePath);
+    const imageUrl = uploadResult.publicUrl;
 
     // 10. Update registry with new props/environments
     if (detectedLocation) {
@@ -473,7 +472,7 @@ Generate the illustration now.
     const updatedIllustrations = existingIllustrations.filter(i => Number(i.page) !== Number(page));
     updatedIllustrations.push({
       page,
-      image_url: urlData.publicUrl,
+      image_url: imageUrl,
       revisions: newRevisions,
       last_updated: new Date().toISOString(),
       revision_history: newHistory,
@@ -488,7 +487,7 @@ Generate the illustration now.
     // 12. Done
     return res.status(200).json({
       page,
-      image_url: urlData.publicUrl,
+      image_url: imageUrl,
       revisions: newRevisions,
       revision_history: newHistory,
       scene_composition: sceneComposition,
