@@ -244,9 +244,7 @@ function renderCartItems() {
  */
 function showQtySpinner(qtyEl) {
   if (!qtyEl) return;
-  qtyEl.innerHTML = `<svg class="qty-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-    <path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-5.07l-2.83 2.83M9.76 14.24l-2.83 2.83m11.14 0l-2.83-2.83M9.76 9.76L6.93 6.93"/>
-  </svg>`;
+  qtyEl.innerHTML = `<div class="spinner qty-spinner"></div>`;
 }
 
 /**

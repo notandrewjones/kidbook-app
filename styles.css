@@ -4063,10 +4063,12 @@ body[data-phase="compositor"] .compositor-wrap {
   to { transform: rotate(360deg); }
 }
 
-/* Cart quantity spinner */
-.qty-spinner {
-  animation: spin 0.8s linear infinite;
-  display: block;
+/* Cart quantity spinner - uses standard spinner but sized to match qty text */
+.qty-spinner.spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  margin: 0 auto;
 }
 
 .cart-item.removing {
