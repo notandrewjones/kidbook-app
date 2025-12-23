@@ -178,124 +178,75 @@ function renderCartItems() {
         <div class="cart-item-price">${formatPrice(item.unit_price_cents)} each</div>
       </div>
       <div class="cart-item-quantity">
-        <button class="qty-btn qty-minus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" data-qty="${item.quantity}">−</button>
+        <button class="qty-btn qty-minus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}">−</button>
         <span class="qty-value">${item.quantity}</span>
-        <button class="qty-btn qty-plus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" data-qty="${item.quantity}">+</button>
+        <button class="qty-btn qty-plus" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}">+</button>
       </div>
       <div class="cart-item-line-total">${formatPrice(item.line_total_cents)}</div>
       <button class="cart-item-remove" data-book="${item.book_id}" data-type="${item.product_type}" data-size="${item.size || ''}" title="Remove">×</button>
     </div>
   `).join('');
 
-  // Bind quantity buttons with optimistic updates
+  // Bind quantity buttons
   container.querySelectorAll('.qty-minus').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent click from bubbling to close handler
-      const { book, type, size, qty } = btn.dataset;
-      const currentQty = parseInt(qty);
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { book, type, size } = btn.dataset;
+      const item = cartData.items.find(i => 
+        i.book_id === book && i.product_type === type && (i.size || '') === size
+      );
+      if (!item) return;
       
-      if (currentQty > 1) {
-        // Optimistic update - decrease quantity
-        optimisticUpdateQuantity(book, type, size, currentQty - 1);
-        // Fire and forget the API call
-        updateCartItem(book, type, { size: size || null, quantity: currentQty - 1, action: 'set' })
-          .catch(err => {
-            console.error('Failed to update cart:', err);
-            refreshCart(); // Revert on error
-          });
+      // Show spinner
+      const qtyEl = btn.parentElement.querySelector('.qty-value');
+      showQtySpinner(qtyEl);
+      
+      if (item.quantity > 1) {
+        await updateCartItem(book, type, { size: size || null, quantity: item.quantity - 1, action: 'set' });
       } else {
-        // Optimistic update - remove item
-        optimisticRemoveItem(book, type, size);
-        // Fire and forget the API call
-        removeCartItem(book, type, size || null)
-          .catch(err => {
-            console.error('Failed to remove item:', err);
-            refreshCart(); // Revert on error
-          });
+        await removeCartItem(book, type, size || null);
       }
+      refreshCart();
     });
   });
 
   container.querySelectorAll('.qty-plus').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent click from bubbling to close handler
-      const { book, type, size, qty } = btn.dataset;
-      const currentQty = parseInt(qty);
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { book, type, size } = btn.dataset;
       
-      // Optimistic update - increase quantity
-      optimisticUpdateQuantity(book, type, size, currentQty + 1);
-      // Fire and forget the API call
-      updateCartItem(book, type, { size: size || null, quantity: 1, action: 'add' })
-        .catch(err => {
-          console.error('Failed to update cart:', err);
-          refreshCart(); // Revert on error
-        });
+      // Show spinner
+      const qtyEl = btn.parentElement.querySelector('.qty-value');
+      showQtySpinner(qtyEl);
+      
+      await updateCartItem(book, type, { size: size || null, quantity: 1, action: 'add' });
+      refreshCart();
     });
   });
 
   container.querySelectorAll('.cart-item-remove').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent click from bubbling to close handler
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const { book, type, size } = btn.dataset;
       
-      // Optimistic update - remove item immediately
-      optimisticRemoveItem(book, type, size);
-      // Fire and forget the API call
-      removeCartItem(book, type, size || null)
-        .catch(err => {
-          console.error('Failed to remove item:', err);
-          refreshCart(); // Revert on error
-        });
+      // Show spinner on the whole item
+      const cartItem = btn.closest('.cart-item');
+      cartItem?.classList.add('removing');
+      
+      await removeCartItem(book, type, size || null);
+      refreshCart();
     });
   });
 }
 
 /**
- * Optimistically update item quantity in local state and re-render
+ * Show spinner in place of quantity value
  */
-function optimisticUpdateQuantity(bookId, productType, size, newQuantity) {
-  const item = cartData.items.find(i => 
-    i.book_id === bookId && i.product_type === productType && (i.size || '') === size
-  );
-  if (!item) return;
-  
-  const oldQuantity = item.quantity;
-  const priceDiff = (newQuantity - oldQuantity) * item.unit_price_cents;
-  
-  item.quantity = newQuantity;
-  item.line_total_cents = newQuantity * item.unit_price_cents;
-  
-  // Update totals
-  cartData.totalCents += priceDiff;
-  cartData.totalFormatted = formatPrice(cartData.totalCents);
-  
-  // Re-render
-  renderCartItems();
-  updateCartBadge();
-}
-
-/**
- * Optimistically remove item from local state and re-render
- */
-function optimisticRemoveItem(bookId, productType, size) {
-  const itemIndex = cartData.items.findIndex(i => 
-    i.book_id === bookId && i.product_type === productType && (i.size || '') === size
-  );
-  if (itemIndex === -1) return;
-  
-  const item = cartData.items[itemIndex];
-  
-  // Update totals
-  cartData.totalCents -= item.line_total_cents;
-  cartData.totalFormatted = formatPrice(cartData.totalCents);
-  cartData.itemCount -= item.quantity;
-  
-  // Remove from array
-  cartData.items.splice(itemIndex, 1);
-  
-  // Re-render
-  renderCartItems();
-  updateCartBadge();
+function showQtySpinner(qtyEl) {
+  if (!qtyEl) return;
+  qtyEl.innerHTML = `<svg class="qty-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-5.07l-2.83 2.83M9.76 14.24l-2.83 2.83m11.14 0l-2.83-2.83M9.76 9.76L6.93 6.93"/>
+  </svg>`;
 }
 
 /**

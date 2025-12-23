@@ -4063,6 +4063,17 @@ body[data-phase="compositor"] .compositor-wrap {
   to { transform: rotate(360deg); }
 }
 
+/* Cart quantity spinner */
+.qty-spinner {
+  animation: spin 0.8s linear infinite;
+  display: block;
+}
+
+.cart-item.removing {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* =============================================
    EBOOK CHECKBOX TOGGLE
    ============================================= */
