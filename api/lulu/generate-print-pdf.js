@@ -1,9 +1,9 @@
 // api/lulu/generate-print-pdf.js
 // Server-side PDF generation for Lulu print fulfillment
-// Uses pdf-lib with embedded fonts for print-quality output
+// Uses pdf-lib with custom embedded fonts for print-quality output
 
 const { createClient } = require("@supabase/supabase-js");
-const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
+const { PDFDocument, rgb } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 
 const supabase = createClient(
@@ -20,9 +20,50 @@ const PAGE_DIMENSIONS = {
   'portrait-medium': { width: 612, height: 792, inches: '8.5×11' },
 };
 
-const COVER_WRAP = 54;      // 0.75 inches in points
-const COVER_BLEED = 9;      // 0.125 inches in points
-const BLEED = 9;            // 0.125 inches in points
+const COVER_WRAP = 54;
+const COVER_BLEED = 9;
+const BLEED = 9;
+
+// Font URLs from Google Fonts CDN (these are stable URLs)
+const FONT_URLS = {
+  regular: 'https://fonts.gstatic.com/s/opensans/v40/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0C4nY1M2xLER.ttf',
+  bold: 'https://fonts.gstatic.com/s/opensans/v40/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsg-1y4nY1M2xLER.ttf',
+};
+
+// Cache for downloaded fonts
+let fontCache = {};
+
+/**
+ * Download and cache font
+ */
+async function getFont(type = 'regular') {
+  if (fontCache[type]) {
+    return fontCache[type];
+  }
+  
+  const url = FONT_URLS[type];
+  if (!url) {
+    throw new Error(`Unknown font type: ${type}`);
+  }
+  
+  console.log(`[PDF] Downloading ${type} font...`);
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch font: ${response.status}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    fontCache[type] = new Uint8Array(arrayBuffer);
+    
+    console.log(`[PDF] Downloaded ${type} font: ${fontCache[type].length} bytes`);
+    return fontCache[type];
+  } catch (err) {
+    console.error(`[PDF] Failed to download font:`, err.message);
+    throw err;
+  }
+}
 
 /**
  * Fetch image as buffer
@@ -46,7 +87,6 @@ async function fetchImageAsBuffer(url) {
  * Simple text wrapping helper
  */
 function wrapText(text, font, fontSize, maxWidth) {
-  // Remove newlines and normalize whitespace
   const cleanText = text.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
   
   const words = cleanText.split(' ');
@@ -110,7 +150,7 @@ async function generateInteriorPdf(bookId, options = {}) {
 
   console.log(`[PDF] Book has ${pages.length} pages, ${illustrations.length} illustrations`);
 
-  // Build page data with images
+  // Build page data
   const pageData = pages.map((page) => {
     const illustration = illustrations.find(i => i.page === page.page);
     return {
@@ -130,12 +170,20 @@ async function generateInteriorPdf(bookId, options = {}) {
   const pageWidth = width + (BLEED * 2);
   const pageHeight = height + (BLEED * 2);
 
-  // Create PDF
+  // Create PDF and register fontkit for custom fonts
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
   
-  // Embed standard fonts (these are truly embedded by pdf-lib)
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Download and embed custom fonts
+  const [regularFontBytes, boldFontBytes] = await Promise.all([
+    getFont('regular'),
+    getFont('bold'),
+  ]);
+  
+  const regularFont = await pdfDoc.embedFont(regularFontBytes);
+  const boldFont = await pdfDoc.embedFont(boldFontBytes);
+  
+  console.log(`[PDF] Fonts embedded successfully`);
   
   // Set metadata
   pdfDoc.setTitle(title);
@@ -146,33 +194,30 @@ async function generateInteriorPdf(bookId, options = {}) {
   // Title page
   const titlePage = pdfDoc.addPage([pageWidth, pageHeight]);
   
-  // Purple background
   titlePage.drawRectangle({
     x: 0,
     y: 0,
     width: pageWidth,
     height: pageHeight,
-    color: rgb(0.4, 0.494, 0.918), // #667eea
+    color: rgb(0.4, 0.494, 0.918),
   });
   
-  // Title
-  const titleWidth = helveticaBold.widthOfTextAtSize(title, 36);
+  const titleWidth = boldFont.widthOfTextAtSize(title, 36);
   titlePage.drawText(title, {
     x: (pageWidth - titleWidth) / 2,
     y: pageHeight / 2 + 20,
     size: 36,
-    font: helveticaBold,
+    font: boldFont,
     color: rgb(1, 1, 1),
   });
   
-  // Author
   const authorText = `by ${author}`;
-  const authorWidth = helvetica.widthOfTextAtSize(authorText, 18);
+  const authorWidth = regularFont.widthOfTextAtSize(authorText, 18);
   titlePage.drawText(authorText, {
     x: (pageWidth - authorWidth) / 2,
     y: pageHeight / 2 - 30,
     size: 18,
-    font: helvetica,
+    font: regularFont,
     color: rgb(1, 1, 1),
   });
 
@@ -181,7 +226,6 @@ async function generateInteriorPdf(bookId, options = {}) {
     const pageInfo = pageData[i];
     const page = pdfDoc.addPage([pageWidth, pageHeight]);
     
-    // White background
     page.drawRectangle({
       x: 0,
       y: 0,
@@ -190,21 +234,20 @@ async function generateInteriorPdf(bookId, options = {}) {
       color: rgb(1, 1, 1),
     });
 
-    // Add image if available
+    // Add image
     if (pageInfo.imageUrl) {
       try {
         console.log(`[PDF] Fetching image for page ${pageInfo.page}...`);
         const imageBytes = await fetchImageAsBuffer(pageInfo.imageUrl);
         if (imageBytes) {
           let image;
-          // Try PNG first, then JPEG
           try {
             image = await pdfDoc.embedPng(imageBytes);
           } catch {
             try {
               image = await pdfDoc.embedJpg(imageBytes);
             } catch (e) {
-              console.error(`[PDF] Failed to embed image for page ${pageInfo.page}:`, e.message);
+              console.error(`[PDF] Failed to embed image:`, e.message);
             }
           }
           
@@ -214,7 +257,6 @@ async function generateInteriorPdf(bookId, options = {}) {
             const imgWidth = width - 40;
             const imgHeight = height * 0.55;
             
-            // Scale to fit
             const scale = Math.min(imgWidth / image.width, imgHeight / image.height);
             const scaledWidth = image.width * scale;
             const scaledHeight = image.height * scale;
@@ -228,7 +270,7 @@ async function generateInteriorPdf(bookId, options = {}) {
           }
         }
       } catch (imgErr) {
-        console.error(`[PDF] Failed to add image for page ${pageInfo.page}:`, imgErr.message);
+        console.error(`[PDF] Image error:`, imgErr.message);
       }
     }
 
@@ -239,7 +281,7 @@ async function generateInteriorPdf(bookId, options = {}) {
       const fontSize = 14;
       const lineHeight = fontSize * 1.4;
       
-      const lines = wrapText(pageInfo.text, helvetica, fontSize, textWidth);
+      const lines = wrapText(pageInfo.text, regularFont, fontSize, textWidth);
       let textY = BLEED + height * 0.35;
       
       for (const line of lines) {
@@ -247,7 +289,7 @@ async function generateInteriorPdf(bookId, options = {}) {
           x: textX,
           y: textY,
           size: fontSize,
-          font: helvetica,
+          font: regularFont,
           color: rgb(0.2, 0.2, 0.2),
         });
         textY -= lineHeight;
@@ -256,25 +298,23 @@ async function generateInteriorPdf(bookId, options = {}) {
 
     // Page number
     const pageNumText = String(pageInfo.page);
-    const pageNumWidth = helvetica.widthOfTextAtSize(pageNumText, 10);
+    const pageNumWidth = regularFont.widthOfTextAtSize(pageNumText, 10);
     page.drawText(pageNumText, {
       x: (pageWidth - pageNumWidth) / 2,
       y: BLEED + 15,
       size: 10,
-      font: helvetica,
+      font: regularFont,
       color: rgb(0.6, 0.6, 0.6),
     });
   }
 
-  // Calculate current page count
+  // Add blank pages if needed
   let currentPageCount = pageData.length + 1;
-  
-  // Lulu requires minimum 24 pages
   const MIN_PAGES = 24;
   
   if (currentPageCount < MIN_PAGES) {
     const blankPagesToAdd = MIN_PAGES - currentPageCount;
-    console.log(`[PDF] Adding ${blankPagesToAdd} blank pages to meet minimum of ${MIN_PAGES}`);
+    console.log(`[PDF] Adding ${blankPagesToAdd} blank pages`);
     
     for (let i = 0; i < blankPagesToAdd; i++) {
       const blankPage = pdfDoc.addPage([pageWidth, pageHeight]);
@@ -290,7 +330,6 @@ async function generateInteriorPdf(bookId, options = {}) {
     currentPageCount = MIN_PAGES;
   }
 
-  // Get PDF bytes
   const pdfBytes = await pdfDoc.save();
   const pdfBuffer = Buffer.from(pdfBytes);
   
@@ -304,7 +343,7 @@ async function generateInteriorPdf(bookId, options = {}) {
 }
 
 /**
- * Generate print-ready cover PDF for a book
+ * Generate print-ready cover PDF
  */
 async function generateCoverPdf(bookId, options = {}) {
   const { 
@@ -314,7 +353,6 @@ async function generateCoverPdf(bookId, options = {}) {
 
   console.log(`[PDF] Generating cover PDF for book ${bookId}`);
 
-  // Get book data
   const { data: book, error: bookError } = await supabase
     .from("book_projects")
     .select(`
@@ -344,58 +382,60 @@ async function generateCoverPdf(bookId, options = {}) {
 
   const { width, height } = dimensions;
   
-  // Calculate spine width
   const spineInches = Math.max(0.25, pageCount * 0.0025);
   const spineWidth = Math.round(spineInches * 72);
   
-  console.log(`[PDF] Cover calculation for ${sizeCode}: ${pageCount} pages, spine=${spineInches.toFixed(3)}" (${spineWidth}pt)`);
+  console.log(`[PDF] Cover: ${pageCount} pages, spine=${spineInches.toFixed(3)}"`);
 
-  // Total cover dimensions
   const coverWidth = (COVER_BLEED * 2) + (COVER_WRAP * 2) + (width * 2) + spineWidth;
   const coverHeight = (COVER_BLEED * 2) + (COVER_WRAP * 2) + height;
   
   console.log(`[PDF] Cover dimensions: ${(coverWidth/72).toFixed(3)}" x ${(coverHeight/72).toFixed(3)}"`);
 
-  // Create PDF
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
   
   // Embed fonts
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const [regularFontBytes, boldFontBytes] = await Promise.all([
+    getFont('regular'),
+    getFont('bold'),
+  ]);
+  
+  const regularFont = await pdfDoc.embedFont(regularFontBytes);
+  const boldFont = await pdfDoc.embedFont(boldFontBytes);
   
   const page = pdfDoc.addPage([coverWidth, coverHeight]);
 
-  // Full purple background
+  // Background
   page.drawRectangle({
     x: 0,
     y: 0,
     width: coverWidth,
     height: coverHeight,
-    color: rgb(0.4, 0.494, 0.918), // #667eea
+    color: rgb(0.4, 0.494, 0.918),
   });
 
-  // Calculate positions
   const contentStartX = COVER_BLEED + COVER_WRAP;
   const contentStartY = COVER_BLEED + COVER_WRAP;
 
-  // Spine - slightly different purple
+  // Spine
   const spineX = contentStartX + width;
   page.drawRectangle({
     x: spineX,
     y: 0,
     width: spineWidth,
     height: coverHeight,
-    color: rgb(0.463, 0.294, 0.635), // #764ba2
+    color: rgb(0.463, 0.294, 0.635),
   });
 
   // Back cover text
   const backText = 'A wonderful story created with love.';
-  const backTextWidth = helvetica.widthOfTextAtSize(backText, 12);
+  const backTextWidth = regularFont.widthOfTextAtSize(backText, 12);
   page.drawText(backText, {
     x: contentStartX + (width - backTextWidth) / 2,
     y: contentStartY + height / 2,
     size: 12,
-    font: helvetica,
+    font: regularFont,
     color: rgb(1, 1, 1),
   });
 
@@ -416,7 +456,7 @@ async function generateCoverPdf(bookId, options = {}) {
           try {
             image = await pdfDoc.embedJpg(imageBytes);
           } catch (e) {
-            console.error(`[PDF] Failed to embed cover image:`, e.message);
+            console.error(`[PDF] Cover image embed failed:`, e.message);
           }
         }
         
@@ -435,32 +475,31 @@ async function generateCoverPdf(bookId, options = {}) {
         }
       }
     } catch (imgErr) {
-      console.error(`[PDF] Failed to add cover image:`, imgErr.message);
+      console.error(`[PDF] Cover image error:`, imgErr.message);
     }
   }
 
   // Title
-  const titleWidth = helveticaBold.widthOfTextAtSize(title, 32);
+  const titleWidth = boldFont.widthOfTextAtSize(title, 32);
   page.drawText(title, {
     x: frontCenterX - titleWidth / 2,
     y: contentStartY + height * 0.25,
     size: 32,
-    font: helveticaBold,
+    font: boldFont,
     color: rgb(1, 1, 1),
   });
 
   // Author
   const authorText = `by ${author}`;
-  const authorWidth = helvetica.widthOfTextAtSize(authorText, 16);
+  const authorWidth = regularFont.widthOfTextAtSize(authorText, 16);
   page.drawText(authorText, {
     x: frontCenterX - authorWidth / 2,
     y: contentStartY + height * 0.25 - 35,
     size: 16,
-    font: helvetica,
+    font: regularFont,
     color: rgb(1, 1, 1),
   });
 
-  // Get PDF bytes
   const pdfBytes = await pdfDoc.save();
   const pdfBuffer = Buffer.from(pdfBytes);
 
