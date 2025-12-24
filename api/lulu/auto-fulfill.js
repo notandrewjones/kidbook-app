@@ -60,9 +60,12 @@ async function autoFulfillOrder(orderId, options = {}) {
   } = options;
 
   console.log(`[AutoFulfill] Starting fulfillment for order ${orderId}`);
+  console.log(`[AutoFulfill] Supabase URL configured: ${!!process.env.SUPABASE_URL}`);
+  console.log(`[AutoFulfill] Supabase Key configured: ${!!process.env.SUPABASE_SERVICE_ROLE_KEY}`);
 
   try {
     // Step 1: Get order and validate
+    console.log(`[AutoFulfill] Fetching order...`);
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .select(`
@@ -76,6 +79,8 @@ async function autoFulfillOrder(orderId, options = {}) {
       `)
       .eq("id", orderId)
       .single();
+
+    console.log(`[AutoFulfill] Order fetch result:`, { order: !!order, error: orderError });
 
     if (orderError || !order) {
       console.error(`[AutoFulfill] Order fetch error:`, orderError);
