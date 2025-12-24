@@ -72,21 +72,33 @@ async function autoFulfillOrder(orderId, options = {}) {
         status,
         size,
         fulfillment_status,
-        product:product_id (name)
+        product_id
       `)
       .eq("id", orderId)
       .single();
 
     if (orderError || !order) {
+      console.error(`[AutoFulfill] Order fetch error:`, orderError);
       throw new Error(`Order not found: ${orderId}`);
+    }
+
+    // Get product name separately
+    let productName = null;
+    if (order.product_id) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("name")
+        .eq("id", order.product_id)
+        .single();
+      productName = product?.name;
     }
 
     if (order.status !== 'paid') {
       throw new Error(`Order not paid: ${order.status}`);
     }
 
-    if (order.product?.name !== 'hardcover') {
-      throw new Error(`Not a hardcover order: ${order.product?.name}`);
+    if (productName !== 'hardcover') {
+      throw new Error(`Not a hardcover order: ${productName}`);
     }
 
     // Check if already submitted
