@@ -1,7 +1,7 @@
 {
-  "name": "kids-book-creator",
+  "name": "brightstories",
   "version": "1.0.0",
-  "description": "AI-powered children's book creator",
+  "description": "Create personalized story books with AI",
   "scripts": {
     "dev": "vercel dev",
     "dev:vite": "vite",

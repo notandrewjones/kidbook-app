@@ -1,5 +1,5 @@
 // js/compositor/integration.js
-// Integration helpers for connecting compositor to the Kids Book Creator app
+// Integration helpers for connecting compositor to the BrightStories app
 
 import { state } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';

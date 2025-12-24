@@ -60,7 +60,7 @@ export async function loadDashboard() {
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
             </svg>
           </div>
-          <h3>Welcome to Kids Book Creator!</h3>
+          <h3>Welcome to BrightStories.ai!</h3>
           <p>Please log in to view your books or create a new one.</p>
           <button class="btn btn-primary" onclick="document.getElementById('login-btn').click()">
             Log In to Get Started
