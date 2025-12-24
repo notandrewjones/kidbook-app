@@ -1,198 +1,136 @@
-// api/cart/checkout.js
-// Create a Stripe Checkout session for all cart items
+// js/api/checkout.js
+// Frontend API module for checkout and payment functionality
 
-const { createClient } = require("@supabase/supabase-js");
-const { getCurrentUser } = require("../_auth.js");
-const Stripe = require("stripe");
+/**
+ * Get the purchase/unlock status for a book
+ * @param {string} bookId 
+ * @returns {Promise<Object>} Status object with product unlock info
+ */
+export async function getBookPurchaseStatus(bookId) {
+  const response = await fetch(`/api/checkout/status?bookId=${bookId}`, {
+    credentials: 'include',
+  });
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || error.error || 'Failed to get status');
   }
 
-  const { user, error: authError } = await getCurrentUser(req, res);
+  return response.json();
+}
 
-  if (!user) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: authError || "Please log in to checkout",
-    });
+/**
+ * Create a checkout session (supports both hosted and embedded modes)
+ * @param {string} bookId 
+ * @param {'ebook' | 'hardcover'} productType 
+ * @param {boolean} embedded - If true, creates embedded checkout session
+ * @returns {Promise<{clientSecret?: string, checkoutUrl?: string, orderId: string}>}
+ */
+export async function createCheckoutSession(bookId, productType, embedded = false) {
+  const response = await fetch('/api/checkout/create-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ bookId, productType, embedded }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || error.error || 'Failed to create checkout');
   }
 
-  const { embedded } = req.body;
+  return response.json();
+}
 
+/**
+ * Redirect to Stripe Checkout (hosted mode)
+ * @param {string} bookId 
+ * @param {'ebook' | 'hardcover'} productType 
+ */
+export async function redirectToCheckout(bookId, productType) {
   try {
-    // Get cart items
-    const { data: cartItems, error: cartError } = await supabase
-      .rpc('get_cart_with_details', { p_user_id: user.id });
-
-    if (cartError) throw cartError;
-
-    if (!cartItems || cartItems.length === 0) {
-      return res.status(400).json({ error: "Cart is empty" });
-    }
-
-    // Get or create Stripe customer
-    let stripeCustomerId;
-    
-    const { data: customer } = await supabase
-      .from("customers")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (customer?.stripe_customer_id) {
-      stripeCustomerId = customer.stripe_customer_id;
-    } else {
-      const stripeCustomer = await stripe.customers.create({
-        email: user.email,
-        metadata: { supabase_user_id: user.id },
-      });
-      stripeCustomerId = stripeCustomer.id;
-
-      await supabase.from("customers").upsert({
-        user_id: user.id,
-        stripe_customer_id: stripeCustomerId,
-        email: user.email,
-      });
-    }
-
-    // Get product Stripe price IDs
-    const { data: products } = await supabase
-      .from("products")
-      .select("name, stripe_price_id");
-
-    const priceMap = {};
-    products?.forEach(p => {
-      priceMap[p.name] = p.stripe_price_id;
-    });
-
-    // Build line items for Stripe
-    // For now, all hardcovers use the same price ID regardless of size
-    const lineItems = cartItems.map(item => {
-      const priceId = item.product_type === 'ebook' 
-        ? priceMap['ebook']
-        : priceMap['hardcover'];
-
-      if (!priceId) {
-        throw new Error(`No Stripe price configured for ${item.product_type}`);
-      }
-
-      return {
-        price: priceId,
-        quantity: item.quantity,
-      };
-    });
-
-    // Create orders for each unique book/product combo
-    const orderIds = [];
-    const bookIds = [...new Set(cartItems.map(i => i.book_id))];
-    
-    for (const item of cartItems) {
-      // Get product ID
-      const { data: product } = await supabase
-        .from("products")
-        .select("id")
-        .eq("name", item.product_type)
-        .single();
-
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          user_id: user.id,
-          book_id: item.book_id,
-          product_id: product.id,
-          amount_cents: item.line_total_cents,
-          currency: "usd",
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-      if (orderError) {
-        console.error("Order create error:", orderError);
-        throw orderError;
-      }
-
-      orderIds.push(order.id);
-    }
-
-    // Create Stripe session
-    // Use BASE_URL (custom domain) first, then fall back to VERCEL_URL for previews
-    const baseUrl = process.env.BASE_URL 
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-    const uiMode = embedded ? "embedded" : "hosted";
-
-    const sessionConfig = {
-      customer: stripeCustomerId,
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      mode: "payment",
-      metadata: {
-        order_ids: orderIds.join(","),
-        book_ids: bookIds.join(","),
-        user_id: user.id,
-        cart_checkout: "true",
-      },
-    };
-
-    // Check if any hardcovers need shipping
-    const hasHardcover = cartItems.some(i => i.product_type === 'hardcover');
-
-    if (uiMode === "embedded") {
-      sessionConfig.ui_mode = "embedded";
-      sessionConfig.return_url = `${baseUrl}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`;
-    } else {
-      sessionConfig.success_url = `${baseUrl}/dashboard?payment=success&orders=${orderIds.join(",")}`;
-      sessionConfig.cancel_url = `${baseUrl}/dashboard?payment=cancelled`;
-      
-      if (hasHardcover) {
-        sessionConfig.billing_address_collection = "required";
-        sessionConfig.shipping_address_collection = {
-          allowed_countries: ["US", "CA", "GB", "AU"],
-        };
-      }
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionConfig);
-
-    // Update orders with session ID
-    for (const orderId of orderIds) {
-      await supabase
-        .from("orders")
-        .update({ stripe_checkout_session_id: session.id })
-        .eq("id", orderId);
-    }
-
-    if (uiMode === "embedded") {
-      return res.status(200).json({
-        clientSecret: session.client_secret,
-        sessionId: session.id,
-        orderIds,
-      });
-    } else {
-      return res.status(200).json({
-        checkoutUrl: session.url,
-        sessionId: session.id,
-        orderIds,
-      });
-    }
-
+    const { checkoutUrl } = await createCheckoutSession(bookId, productType, false);
+    window.location.href = checkoutUrl;
   } catch (err) {
-    console.error("Cart checkout error:", err);
-    return res.status(500).json({ 
-      error: "Failed to create checkout",
-      details: err.message,
-    });
+    console.error('Checkout error:', err);
+    throw err;
   }
 }
 
-module.exports = handler;
+/**
+ * Initialize embedded checkout
+ * @param {string} bookId 
+ * @param {'ebook' | 'hardcover'} productType 
+ * @returns {Promise<{clientSecret: string, orderId: string}>}
+ */
+export async function initEmbeddedCheckout(bookId, productType) {
+  return createCheckoutSession(bookId, productType, true);
+}
+
+/**
+ * Check if returning from a successful payment
+ * @returns {{ success: boolean, orderId: string | null, cancelled: boolean, sessionId: string | null }}
+ */
+export function checkPaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  
+  return {
+    success: params.get('payment') === 'success',
+    cancelled: params.get('payment') === 'cancelled',
+    orderId: params.get('order'),
+    sessionId: params.get('session_id'),
+  };
+}
+
+/**
+ * Clear payment params from URL (after handling)
+ */
+export function clearPaymentParams() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('payment');
+  url.searchParams.delete('order');
+  url.searchParams.delete('session_id');
+  window.history.replaceState({}, '', url.toString());
+}
+
+/**
+ * Format price from cents to display string
+ * @param {number} cents 
+ * @returns {string}
+ */
+export function formatPrice(cents) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Load Stripe.js dynamically
+ * @returns {Promise<Stripe>}
+ */
+let stripePromise = null;
+export async function loadStripe() {
+  if (stripePromise) return stripePromise;
+  
+  // Load Stripe.js from CDN if not already loaded
+  if (!window.Stripe) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Failed to load Stripe.js'));
+      document.head.appendChild(script);
+    });
+  }
+  
+  // Get publishable key from a meta tag or environment
+  const publishableKey = document.querySelector('meta[name="stripe-publishable-key"]')?.content 
+    || window.STRIPE_PUBLISHABLE_KEY;
+  
+  if (!publishableKey) {
+    throw new Error('Stripe publishable key not configured');
+  }
+  
+  stripePromise = window.Stripe(publishableKey);
+  return stripePromise;
+}
