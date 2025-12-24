@@ -177,14 +177,36 @@ async function generateInteriorPdf(bookId, options = {}) {
     pdf.text(String(page.page), pageWidth / 2, pageHeight - BLEED - 15, { align: 'center' });
   }
 
+  // Calculate current page count (title page + content pages)
+  let currentPageCount = pageData.length + 1;
+  
+  // Lulu requires minimum 24 pages for hardcover casewrap
+  const MIN_PAGES = 24;
+  
+  // Add blank pages if needed to meet minimum
+  if (currentPageCount < MIN_PAGES) {
+    const blankPagesToAdd = MIN_PAGES - currentPageCount;
+    console.log(`[PDF] Adding ${blankPagesToAdd} blank pages to meet minimum of ${MIN_PAGES}`);
+    
+    for (let i = 0; i < blankPagesToAdd; i++) {
+      pdf.addPage([pageWidth, pageHeight]);
+      
+      // White background
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+    }
+    
+    currentPageCount = MIN_PAGES;
+  }
+
   // Get PDF as buffer
   const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
   
-  console.log(`[PDF] Interior PDF generated: ${pdfBuffer.length} bytes, ${pageData.length + 1} pages`);
+  console.log(`[PDF] Interior PDF generated: ${pdfBuffer.length} bytes, ${currentPageCount} pages`);
 
   return {
     buffer: pdfBuffer,
-    pageCount: pageData.length + 1, // +1 for title page
+    pageCount: currentPageCount,
     dimensions,
   };
 }
