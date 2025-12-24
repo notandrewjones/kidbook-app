@@ -23,6 +23,23 @@ import {
   getHardcoverSizes 
 } from '../api/cart.js';
 
+// API function to upload rendered pages for print
+async function uploadPrintPages(bookId, pages, coverImage = null) {
+  const response = await fetch('/api/lulu/upload-page-images', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ bookId, pages, coverImage }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to upload print pages');
+  }
+
+  return response.json();
+}
+
 export class CompositorUI {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
@@ -2611,6 +2628,10 @@ export class CompositorUI {
     }
 
     const addBtn = document.getElementById('add-to-cart-btn');
+    
+    // Check if any hardcover items are being added
+    const hasHardcover = this.hardcoverItems.some(item => item && item.qty > 0);
+    
     if (addBtn) {
       addBtn.disabled = true;
       addBtn.classList.add('loading');
@@ -2619,7 +2640,7 @@ export class CompositorUI {
           <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
           <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
         </svg>
-        Adding to Cart...
+        ${hasHardcover ? 'Preparing Print Files...' : 'Adding to Cart...'}
       `;
     }
 
@@ -2628,6 +2649,60 @@ export class CompositorUI {
       let totalItems = this.cartEbookQty;
       for (const item of this.hardcoverItems) {
         if (item && item.qty > 0) totalItems += item.qty;
+      }
+
+      // If adding hardcover items, render and upload print-ready pages first
+      if (hasHardcover) {
+        console.log('[Cart] Hardcover items detected, rendering pages for print...');
+        
+        // Update button to show rendering progress
+        const updateProgress = (current, total) => {
+          if (addBtn) {
+            addBtn.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+              </svg>
+              Rendering page ${current}/${total}...
+            `;
+          }
+        };
+
+        try {
+          // Render all pages as high-quality images
+          const { pages, coverImage } = await this.renderPagesForPrint(updateProgress);
+          
+          // Update button to show upload progress
+          if (addBtn) {
+            addBtn.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+              </svg>
+              Uploading print files...
+            `;
+          }
+          
+          // Upload to server
+          const uploadResult = await uploadPrintPages(this.projectId, pages, coverImage);
+          console.log('[Cart] Print pages uploaded:', uploadResult);
+          
+        } catch (renderErr) {
+          console.error('[Cart] Failed to prepare print files:', renderErr);
+          // Continue with cart add even if render fails - server will use fallback
+          console.log('[Cart] Continuing with cart add, server will use fallback rendering');
+        }
+        
+        // Update button for final cart add
+        if (addBtn) {
+          addBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+              <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+            </svg>
+            Adding to Cart...
+          `;
+        }
       }
 
       // Add ebook if quantity > 0
@@ -2707,6 +2782,128 @@ export class CompositorUI {
       errorEl.classList.remove('hidden');
       setTimeout(() => errorEl.classList.add('hidden'), 5000);
     }
+  }
+
+  /**
+   * Render all pages as high-quality images for print
+   * This captures the exact design from the compositor
+   * @param {function} onProgress - Progress callback (current, total)
+   * @returns {Promise<{pages: Array, coverImage: string|null}>}
+   */
+  async renderPagesForPrint(onProgress = null) {
+    if (!this.bookData || !this.bookData.pages) {
+      throw new Error('No book data available');
+    }
+
+    const template = getTemplate(this.selectedTemplate);
+    const pages = [];
+    const totalPages = this.bookData.pages.length;
+    const scale = 3; // High resolution for print (3x)
+
+    console.log(`[Print] Rendering ${totalPages} pages for print...`);
+
+    for (let i = 0; i < totalPages; i++) {
+      const pageData = this.bookData.pages[i];
+      
+      if (onProgress) {
+        onProgress(i + 1, totalPages);
+      }
+
+      try {
+        // Get customizations for this page
+        const overrides = this.getPageOverrides(i);
+        
+        // Render page as SVG using the compositor renderer
+        const svg = await this.renderer.render(pageData, template, overrides);
+        
+        // Convert SVG to high-quality PNG
+        const imageData = await this.svgToDataUrl(svg, scale);
+        
+        pages.push({
+          pageNumber: pageData.page || (i + 1),
+          imageData,
+        });
+        
+        console.log(`[Print] Rendered page ${i + 1}/${totalPages}`);
+      } catch (err) {
+        console.error(`[Print] Failed to render page ${i + 1}:`, err);
+        throw new Error(`Failed to render page ${i + 1}: ${err.message}`);
+      }
+    }
+
+    // Also render the cover (first page) at higher quality for cover image
+    let coverImage = null;
+    if (pages.length > 0) {
+      coverImage = pages[0].imageData;
+    }
+
+    return { pages, coverImage };
+  }
+
+  /**
+   * Convert SVG element to data URL (PNG)
+   */
+  async svgToDataUrl(svg, scale = 2) {
+    return new Promise((resolve, reject) => {
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg);
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        // Get dimensions from SVG
+        const width = svg.getAttribute('width') || svg.viewBox?.baseVal?.width || 576;
+        const height = svg.getAttribute('height') || svg.viewBox?.baseVal?.height || 576;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convert to PNG data URL
+        const dataUrl = canvas.toDataURL('image/png', 1.0);
+        
+        URL.revokeObjectURL(url);
+        resolve(dataUrl);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to convert SVG to image'));
+      };
+
+      img.src = url;
+    });
+  }
+
+  /**
+   * Get combined overrides for a specific page
+   */
+  getPageOverrides(pageIndex) {
+    const overrides = { ...this.customizations };
+    
+    // Add page-specific crop settings
+    if (this.pageCropSettings[pageIndex]) {
+      overrides.crop = this.pageCropSettings[pageIndex];
+    }
+    
+    // Add page-specific frame settings
+    if (this.pageFrameSettings[pageIndex]) {
+      overrides.frameAdjustments = this.pageFrameSettings[pageIndex];
+    }
+    
+    // Add page-specific text settings
+    if (this.pageTextSettings[pageIndex]) {
+      overrides.textAdjustments = this.pageTextSettings[pageIndex];
+    }
+    
+    return overrides;
   }
 
   // Set the project ID for cart operations

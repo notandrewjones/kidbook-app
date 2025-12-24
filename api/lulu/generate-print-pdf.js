@@ -130,7 +130,9 @@ async function generateInteriorPdf(bookId, options = {}) {
       selected_idea,
       story_json,
       illustrations,
-      kid_name
+      kid_name,
+      print_pages,
+      print_cover_image
     `)
     .eq("id", bookId)
     .single();
@@ -143,22 +145,17 @@ async function generateInteriorPdf(bookId, options = {}) {
   const illustrations = book.illustrations || [];
   const title = book.selected_idea?.title || 'My Book';
   const author = book.kid_name || 'Author';
+  
+  // Check if we have pre-rendered pages from the compositor
+  const printPages = book.print_pages || [];
+  const usePreRenderedPages = printPages.length > 0;
 
-  if (pages.length === 0) {
+  if (pages.length === 0 && printPages.length === 0) {
     throw new Error('Book has no pages');
   }
 
   console.log(`[PDF] Book has ${pages.length} pages, ${illustrations.length} illustrations`);
-
-  // Build page data
-  const pageData = pages.map((page) => {
-    const illustration = illustrations.find(i => i.page === page.page);
-    return {
-      page: page.page,
-      text: page.text,
-      imageUrl: illustration?.url || null,
-    };
-  });
+  console.log(`[PDF] Pre-rendered pages available: ${usePreRenderedPages ? printPages.length : 'No'}`);
 
   // Get dimensions
   const dimensions = PAGE_DIMENSIONS[sizeCode];
@@ -191,125 +188,193 @@ async function generateInteriorPdf(bookId, options = {}) {
   pdfDoc.setSubject("Children's Picture Book");
   pdfDoc.setCreator('BrightStories');
 
-  // Title page
-  const titlePage = pdfDoc.addPage([pageWidth, pageHeight]);
-  
-  titlePage.drawRectangle({
-    x: 0,
-    y: 0,
-    width: pageWidth,
-    height: pageHeight,
-    color: rgb(0.4, 0.494, 0.918),
-  });
-  
-  const titleWidth = boldFont.widthOfTextAtSize(title, 36);
-  titlePage.drawText(title, {
-    x: (pageWidth - titleWidth) / 2,
-    y: pageHeight / 2 + 20,
-    size: 36,
-    font: boldFont,
-    color: rgb(1, 1, 1),
-  });
-  
-  const authorText = `by ${author}`;
-  const authorWidth = regularFont.widthOfTextAtSize(authorText, 18);
-  titlePage.drawText(authorText, {
-    x: (pageWidth - authorWidth) / 2,
-    y: pageHeight / 2 - 30,
-    size: 18,
-    font: regularFont,
-    color: rgb(1, 1, 1),
-  });
-
-  // Content pages
-  for (let i = 0; i < pageData.length; i++) {
-    const pageInfo = pageData[i];
-    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+  if (usePreRenderedPages) {
+    // Use pre-rendered pages from compositor
+    console.log(`[PDF] Using ${printPages.length} pre-rendered pages`);
     
-    page.drawRectangle({
+    for (let i = 0; i < printPages.length; i++) {
+      const pageInfo = printPages[i];
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      
+      // White background
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(1, 1, 1),
+      });
+
+      // Fetch and embed the pre-rendered page image
+      if (pageInfo.url) {
+        try {
+          console.log(`[PDF] Fetching pre-rendered page ${pageInfo.pageNumber}...`);
+          const imageBytes = await fetchImageAsBuffer(pageInfo.url);
+          if (imageBytes) {
+            let image;
+            try {
+              image = await pdfDoc.embedPng(imageBytes);
+            } catch {
+              try {
+                image = await pdfDoc.embedJpg(imageBytes);
+              } catch (e) {
+                console.error(`[PDF] Failed to embed pre-rendered page:`, e.message);
+              }
+            }
+            
+            if (image) {
+              // Draw the pre-rendered page image filling the entire page (with bleed)
+              const scale = Math.min(pageWidth / image.width, pageHeight / image.height);
+              const scaledWidth = image.width * scale;
+              const scaledHeight = image.height * scale;
+              
+              page.drawImage(image, {
+                x: (pageWidth - scaledWidth) / 2,
+                y: (pageHeight - scaledHeight) / 2,
+                width: scaledWidth,
+                height: scaledHeight,
+              });
+            }
+          }
+        } catch (imgErr) {
+          console.error(`[PDF] Pre-rendered page error:`, imgErr.message);
+        }
+      }
+    }
+  } else {
+    // Fallback: Generate simple pages from data (original behavior)
+    console.log(`[PDF] No pre-rendered pages, using fallback generation`);
+    
+    // Title page
+    const titlePage = pdfDoc.addPage([pageWidth, pageHeight]);
+    
+    titlePage.drawRectangle({
       x: 0,
       y: 0,
       width: pageWidth,
       height: pageHeight,
+      color: rgb(0.4, 0.494, 0.918),
+    });
+    
+    const titleWidth = boldFont.widthOfTextAtSize(title, 36);
+    titlePage.drawText(title, {
+      x: (pageWidth - titleWidth) / 2,
+      y: pageHeight / 2 + 20,
+      size: 36,
+      font: boldFont,
+      color: rgb(1, 1, 1),
+    });
+    
+    const authorText = `by ${author}`;
+    const authorWidth = regularFont.widthOfTextAtSize(authorText, 18);
+    titlePage.drawText(authorText, {
+      x: (pageWidth - authorWidth) / 2,
+      y: pageHeight / 2 - 30,
+      size: 18,
+      font: regularFont,
       color: rgb(1, 1, 1),
     });
 
-    // Add image
-    if (pageInfo.imageUrl) {
-      try {
-        console.log(`[PDF] Fetching image for page ${pageInfo.page}...`);
-        const imageBytes = await fetchImageAsBuffer(pageInfo.imageUrl);
-        if (imageBytes) {
-          let image;
-          try {
-            image = await pdfDoc.embedPng(imageBytes);
-          } catch {
+    // Build page data
+    const pageData = pages.map((page) => {
+      const illustration = illustrations.find(i => i.page === page.page);
+      return {
+        page: page.page,
+        text: page.text,
+        imageUrl: illustration?.url || null,
+      };
+    });
+
+    // Content pages
+    for (let i = 0; i < pageData.length; i++) {
+      const pageInfo = pageData[i];
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(1, 1, 1),
+      });
+
+      // Add image
+      if (pageInfo.imageUrl) {
+        try {
+          console.log(`[PDF] Fetching image for page ${pageInfo.page}...`);
+          const imageBytes = await fetchImageAsBuffer(pageInfo.imageUrl);
+          if (imageBytes) {
+            let image;
             try {
-              image = await pdfDoc.embedJpg(imageBytes);
-            } catch (e) {
-              console.error(`[PDF] Failed to embed image:`, e.message);
+              image = await pdfDoc.embedPng(imageBytes);
+            } catch {
+              try {
+                image = await pdfDoc.embedJpg(imageBytes);
+              } catch (e) {
+                console.error(`[PDF] Failed to embed image:`, e.message);
+              }
+            }
+            
+            if (image) {
+              const imgX = BLEED + 20;
+              const imgY = pageHeight - BLEED - 20 - (height * 0.55);
+              const imgWidth = width - 40;
+              const imgHeight = height * 0.55;
+              
+              const scale = Math.min(imgWidth / image.width, imgHeight / image.height);
+              const scaledWidth = image.width * scale;
+              const scaledHeight = image.height * scale;
+              
+              page.drawImage(image, {
+                x: imgX + (imgWidth - scaledWidth) / 2,
+                y: imgY + (imgHeight - scaledHeight) / 2,
+                width: scaledWidth,
+                height: scaledHeight,
+              });
             }
           }
-          
-          if (image) {
-            const imgX = BLEED + 20;
-            const imgY = pageHeight - BLEED - 20 - (height * 0.55);
-            const imgWidth = width - 40;
-            const imgHeight = height * 0.55;
-            
-            const scale = Math.min(imgWidth / image.width, imgHeight / image.height);
-            const scaledWidth = image.width * scale;
-            const scaledHeight = image.height * scale;
-            
-            page.drawImage(image, {
-              x: imgX + (imgWidth - scaledWidth) / 2,
-              y: imgY + (imgHeight - scaledHeight) / 2,
-              width: scaledWidth,
-              height: scaledHeight,
-            });
-          }
+        } catch (imgErr) {
+          console.error(`[PDF] Image error:`, imgErr.message);
         }
-      } catch (imgErr) {
-        console.error(`[PDF] Image error:`, imgErr.message);
       }
-    }
 
-    // Add text
-    if (pageInfo.text) {
-      const textX = BLEED + 30;
-      const textWidth = width - 60;
-      const fontSize = 14;
-      const lineHeight = fontSize * 1.4;
-      
-      const lines = wrapText(pageInfo.text, regularFont, fontSize, textWidth);
-      let textY = BLEED + height * 0.35;
-      
-      for (const line of lines) {
-        page.drawText(line, {
-          x: textX,
-          y: textY,
-          size: fontSize,
-          font: regularFont,
-          color: rgb(0.2, 0.2, 0.2),
-        });
-        textY -= lineHeight;
+      // Add text
+      if (pageInfo.text) {
+        const textX = BLEED + 30;
+        const textWidth = width - 60;
+        const fontSize = 14;
+        const lineHeight = fontSize * 1.4;
+        
+        const lines = wrapText(pageInfo.text, regularFont, fontSize, textWidth);
+        let textY = BLEED + height * 0.35;
+        
+        for (const line of lines) {
+          page.drawText(line, {
+            x: textX,
+            y: textY,
+            size: fontSize,
+            font: regularFont,
+            color: rgb(0.2, 0.2, 0.2),
+          });
+          textY -= lineHeight;
+        }
       }
-    }
 
-    // Page number
-    const pageNumText = String(pageInfo.page);
-    const pageNumWidth = regularFont.widthOfTextAtSize(pageNumText, 10);
-    page.drawText(pageNumText, {
-      x: (pageWidth - pageNumWidth) / 2,
-      y: BLEED + 15,
-      size: 10,
-      font: regularFont,
-      color: rgb(0.6, 0.6, 0.6),
-    });
+      // Page number
+      const pageNumText = String(pageInfo.page);
+      const pageNumWidth = regularFont.widthOfTextAtSize(pageNumText, 10);
+      page.drawText(pageNumText, {
+        x: (pageWidth - pageNumWidth) / 2,
+        y: BLEED + 15,
+        size: 10,
+        font: regularFont,
+        color: rgb(0.6, 0.6, 0.6),
+      });
+    }
   }
 
   // Add blank pages if needed
-  let currentPageCount = pageData.length + 1;
+  let currentPageCount = pdfDoc.getPageCount();
   const MIN_PAGES = 24;
   
   if (currentPageCount < MIN_PAGES) {
