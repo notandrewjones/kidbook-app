@@ -113,15 +113,17 @@ async function submitPrintJob(orderId, options = {}) {
   }
 
   // 4. Get POD package mapping for this size
+  const sizeCode = order.size || 'square-medium'; // Default to square-medium
+  
   const { data: podPackage, error: podError } = await supabase
     .from("lulu_pod_packages")
     .select("pod_package_id, min_pages")
-    .eq("size_code", order.size)
+    .eq("size_code", sizeCode)
     .eq("is_active", true)
     .single();
 
   if (podError || !podPackage) {
-    throw new Error(`No POD package found for size: ${order.size}`);
+    throw new Error(`No POD package found for size: ${sizeCode}`);
   }
 
   // 5. Get or generate print-ready PDFs
