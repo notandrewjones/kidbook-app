@@ -1,7 +1,7 @@
 // js/api/projects.js
 // Project loading and listing API calls
 
-import { state, setPhase } from '../core/state.js';
+import { state, setPhase, setProjectId } from '../core/state.js';
 import { $, showLoader, setWorkspaceTitle, showToast } from '../core/utils.js';
 import { navigate } from '../core/router.js';
 import { renderDashboard, renderStoryboard, renderStoryEditor, renderIdeas } from '../ui/render.js';
@@ -82,7 +82,7 @@ export async function loadDashboard() {
 
 // Load a specific project by ID
 export async function openProjectById(projectId, phaseHint = null) {
-  localStorage.setItem("projectId", projectId);
+  setProjectId(projectId);
   
   // Check if we already have this project cached with active generations
   const hasActiveGenerations = state.generatingPages.size > 0 || state.queuedPages.size > 0;
