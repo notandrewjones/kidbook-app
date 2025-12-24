@@ -52,9 +52,10 @@ async function handler(req, res) {
       // Build OR conditions
       if (orderIdsFromLulu.length > 0) {
         // If we found matching Lulu jobs, include those order IDs
-        query = query.or(`id.ilike.${searchTerm}%,id.in.(${orderIdsFromLulu.join(',')})`);
+        query = query.or(`id.in.(${orderIdsFromLulu.join(',')})`);
       } else {
-        query = query.ilike("id", `${searchTerm}%`);
+        // Search by order ID prefix (cast to text for pattern matching)
+        query = query.filter("id::text", "ilike", `${searchTerm}%`);
       }
       
       // Apply other filters

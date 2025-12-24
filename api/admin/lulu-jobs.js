@@ -63,8 +63,8 @@ async function listPrintJobs(req, res) {
         // Numeric - likely Lulu job ID
         query = query.eq("lulu_print_job_id", searchTerm);
       } else {
-        // Alphanumeric - likely order ID
-        query = query.ilike("order_id", `${searchTerm}%`);
+        // Alphanumeric - likely order ID (cast to text for pattern matching)
+        query = query.filter("order_id::text", "ilike", `${searchTerm}%`);
       }
     }
 
