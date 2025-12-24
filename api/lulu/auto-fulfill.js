@@ -248,6 +248,14 @@ async function processAllPendingOrders(options = {}) {
 
   console.log(`[AutoFulfill] Checking for pending orders...`);
 
+  // Get hardcover product ID first
+  const hardcoverProductId = await getHardcoverProductId();
+  
+  if (!hardcoverProductId) {
+    console.log(`[AutoFulfill] No hardcover product found in database`);
+    return { success: true, processed: 0, results: [], message: 'No hardcover product configured' };
+  }
+
   // Find orders ready for processing
   const { data: pendingOrders, error } = await supabase
     .from("orders")
@@ -259,7 +267,7 @@ async function processAllPendingOrders(options = {}) {
     `)
     .eq("status", "paid")
     .in("fulfillment_status", ["pending_pdf", "pending_submission"])
-    .eq("product_id", (await getHardcoverProductId()))
+    .eq("product_id", hardcoverProductId)
     .limit(limit);
 
   if (error) {

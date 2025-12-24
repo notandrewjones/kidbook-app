@@ -2,6 +2,8 @@
 // Debug endpoint to check Lulu auto-fulfill query
 
 const { createClient } = require("@supabase/supabase-js");
+const { processAllPendingOrders } = require("../lulu/auto-fulfill.js");
+const { luluClient } = require("../lulu/client.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -48,11 +50,22 @@ async function handler(req, res) {
       .eq("product_id", product.id)
       .limit(5);
 
+    // Step 5: Check Lulu config
+    const luluConfigured = luluClient.isConfigured();
+
+    // Step 6: Actually try calling processAllPendingOrders if requested
+    let processResult = null;
+    if (req.query.run === 'true') {
+      processResult = await processAllPendingOrders({ limit: 1 });
+    }
+
     return res.status(200).json({
       hardcoverProduct: product,
       allPaidHardcoverOrders: allPaidHardcover,
       pendingPdfOrders: pendingPdfOrders,
       autoFulfillQueryResult: autoFulfillQuery,
+      luluConfigured,
+      processResult,
       errors: {
         error1,
         error2, 
@@ -61,7 +74,7 @@ async function handler(req, res) {
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message, stack: err.stack });
   }
 }
 
