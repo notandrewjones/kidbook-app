@@ -151,6 +151,9 @@ async function submitPrintJob(orderId, options = {}) {
   }
 
   // 6. Build shipping address
+  // Note: Lulu requires a phone number. Use account default if not provided.
+  const defaultPhone = process.env.LULU_DEFAULT_PHONE || '000-000-0000';
+  
   const shippingAddress = {
     name: order.shipping_name,
     street1: order.shipping_address_line1,
@@ -159,13 +162,15 @@ async function submitPrintJob(orderId, options = {}) {
     stateCode: order.shipping_state || '',
     postcode: order.shipping_postal_code,
     countryCode: order.shipping_country || 'US',
-    phoneNumber: order.shipping_phone || '',
+    phoneNumber: defaultPhone, // Lulu requires phone number
     email: '', // Will use account email
   };
 
+  console.log(`[Lulu] Shipping address:`, JSON.stringify(shippingAddress));
+
   // Validate shipping address
   if (!shippingAddress.name || !shippingAddress.street1 || !shippingAddress.city || !shippingAddress.postcode) {
-    throw new Error('Incomplete shipping address');
+    throw new Error(`Incomplete shipping address: name=${!!shippingAddress.name}, street1=${!!shippingAddress.street1}, city=${!!shippingAddress.city}, postcode=${!!shippingAddress.postcode}`);
   }
 
   // 7. Determine page count
