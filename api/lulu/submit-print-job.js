@@ -52,23 +52,36 @@ async function submitPrintJob(orderId, options = {}) {
       shipping_postal_code,
       shipping_country,
       shipping_phone,
-      stripe_checkout_session_id,
-      product:product_id (
-        name,
-        display_name
-      ),
-      book:book_id (
-        id,
-        selected_idea,
-        illustrations,
-        user_id
-      )
+      stripe_checkout_session_id
     `)
     .eq("id", orderId)
     .single();
 
   if (orderError || !order) {
+    console.error(`[Lulu] Order fetch error:`, orderError);
     throw new Error(`Order not found: ${orderId}`);
+  }
+
+  // Get product info separately
+  let productName = null;
+  if (order.product_id) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("name, display_name")
+      .eq("id", order.product_id)
+      .single();
+    productName = product?.name;
+  }
+
+  // Get book info separately
+  let book = null;
+  if (order.book_id) {
+    const { data: bookData } = await supabase
+      .from("book_projects")
+      .select("id, selected_idea, illustrations, user_id")
+      .eq("id", order.book_id)
+      .single();
+    book = bookData;
   }
 
   // 2. Validate order status
@@ -76,7 +89,7 @@ async function submitPrintJob(orderId, options = {}) {
     throw new Error(`Order not paid. Status: ${order.status}`);
   }
 
-  if (order.product?.name !== 'hardcover') {
+  if (productName !== 'hardcover') {
     throw new Error('Only hardcover orders can be submitted to Lulu');
   }
 
@@ -156,7 +169,7 @@ async function submitPrintJob(orderId, options = {}) {
 
   // 7. Determine page count
   // For children's books, typically based on number of spreads/pages
-  const illustrations = order.book?.illustrations || [];
+  const illustrations = book?.illustrations || [];
   // Each spread is 2 pages, plus title page, copyright, etc.
   const pageCount = Math.max(
     podPackage.min_pages,
@@ -196,7 +209,7 @@ async function submitPrintJob(orderId, options = {}) {
 
   // 9. Submit to Lulu API
   try {
-    const bookTitle = order.book?.selected_idea?.title || 'My Book';
+    const bookTitle = book?.selected_idea?.title || 'My Book';
 
     const luluResponse = await luluClient.createPrintJob({
       contactEmail: process.env.LULU_CONTACT_EMAIL || process.env.ADMIN_EMAIL,
