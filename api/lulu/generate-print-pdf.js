@@ -1,9 +1,10 @@
 // api/lulu/generate-print-pdf.js
 // Server-side PDF generation for Lulu print fulfillment
-// Uses PDFKit for proper font embedding and print-quality output
+// Uses PDFKit with embedded fonts for print-quality output
 
 const { createClient } = require("@supabase/supabase-js");
 const PDFDocument = require("pdfkit");
+const path = require("path");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -20,15 +21,42 @@ const PAGE_DIMENSIONS = {
   'portrait-medium': { width: 612, height: 792, inches: '8.5×11' },
 };
 
-// Lulu casewrap hardcover cover specifications:
-// - Wrap area: 0.75" (54pt) on top, bottom, and outside edges
-// - Bleed: 0.125" (9pt) on all edges
-// - Spine width varies by page count (calculated dynamically)
+// Lulu casewrap hardcover cover specifications
 const COVER_WRAP = 54;      // 0.75 inches in points
 const COVER_BLEED = 9;      // 0.125 inches in points
+const BLEED = 9;            // 0.125 inches in points
 
-// Lulu requires specific bleed margins for interior pages (0.125 inch = 9 points)
-const BLEED = 9;
+/**
+ * Get the path to the Open Sans font file
+ */
+function getFontPath(weight = 'regular') {
+  // @fontsource/open-sans stores fonts in node_modules
+  const fontMap = {
+    'regular': 'open-sans-latin-400-normal.ttf',
+    'bold': 'open-sans-latin-700-normal.ttf',
+  };
+  
+  const fontFile = fontMap[weight] || fontMap['regular'];
+  
+  // Try different possible locations
+  const possiblePaths = [
+    path.join(process.cwd(), 'node_modules', '@fontsource', 'open-sans', 'files', fontFile),
+    path.join(__dirname, '..', '..', 'node_modules', '@fontsource', 'open-sans', 'files', fontFile),
+    path.join('/var/task', 'node_modules', '@fontsource', 'open-sans', 'files', fontFile),
+  ];
+  
+  for (const fontPath of possiblePaths) {
+    try {
+      require('fs').accessSync(fontPath);
+      return fontPath;
+    } catch (e) {
+      // Try next path
+    }
+  }
+  
+  console.warn(`[PDF] Font file not found, using default. Tried: ${possiblePaths.join(', ')}`);
+  return null;
+}
 
 /**
  * Fetch image as buffer
@@ -59,6 +87,29 @@ function pdfToBuffer(doc) {
     doc.on('error', reject);
     doc.end();
   });
+}
+
+/**
+ * Register fonts with the PDF document
+ */
+function registerFonts(doc) {
+  const regularFont = getFontPath('regular');
+  const boldFont = getFontPath('bold');
+  
+  if (regularFont) {
+    doc.registerFont('OpenSans', regularFont);
+    console.log('[PDF] Registered OpenSans regular font');
+  }
+  
+  if (boldFont) {
+    doc.registerFont('OpenSans-Bold', boldFont);
+    console.log('[PDF] Registered OpenSans bold font');
+  }
+  
+  return {
+    regular: regularFont ? 'OpenSans' : 'Helvetica',
+    bold: boldFont ? 'OpenSans-Bold' : 'Helvetica-Bold',
+  };
 }
 
 /**
@@ -117,7 +168,7 @@ async function generateInteriorPdf(bookId, options = {}) {
   const pageWidth = width + (BLEED * 2);
   const pageHeight = height + (BLEED * 2);
 
-  // Create PDF with embedded fonts
+  // Create PDF
   const doc = new PDFDocument({
     size: [pageWidth, pageHeight],
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -130,6 +181,9 @@ async function generateInteriorPdf(bookId, options = {}) {
     autoFirstPage: false,
   });
 
+  // Register fonts
+  const fonts = registerFonts(doc);
+
   // Title page
   doc.addPage({ size: [pageWidth, pageHeight] });
   
@@ -137,7 +191,8 @@ async function generateInteriorPdf(bookId, options = {}) {
   doc.rect(0, 0, pageWidth, pageHeight).fill('#667eea');
   
   // Title
-  doc.fillColor('white')
+  doc.font(fonts.bold)
+     .fillColor('white')
      .fontSize(36)
      .text(title, 0, pageHeight / 2 - 50, {
        width: pageWidth,
@@ -145,7 +200,8 @@ async function generateInteriorPdf(bookId, options = {}) {
      });
   
   // Author
-  doc.fontSize(18)
+  doc.font(fonts.regular)
+     .fontSize(18)
      .text(`by ${author}`, 0, pageHeight / 2 + 10, {
        width: pageWidth,
        align: 'center',
@@ -190,7 +246,8 @@ async function generateInteriorPdf(bookId, options = {}) {
       const textY = BLEED + height * 0.62;
       const textWidth = width - 60;
       
-      doc.fillColor('#333333')
+      doc.font(fonts.regular)
+         .fillColor('#333333')
          .fontSize(14)
          .text(page.text, textX, textY, {
            width: textWidth,
@@ -200,7 +257,8 @@ async function generateInteriorPdf(bookId, options = {}) {
     }
 
     // Page number
-    doc.fillColor('#999999')
+    doc.font(fonts.regular)
+       .fillColor('#999999')
        .fontSize(10)
        .text(String(page.page), 0, pageHeight - BLEED - 20, {
          width: pageWidth,
@@ -241,7 +299,6 @@ async function generateInteriorPdf(bookId, options = {}) {
 
 /**
  * Generate print-ready cover PDF for a book
- * Cover is a wraparound: back + spine + front
  */
 async function generateCoverPdf(bookId, options = {}) {
   const { 
@@ -282,20 +339,17 @@ async function generateCoverPdf(bookId, options = {}) {
 
   const { width, height } = dimensions;
   
-  // Calculate spine width based on page count
-  // Lulu formula for 80# coated paper: approximately 0.0025 inches per page
+  // Calculate spine width
   const spineInches = Math.max(0.25, pageCount * 0.0025);
   const spineWidth = Math.round(spineInches * 72);
   
   console.log(`[PDF] Cover calculation for ${sizeCode}: ${pageCount} pages, spine=${spineInches.toFixed(3)}" (${spineWidth}pt)`);
 
-  // Total cover dimensions for casewrap:
-  // Width = bleed + wrap + back cover + spine + front cover + wrap + bleed
-  // Height = bleed + wrap + page height + wrap + bleed
+  // Total cover dimensions
   const coverWidth = (COVER_BLEED * 2) + (COVER_WRAP * 2) + (width * 2) + spineWidth;
   const coverHeight = (COVER_BLEED * 2) + (COVER_WRAP * 2) + height;
   
-  console.log(`[PDF] Cover dimensions: ${(coverWidth/72).toFixed(3)}" x ${(coverHeight/72).toFixed(3)}" (${coverWidth}pt x ${coverHeight}pt)`);
+  console.log(`[PDF] Cover dimensions: ${(coverWidth/72).toFixed(3)}" x ${(coverHeight/72).toFixed(3)}"`);
 
   // Create PDF
   const doc = new PDFDocument({
@@ -304,33 +358,34 @@ async function generateCoverPdf(bookId, options = {}) {
     autoFirstPage: true,
   });
 
+  // Register fonts
+  const fonts = registerFonts(doc);
+
   // Full purple background
   doc.rect(0, 0, coverWidth, coverHeight).fill('#667eea');
 
-  // Calculate positions accounting for wrap
+  // Calculate positions
   const contentStartX = COVER_BLEED + COVER_WRAP;
   const contentStartY = COVER_BLEED + COVER_WRAP;
 
-  // Spine (middle) - slightly different purple
+  // Spine
   const spineX = contentStartX + width;
   doc.rect(spineX, 0, spineWidth, coverHeight).fill('#764ba2');
 
   // Back cover text
-  const backCenterX = contentStartX + width / 2;
-  const backCenterY = contentStartY + height / 2;
-  
-  doc.fillColor('white')
+  doc.font(fonts.regular)
+     .fillColor('white')
      .fontSize(12)
      .text('A wonderful story created with love.', 
            contentStartX + 20, 
-           backCenterY - 6, 
+           contentStartY + height / 2 - 6, 
            { width: width - 40, align: 'center' });
 
   // Front cover
   const frontX = contentStartX + width + spineWidth;
   const frontCenterX = frontX + width / 2;
 
-  // Add cover image if available
+  // Cover image
   if (coverImageUrl) {
     try {
       console.log(`[PDF] Fetching cover image...`);
@@ -354,7 +409,8 @@ async function generateCoverPdf(bookId, options = {}) {
   }
 
   // Title
-  doc.fillColor('white')
+  doc.font(fonts.bold)
+     .fillColor('white')
      .fontSize(32)
      .text(title, frontX + 20, contentStartY + height * 0.65, {
        width: width - 40,
@@ -362,7 +418,8 @@ async function generateCoverPdf(bookId, options = {}) {
      });
 
   // Author
-  doc.fontSize(16)
+  doc.font(fonts.regular)
+     .fontSize(16)
      .text(`by ${author}`, frontX + 20, contentStartY + height * 0.65 + 45, {
        width: width - 40,
        align: 'center',
