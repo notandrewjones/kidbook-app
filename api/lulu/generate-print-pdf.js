@@ -11,6 +11,7 @@ const supabase = createClient(
 );
 
 // Page dimensions in points (1 inch = 72 points)
+// Interior page dimensions (trim size)
 const PAGE_DIMENSIONS = {
   'square-small': { width: 504, height: 504, inches: '7×7' },
   'square-medium': { width: 612, height: 612, inches: '8.5×8.5' },
@@ -19,7 +20,17 @@ const PAGE_DIMENSIONS = {
   'portrait-medium': { width: 612, height: 792, inches: '8.5×11' },
 };
 
-// Lulu requires specific bleed margins (0.125 inch = 9 points)
+// Lulu casewrap hardcover cover specifications:
+// - Wrap area: 0.75" (54pt) on top, bottom, and outside edges
+// - Bleed: 0.125" (9pt) on all edges
+// - Spine width varies by page count (calculated dynamically)
+// 
+// Cover width formula: bleed + wrap + back_cover + spine + front_cover + wrap + bleed
+// Cover height formula: bleed + wrap + page_height + wrap + bleed
+const COVER_WRAP = 54;      // 0.75 inches in points
+const COVER_BLEED = 9;      // 0.125 inches in points
+
+// Lulu requires specific bleed margins for interior pages (0.125 inch = 9 points)
 const BLEED = 9;
 
 /**
@@ -255,12 +266,20 @@ async function generateCoverPdf(bookId, options = {}) {
   const { width, height } = dimensions;
   
   // Calculate spine width based on page count
-  // Lulu formula: approximately 0.0025 inches per page for standard paper
-  const spineWidth = Math.max(18, Math.round(pageCount * 0.18));
+  // Lulu formula for 80# coated paper: approximately 0.0025 inches per page
+  // Minimum spine width is around 0.25" for binding
+  const spineInches = Math.max(0.25, pageCount * 0.0025);
+  const spineWidth = Math.round(spineInches * 72); // Convert to points
+  
+  console.log(`[PDF] Cover calculation for ${sizeCode}: ${pageCount} pages, spine=${spineInches.toFixed(3)}" (${spineWidth}pt)`);
 
-  // Total cover dimensions
-  const coverWidth = (width * 2) + spineWidth + (BLEED * 2);
-  const coverHeight = height + (BLEED * 2);
+  // Total cover dimensions for casewrap:
+  // Width = bleed + wrap + back cover + spine + front cover + wrap + bleed
+  // Height = bleed + wrap + page height + wrap + bleed
+  const coverWidth = (COVER_BLEED * 2) + (COVER_WRAP * 2) + (width * 2) + spineWidth;
+  const coverHeight = (COVER_BLEED * 2) + (COVER_WRAP * 2) + height;
+  
+  console.log(`[PDF] Cover dimensions: ${(coverWidth/72).toFixed(3)}" x ${(coverHeight/72).toFixed(3)}" (${coverWidth}pt x ${coverHeight}pt)`);
 
   // Create PDF
   const pdf = new jsPDF({
@@ -273,16 +292,20 @@ async function generateCoverPdf(bookId, options = {}) {
   pdf.setFillColor(102, 126, 234);
   pdf.rect(0, 0, coverWidth, coverHeight, 'F');
 
+  // Calculate positions accounting for wrap
+  const contentStartX = COVER_BLEED + COVER_WRAP;
+  const contentStartY = COVER_BLEED + COVER_WRAP;
+
   // Back cover (left side)
-  const backX = BLEED;
+  const backX = contentStartX;
   const backWidth = width;
   
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(12);
-  pdf.text('A wonderful story created with love.', backX + backWidth / 2, coverHeight / 2, { align: 'center' });
+  pdf.text('A wonderful story created with love.', backX + backWidth / 2, contentStartY + height / 2, { align: 'center' });
 
   // Spine (middle)
-  const spineX = BLEED + width;
+  const spineX = contentStartX + width;
   pdf.setFillColor(118, 75, 162); // Slightly different purple
   pdf.rect(spineX, 0, spineWidth, coverHeight, 'F');
   
@@ -290,8 +313,9 @@ async function generateCoverPdf(bookId, options = {}) {
   // In production, you'd use a more sophisticated approach
 
   // Front cover (right side)
-  const frontX = BLEED + width + spineWidth;
+  const frontX = contentStartX + width + spineWidth;
   const frontCenterX = frontX + width / 2;
+  const frontCenterY = contentStartY + height / 2;
 
   // Add cover image if available
   if (coverImageUrl) {
@@ -299,9 +323,9 @@ async function generateCoverPdf(bookId, options = {}) {
       console.log(`[PDF] Fetching cover image...`);
       const imageData = await fetchImageAsBase64(coverImageUrl);
       if (imageData) {
-        const imgSize = Math.min(width * 0.6, height * 0.4);
+        const imgSize = Math.min(width * 0.6, height * 0.5);
         const imgX = frontCenterX - imgSize / 2;
-        const imgY = BLEED + 40;
+        const imgY = contentStartY + 30;
         
         pdf.addImage(imageData, 'JPEG', imgX, imgY, imgSize, imgSize);
       }
@@ -313,11 +337,11 @@ async function generateCoverPdf(bookId, options = {}) {
   // Title
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(32);
-  pdf.text(title, frontCenterX, coverHeight * 0.7, { align: 'center' });
+  pdf.text(title, frontCenterX, contentStartY + height * 0.7, { align: 'center' });
 
   // Author
   pdf.setFontSize(16);
-  pdf.text(`by ${author}`, frontCenterX, coverHeight * 0.7 + 35, { align: 'center' });
+  pdf.text(`by ${author}`, frontCenterX, contentStartY + height * 0.7 + 35, { align: 'center' });
 
   // Get PDF as buffer
   const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
@@ -339,4 +363,7 @@ module.exports = {
   generateCoverPdf,
   PAGE_DIMENSIONS,
   BLEED,
+  COVER_WRAP,
+  COVER_BLEED,
+};
 };
