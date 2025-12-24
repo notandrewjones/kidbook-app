@@ -97,10 +97,53 @@ async function handler(req, res) {
 }
 
 /**
+ * Queue hardcover order for Lulu submission
+ * This is called after payment is confirmed
+ */
+async function queueLuluSubmission(orderId, shippingDetails) {
+  try {
+    // Update order with shipping details from Stripe
+    if (shippingDetails) {
+      const shippingUpdate = {
+        shipping_name: shippingDetails.name,
+        shipping_address_line1: shippingDetails.address?.line1,
+        shipping_address_line2: shippingDetails.address?.line2,
+        shipping_city: shippingDetails.address?.city,
+        shipping_state: shippingDetails.address?.state,
+        shipping_postal_code: shippingDetails.address?.postal_code,
+        shipping_country: shippingDetails.address?.country,
+        shipping_phone: shippingDetails.phone,
+      };
+
+      await supabase
+        .from("orders")
+        .update(shippingUpdate)
+        .eq("id", orderId);
+    }
+
+    // Mark as ready for Lulu submission (pending PDF generation)
+    await supabase
+      .from("orders")
+      .update({
+        fulfillment_status: 'pending_pdf',
+      })
+      .eq("id", orderId);
+
+    console.log(`[Lulu] Order ${orderId} queued for print fulfillment`);
+    
+  } catch (err) {
+    console.error(`[Lulu] Failed to queue order ${orderId}:`, err);
+  }
+}
+
+/**
  * Handle successful checkout
  */
 async function handleCheckoutCompleted(session) {
   const { order_id, order_ids, book_id, book_ids, product_type, user_id, cart_checkout } = session.metadata;
+  
+  // Get shipping details from session if available
+  const shippingDetails = session.shipping_details || session.customer_details;
 
   // Handle cart checkout with multiple orders
   if (cart_checkout === "true" && order_ids) {
@@ -162,6 +205,11 @@ async function handleCheckoutCompleted(session) {
             download_count: 0,
             max_downloads: orderProductType === "ebook" ? 10 : 5,
           });
+        
+        // Queue hardcover orders for Lulu print fulfillment
+        if (orderProductType === "hardcover") {
+          await queueLuluSubmission(orderId, shippingDetails);
+        }
       }
 
       console.log(`Order ${orderId} processed successfully`);
@@ -233,6 +281,11 @@ async function handleCheckoutCompleted(session) {
   if (exportError) {
     console.error("Failed to create export record:", exportError);
     // Don't throw - order is still valid
+  }
+
+  // 4. Queue hardcover orders for Lulu print fulfillment
+  if (product_type === "hardcover") {
+    await queueLuluSubmission(order_id, shippingDetails);
   }
 
   console.log(`Order ${order_id} completed successfully`);

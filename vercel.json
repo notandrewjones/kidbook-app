@@ -10,5 +10,11 @@
     { "source": "/p/:projectId", "destination": "/index.html" },
     { "source": "/p/:projectId/:phase", "destination": "/index.html" },
     { "source": "/((?!api|_next|assets|.*\\.).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/process-print-orders",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }

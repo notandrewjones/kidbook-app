@@ -395,6 +395,37 @@
     .auth-screen p {
       color: var(--muted);
     }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--stroke);
+      padding-bottom: 0;
+    }
+
+    .tab {
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -408,11 +439,17 @@
   <script>
     // State
     let orders = [];
+    let printJobs = [];
     let currentOrder = null;
+    let currentPrintJob = null;
+    let activeTab = 'orders';
     let filters = {
       status: '',
       fulfillment_status: '',
       has_cancellation_request: '',
+    };
+    let printJobFilters = {
+      status: '',
     };
 
     // Check auth and load page
@@ -452,59 +489,120 @@
         </header>
         
         <main class="admin-main">
-          <div class="filters">
-            <div class="filter-group">
-              <span class="filter-label">Payment Status</span>
-              <select id="filter-status" onchange="updateFilter('status', this.value)">
-                <option value="">All</option>
-                <option value="paid">Paid</option>
-                <option value="refunded">Refunded</option>
-              </select>
+          <!-- Tabs -->
+          <div class="tabs">
+            <button class="tab ${activeTab === 'orders' ? 'active' : ''}" onclick="switchTab('orders')">
+              📦 Orders
+            </button>
+            <button class="tab ${activeTab === 'printJobs' ? 'active' : ''}" onclick="switchTab('printJobs')">
+              🖨️ Print Jobs
+            </button>
+          </div>
+
+          <!-- Orders Tab -->
+          <div id="orders-tab" style="display: ${activeTab === 'orders' ? 'block' : 'none'}">
+            <div class="filters">
+              <div class="filter-group">
+                <span class="filter-label">Payment Status</span>
+                <select id="filter-status" onchange="updateFilter('status', this.value)">
+                  <option value="">All</option>
+                  <option value="paid">Paid</option>
+                  <option value="refunded">Refunded</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Fulfillment</span>
+                <select id="filter-fulfillment" onchange="updateFilter('fulfillment_status', this.value)">
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="pending_pdf">Pending PDF</option>
+                  <option value="submitted">Submitted to Lulu</option>
+                  <option value="processing">Processing</option>
+                  <option value="printing">Printing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Cancellation Requests</span>
+                <select id="filter-cancellation" onchange="updateFilter('has_cancellation_request', this.value)">
+                  <option value="">All</option>
+                  <option value="true">Has Request</option>
+                </select>
+              </div>
+              <div class="filter-group" style="justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="loadOrders()">🔄 Refresh</button>
+              </div>
             </div>
-            <div class="filter-group">
-              <span class="filter-label">Fulfillment</span>
-              <select id="filter-fulfillment" onchange="updateFilter('fulfillment_status', this.value)">
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="printed">Printed</option>
-                <option value="shipped">Shipped</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <span class="filter-label">Cancellation Requests</span>
-              <select id="filter-cancellation" onchange="updateFilter('has_cancellation_request', this.value)">
-                <option value="">All</option>
-                <option value="true">Has Request</option>
-              </select>
-            </div>
-            <div class="filter-group" style="justify-content: flex-end;">
-              <button class="btn btn-secondary" onclick="loadOrders()">🔄 Refresh</button>
+
+            <div class="stats" id="stats"></div>
+
+            <div class="orders-table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Order ID</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Product</th>
+                    <th>Amount</th>
+                    <th>Payment</th>
+                    <th>Fulfillment</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="orders-body">
+                  <tr><td colspan="8" class="loading">Loading orders</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <div class="stats" id="stats"></div>
+          <!-- Print Jobs Tab -->
+          <div id="printJobs-tab" style="display: ${activeTab === 'printJobs' ? 'block' : 'none'}">
+            <div class="filters">
+              <div class="filter-group">
+                <span class="filter-label">Lulu Status</span>
+                <select id="filter-lulu-status" onchange="updatePrintJobFilter('status', this.value)">
+                  <option value="">All</option>
+                  <option value="pending_pdf">Pending PDF</option>
+                  <option value="pending_submission">Ready to Submit</option>
+                  <option value="created">Created</option>
+                  <option value="production_delayed">Production Delayed</option>
+                  <option value="in_production">In Production</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
+              <div class="filter-group" style="justify-content: flex-end; margin-left: auto;">
+                <button class="btn btn-secondary" onclick="syncAllPrintJobs()">🔄 Sync All from Lulu</button>
+                <button class="btn btn-secondary" onclick="loadPrintJobs()">↻ Refresh</button>
+              </div>
+            </div>
 
-          <div class="orders-table-wrap">
-            <table class="orders-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Date</th>
-                  <th>Customer</th>
-                  <th>Product</th>
-                  <th>Amount</th>
-                  <th>Payment</th>
-                  <th>Fulfillment</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="orders-body">
-                <tr><td colspan="8" class="loading">Loading orders</td></tr>
-              </tbody>
-            </table>
+            <div class="stats" id="print-stats"></div>
+
+            <div class="orders-table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>Job ID</th>
+                    <th>Order</th>
+                    <th>Book Title</th>
+                    <th>Lulu Status</th>
+                    <th>Shipping</th>
+                    <th>Tracking</th>
+                    <th>Est. Delivery</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="print-jobs-body">
+                  <tr><td colspan="8" class="loading">Loading print jobs</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </main>
 
@@ -538,8 +636,41 @@
           </div>
         </div>
 
+        <!-- Print Job Modal -->
+        <div class="modal-overlay" id="print-job-modal">
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-title">Print Job Details</div>
+              <button class="modal-close" onclick="closeModal('print-job-modal')">&times;</button>
+            </div>
+            <div class="modal-body" id="print-job-modal-body"></div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeModal('print-job-modal')">Close</button>
+            </div>
+          </div>
+        </div>
+
         <div class="toast" id="toast"></div>
       `;
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.getElementById('orders-tab').style.display = tab === 'orders' ? 'block' : 'none';
+      document.getElementById('printJobs-tab').style.display = tab === 'printJobs' ? 'block' : 'none';
+      
+      // Update tab button styles
+      document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+      document.querySelector(`.tab:nth-child(${tab === 'orders' ? 1 : 2})`).classList.add('active');
+      
+      if (tab === 'printJobs' && printJobs.length === 0) {
+        loadPrintJobs();
+      }
+    }
+
+    function updatePrintJobFilter(key, value) {
+      printJobFilters[key] = value;
+      loadPrintJobs();
     }
 
     function updateFilter(key, value) {
@@ -786,6 +917,323 @@
       toast.textContent = message;
       toast.className = 'toast show ' + type;
       setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ==================== PRINT JOBS ====================
+    
+    async function loadPrintJobs() {
+      const tbody = document.getElementById('print-jobs-body');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading print jobs</td></tr>';
+
+      try {
+        const params = new URLSearchParams();
+        params.set('limit', '100');
+        if (printJobFilters.status) params.set('status', printJobFilters.status);
+
+        const res = await fetch(`/api/admin/lulu-jobs?${params}`, { credentials: 'include' });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error);
+        
+        printJobs = data.jobs;
+        renderPrintJobs();
+        renderPrintStats();
+      } catch (err) {
+        showToast('Failed to load print jobs: ' + err.message, 'error');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--muted)">Failed to load print jobs</td></tr>';
+      }
+    }
+
+    function renderPrintStats() {
+      const stats = document.getElementById('print-stats');
+      if (!stats) return;
+
+      const pendingPdf = printJobs.filter(j => j.luluStatus === 'pending_pdf').length;
+      const readyToSubmit = printJobs.filter(j => j.luluStatus === 'pending_submission').length;
+      const inProduction = printJobs.filter(j => ['created', 'production_delayed', 'production_ready', 'in_production'].includes(j.luluStatus)).length;
+      const shipped = printJobs.filter(j => j.luluStatus === 'shipped').length;
+      const errors = printJobs.filter(j => ['error', 'rejected'].includes(j.luluStatus)).length;
+
+      stats.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${printJobs.length}</div>
+          <div class="stat-label">Total Print Jobs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--warning)">${pendingPdf}</div>
+          <div class="stat-label">Pending PDF</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--accent)">${readyToSubmit}</div>
+          <div class="stat-label">Ready to Submit</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: #3b82f6">${inProduction}</div>
+          <div class="stat-label">In Production</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--success)">${shipped}</div>
+          <div class="stat-label">Shipped</div>
+        </div>
+        ${errors > 0 ? `
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--danger)">${errors}</div>
+          <div class="stat-label">Errors</div>
+        </div>
+        ` : ''}
+      `;
+    }
+
+    function getLuluStatusBadge(status) {
+      const statusMap = {
+        'pending_pdf': { class: 'status-pending', label: 'Pending PDF' },
+        'pending_submission': { class: 'status-processing', label: 'Ready to Submit' },
+        'created': { class: 'status-processing', label: 'Created' },
+        'unpaid': { class: 'status-pending', label: 'Unpaid' },
+        'production_delayed': { class: 'status-processing', label: 'Delayed' },
+        'production_ready': { class: 'status-processing', label: 'Ready' },
+        'in_production': { class: 'status-processing', label: 'Printing' },
+        'shipped': { class: 'status-shipped', label: 'Shipped' },
+        'rejected': { class: 'status-cancelled', label: 'Rejected' },
+        'canceled': { class: 'status-cancelled', label: 'Cancelled' },
+        'error': { class: 'status-cancelled', label: 'Error' },
+      };
+      const info = statusMap[status] || { class: 'status-pending', label: status || 'Unknown' };
+      return `<span class="status-badge ${info.class}">${info.label}</span>`;
+    }
+
+    function renderPrintJobs() {
+      const tbody = document.getElementById('print-jobs-body');
+      if (!tbody) return;
+      
+      if (printJobs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--muted)">No print jobs found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = printJobs.map(job => `
+        <tr class="${['error', 'rejected'].includes(job.luluStatus) ? 'has-cancellation-request' : ''}">
+          <td>
+            <span class="order-id">${job.luluPrintJobId || job.id.substring(0, 8).toUpperCase()}</span>
+          </td>
+          <td>
+            <span class="order-id">${job.orderId ? job.orderId.substring(0, 8).toUpperCase() : '-'}</span>
+          </td>
+          <td>${job.bookTitle || 'Untitled'}</td>
+          <td>
+            ${getLuluStatusBadge(job.luluStatus)}
+            ${job.errorMessage ? `<br><small style="color: var(--danger)">${job.errorMessage.substring(0, 50)}...</small>` : ''}
+          </td>
+          <td>
+            ${job.shippingName ? `
+              <small>${job.shippingName}<br>${job.shippingCity || ''}, ${job.shippingCountry || ''}</small>
+            ` : '-'}
+          </td>
+          <td>
+            ${job.trackingId ? `
+              <a href="${job.trackingUrls?.[0] || '#'}" target="_blank" style="color: var(--accent)">
+                ${job.carrierName || 'Track'}: ${job.trackingId.substring(0, 12)}...
+              </a>
+            ` : '-'}
+          </td>
+          <td>
+            ${job.estimatedDeliveryMin ? `
+              ${new Date(job.estimatedDeliveryMin).toLocaleDateString()} - ${new Date(job.estimatedDeliveryMax).toLocaleDateString()}
+            ` : '-'}
+          </td>
+          <td>
+            <div class="actions">
+              ${job.luluStatus === 'pending_submission' ? `
+                <button class="btn btn-sm btn-primary" onclick="submitPrintJob('${job.orderId}')">Submit</button>
+              ` : ''}
+              ${['error', 'rejected', 'canceled'].includes(job.luluStatus) ? `
+                <button class="btn btn-sm btn-primary" onclick="retryPrintJob('${job.id}')">Retry</button>
+              ` : ''}
+              ${job.luluPrintJobId && !['shipped', 'canceled', 'rejected'].includes(job.luluStatus) ? `
+                <button class="btn btn-sm btn-secondary" onclick="syncPrintJob('${job.id}')">Sync</button>
+              ` : ''}
+              <button class="btn btn-sm btn-secondary" onclick="viewPrintJob('${job.id}')">View</button>
+              ${job.luluPrintJobId && !['shipped', 'canceled', 'rejected', 'in_production'].includes(job.luluStatus) ? `
+                <button class="btn btn-sm btn-danger" onclick="cancelPrintJob('${job.id}')">Cancel</button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function submitPrintJob(orderId) {
+      if (!confirm('Submit this order to Lulu for printing?')) return;
+      
+      try {
+        showToast('Submitting to Lulu...', 'info');
+        const res = await fetch('/api/admin/lulu-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'submit', orderId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.details);
+
+        showToast('Print job submitted successfully!', 'success');
+        loadPrintJobs();
+      } catch (err) {
+        showToast('Submit failed: ' + err.message, 'error');
+      }
+    }
+
+    async function retryPrintJob(printJobId) {
+      if (!confirm('Retry this print job?')) return;
+      
+      try {
+        showToast('Retrying...', 'info');
+        const res = await fetch('/api/admin/lulu-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'retry', printJobId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.details);
+
+        showToast('Print job retried successfully!', 'success');
+        loadPrintJobs();
+      } catch (err) {
+        showToast('Retry failed: ' + err.message, 'error');
+      }
+    }
+
+    async function syncPrintJob(printJobId) {
+      try {
+        const res = await fetch('/api/admin/lulu-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'sync_status', printJobId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.details);
+
+        showToast(`Status: ${data.status}`, 'success');
+        loadPrintJobs();
+      } catch (err) {
+        showToast('Sync failed: ' + err.message, 'error');
+      }
+    }
+
+    async function syncAllPrintJobs() {
+      try {
+        showToast('Syncing all jobs from Lulu...', 'info');
+        const res = await fetch('/api/admin/lulu-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'sync_all' }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast(`Synced ${data.synced}/${data.total} jobs`, 'success');
+        loadPrintJobs();
+      } catch (err) {
+        showToast('Sync failed: ' + err.message, 'error');
+      }
+    }
+
+    async function cancelPrintJob(printJobId) {
+      if (!confirm('Cancel this print job? This cannot be undone if already in production.')) return;
+      
+      try {
+        const res = await fetch('/api/admin/lulu-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'cancel', printJobId }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.details);
+
+        showToast('Print job cancelled', 'success');
+        loadPrintJobs();
+      } catch (err) {
+        showToast('Cancel failed: ' + err.message, 'error');
+      }
+    }
+
+    function viewPrintJob(printJobId) {
+      currentPrintJob = printJobs.find(j => j.id === printJobId);
+      if (!currentPrintJob) return;
+
+      document.getElementById('print-job-modal-body').innerHTML = `
+        <div class="form-group">
+          <label>Local Job ID</label>
+          <input type="text" value="${currentPrintJob.id}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Lulu Print Job ID</label>
+          <input type="text" value="${currentPrintJob.luluPrintJobId || 'Not submitted'}" disabled />
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <div>${getLuluStatusBadge(currentPrintJob.luluStatus)}</div>
+          ${currentPrintJob.luluStatusMessage ? `<small style="color: var(--muted)">${currentPrintJob.luluStatusMessage}</small>` : ''}
+        </div>
+        ${currentPrintJob.errorMessage ? `
+        <div class="form-group" style="background: rgba(239,68,68,0.1); padding: 12px; border-radius: 8px;">
+          <strong style="color: var(--danger)">Error</strong>
+          <p style="margin: 8px 0 0; font-size: 13px;">${currentPrintJob.errorMessage}</p>
+        </div>
+        ` : ''}
+        <div class="form-row">
+          <div class="form-group">
+            <label>Book Title</label>
+            <input type="text" value="${currentPrintJob.bookTitle || 'Untitled'}" disabled />
+          </div>
+          <div class="form-group">
+            <label>POD Package</label>
+            <input type="text" value="${currentPrintJob.podPackageId || '-'}" disabled />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Page Count</label>
+            <input type="text" value="${currentPrintJob.pageCount || '-'}" disabled />
+          </div>
+          <div class="form-group">
+            <label>Quantity</label>
+            <input type="text" value="${currentPrintJob.quantity || 1}" disabled />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Shipping Address</label>
+          <textarea disabled rows="3">${currentPrintJob.shippingName || ''}\n${currentPrintJob.shippingCity || ''}, ${currentPrintJob.shippingCountry || ''}</textarea>
+        </div>
+        ${currentPrintJob.trackingId ? `
+        <div class="form-group">
+          <label>Tracking</label>
+          <input type="text" value="${currentPrintJob.carrierName || ''}: ${currentPrintJob.trackingId}" disabled />
+          ${currentPrintJob.trackingUrls?.[0] ? `<a href="${currentPrintJob.trackingUrls[0]}" target="_blank" class="btn btn-sm btn-secondary" style="margin-top: 8px">Track Package</a>` : ''}
+        </div>
+        ` : ''}
+        <div class="form-row">
+          <div class="form-group">
+            <label>Our Cost (Lulu)</label>
+            <input type="text" value="${currentPrintJob.totalCostCents ? '$' + (currentPrintJob.totalCostCents / 100).toFixed(2) : '-'}" disabled />
+          </div>
+          <div class="form-group">
+            <label>Submitted At</label>
+            <input type="text" value="${currentPrintJob.submittedAt ? new Date(currentPrintJob.submittedAt).toLocaleString() : 'Not submitted'}" disabled />
+          </div>
+        </div>
+      `;
+
+      document.getElementById('print-job-modal').classList.add('active');
     }
 
     // Initialize
