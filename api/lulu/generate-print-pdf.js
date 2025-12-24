@@ -119,6 +119,9 @@ async function generateInteriorPdf(bookId, options = {}) {
     format: [pageWidth, pageHeight],
   });
 
+  // Use standard PDF fonts (Helvetica is built into PDF spec, no embedding needed)
+  pdf.setFont('helvetica', 'normal');
+
   // Set metadata
   pdf.setProperties({
     title: title,
@@ -131,10 +134,12 @@ async function generateInteriorPdf(bookId, options = {}) {
   pdf.setFillColor(102, 126, 234); // Purple gradient start
   pdf.rect(0, 0, pageWidth, pageHeight, 'F');
   
+  pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(36);
   pdf.text(title, pageWidth / 2, pageHeight / 2 - 30, { align: 'center' });
   
+  pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(18);
   pdf.text(`by ${author}`, pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
 
@@ -170,6 +175,7 @@ async function generateInteriorPdf(bookId, options = {}) {
 
     // Add text
     if (page.text) {
+      pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(51, 51, 51);
       pdf.setFontSize(14);
       
@@ -183,6 +189,7 @@ async function generateInteriorPdf(bookId, options = {}) {
     }
 
     // Add page number
+    pdf.setFont('helvetica', 'normal');
     pdf.setTextColor(150, 150, 150);
     pdf.setFontSize(10);
     pdf.text(String(page.page), pageWidth / 2, pageHeight - BLEED - 15, { align: 'center' });
@@ -292,6 +299,9 @@ async function generateCoverPdf(bookId, options = {}) {
   pdf.setFillColor(102, 126, 234);
   pdf.rect(0, 0, coverWidth, coverHeight, 'F');
 
+  // Use standard PDF fonts
+  pdf.setFont('helvetica', 'normal');
+
   // Calculate positions accounting for wrap
   const contentStartX = COVER_BLEED + COVER_WRAP;
   const contentStartY = COVER_BLEED + COVER_WRAP;
@@ -335,11 +345,13 @@ async function generateCoverPdf(bookId, options = {}) {
   }
 
   // Title
+  pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(255, 255, 255);
   pdf.setFontSize(32);
   pdf.text(title, frontCenterX, contentStartY + height * 0.7, { align: 'center' });
 
   // Author
+  pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(16);
   pdf.text(`by ${author}`, frontCenterX, contentStartY + height * 0.7 + 35, { align: 'center' });
 
