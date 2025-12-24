@@ -226,15 +226,38 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
     if (char?.has_model && char?.model_url) {
       try {
         const resp = await fetch(char.model_url);
+        
+        if (!resp.ok) {
+          console.error(`Failed to fetch model for ${char.name}: ${resp.status}`);
+          continue;
+        }
+        
+        // Detect content type from response or URL
+        let contentType = resp.headers.get('content-type') || 'image/png';
+        
+        // If content-type is generic, try to detect from URL
+        if (contentType === 'application/octet-stream' || !contentType.startsWith('image/')) {
+          const url = char.model_url.toLowerCase();
+          if (url.includes('.jpg') || url.includes('.jpeg')) {
+            contentType = 'image/jpeg';
+          } else if (url.includes('.webp')) {
+            contentType = 'image/webp';
+          } else if (url.includes('.gif')) {
+            contentType = 'image/gif';
+          } else {
+            contentType = 'image/png';
+          }
+        }
+        
         const buffer = await resp.arrayBuffer();
         const base64 = Buffer.from(buffer).toString("base64");
         
         images.push({
           key: sceneChar.key,
           name: char.name,
-          data_url: `data:image/png;base64,${base64}`,
+          data_url: `data:${contentType};base64,${base64}`,
         });
-        console.log(`📷 Loaded model: ${char.name}`);
+        console.log(`📷 Loaded model: ${char.name} (${contentType})`);
       } catch (err) {
         console.error(`Failed to load model for ${char.name}:`, err.message);
       }
@@ -391,6 +414,9 @@ Generate the illustration now.
     // 7. Build input with images
     const inputContent = [{ type: "input_text", text: prompt }];
     for (const img of characterImages) {
+      // Log the data URL prefix to debug content type issues
+      const prefix = img.data_url.substring(0, 50);
+      console.log(`Adding image for ${img.name}: ${prefix}...`);
       inputContent.push({ type: "input_image", image_url: img.data_url });
     }
 
@@ -458,7 +484,18 @@ Generate the illustration now.
       .update({ props_registry: [registry] })
       .eq("id", projectId);
 
-    // 11. Update illustrations
+    // 11. Update illustrations (re-fetch to avoid race conditions with parallel generation)
+    const { data: currentProject } = await supabase
+      .from("book_projects")
+      .select("illustrations")
+      .eq("id", projectId)
+      .single();
+    
+    const currentIllustrations = Array.isArray(currentProject?.illustrations) 
+      ? currentProject.illustrations 
+      : [];
+    
+    // Build revision history
     let newHistory = [...existingHistory];
     if (isRegen && existingForPage?.image_url) {
       newHistory.push({
@@ -469,7 +506,8 @@ Generate the illustration now.
       if (newHistory.length > 2) newHistory = newHistory.slice(-2);
     }
 
-    const updatedIllustrations = existingIllustrations.filter(i => Number(i.page) !== Number(page));
+    // Filter out old entry for this page and add new one
+    const updatedIllustrations = currentIllustrations.filter(i => Number(i.page) !== Number(page));
     updatedIllustrations.push({
       page,
       image_url: imageUrl,
@@ -479,10 +517,15 @@ Generate the illustration now.
       scene_composition: sceneComposition,
     });
 
-    await supabase
+    const { error: updateError } = await supabase
       .from("book_projects")
       .update({ illustrations: updatedIllustrations })
       .eq("id", projectId);
+    
+    if (updateError) {
+      console.error("Failed to save illustration:", updateError);
+      // Don't fail the request - image was generated and uploaded successfully
+    }
 
     // 12. Done
     return res.status(200).json({
