@@ -46,11 +46,16 @@ async function fetchImageAsBuffer(url) {
  * Simple text wrapping helper
  */
 function wrapText(text, font, fontSize, maxWidth) {
-  const words = text.split(' ');
+  // Remove newlines and normalize whitespace
+  const cleanText = text.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+  
+  const words = cleanText.split(' ');
   const lines = [];
   let currentLine = '';
   
   for (const word of words) {
+    if (!word) continue;
+    
     const testLine = currentLine ? `${currentLine} ${word}` : word;
     const testWidth = font.widthOfTextAtSize(testLine, fontSize);
     
