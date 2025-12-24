@@ -142,8 +142,11 @@ async function queueLuluSubmission(orderId, shippingDetails) {
 async function handleCheckoutCompleted(session) {
   const { order_id, order_ids, book_id, book_ids, product_type, user_id, cart_checkout } = session.metadata;
   
-  // Get shipping details from session if available
-  const shippingDetails = session.shipping_details || session.customer_details;
+  // Get shipping details from session - check multiple possible locations
+  // Stripe API has changed where this data lives
+  const shippingDetails = session.shipping_details 
+    || session.collected_information?.shipping_details 
+    || session.customer_details;
 
   // Handle cart checkout with multiple orders
   if (cart_checkout === "true" && order_ids) {
@@ -155,7 +158,7 @@ async function handleCheckoutCompleted(session) {
       // Get order details to determine product type and book
       const { data: order, error: fetchError } = await supabase
         .from("orders")
-        .select("id, book_id, product_id, products(name)")
+        .select("id, book_id, product_id, product:product_id(name)")
         .eq("id", orderId)
         .single();
 
@@ -164,7 +167,7 @@ async function handleCheckoutCompleted(session) {
         continue;
       }
 
-      const orderProductType = order.products?.name;
+      const orderProductType = order.product?.name;
       const orderBookId = order.book_id;
 
       // Update order status
