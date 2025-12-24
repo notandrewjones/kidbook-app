@@ -4,6 +4,7 @@
 
 const { createClient } = require("@supabase/supabase-js");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { getCurrentUser } = require("../_auth.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -46,27 +47,14 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid pages array' });
     }
 
-    // Get user from session
-    const authHeader = req.headers.cookie;
-    const sessionMatch = authHeader?.match(/session=([^;]+)/);
-    const sessionToken = sessionMatch?.[1];
-
-    if (!sessionToken) {
-      return res.status(401).json({ error: 'Not authenticated' });
+    // Get user from session using shared auth
+    const { user, error: authError } = await getCurrentUser(req, res);
+    
+    if (!user) {
+      return res.status(401).json({ error: authError || 'Not authenticated' });
     }
 
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('user_id')
-      .eq('token', sessionToken)
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (!session) {
-      return res.status(401).json({ error: 'Invalid session' });
-    }
-
-    const userId = session.user_id;
+    const userId = user.id;
 
     // Verify user owns this book
     const { data: book } = await supabase

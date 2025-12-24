@@ -2,6 +2,7 @@
 // Marks print pages as finalized and clears any stale data
 
 const { createClient } = require("@supabase/supabase-js");
+const { getCurrentUser } = require("../_auth.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -20,27 +21,12 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Missing bookId' });
     }
 
-    // Get user from session
-    const authHeader = req.headers.cookie;
-    const sessionMatch = authHeader?.match(/session=([^;]+)/);
-    const sessionToken = sessionMatch?.[1];
-
-    if (!sessionToken) {
-      return res.status(401).json({ error: 'Not authenticated' });
+    // Get user from session using shared auth
+    const { user, error: authError } = await getCurrentUser(req, res);
+    
+    if (!user) {
+      return res.status(401).json({ error: authError || 'Not authenticated' });
     }
-
-    const { data: session } = await supabase
-      .from('sessions')
-      .select('user_id')
-      .eq('token', sessionToken)
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (!session) {
-      return res.status(401).json({ error: 'Invalid session' });
-    }
-
-    const userId = session.user_id;
 
     // Verify user owns this book and get current print_pages
     const { data: book } = await supabase
@@ -49,7 +35,7 @@ module.exports = async function handler(req, res) {
       .eq('id', bookId)
       .single();
 
-    if (!book || book.user_id !== userId) {
+    if (!book || book.user_id !== user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
