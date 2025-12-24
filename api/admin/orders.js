@@ -20,31 +20,94 @@ async function handler(req, res) {
       status, 
       fulfillment_status, 
       has_cancellation_request,
+      search,
       limit = 50,
       offset = 0 
     } = req.query;
 
-    // Build query
-    let query = supabase
-      .from("orders")
-      .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    // If searching, we need a different approach
+    let orders = [];
+    let count = 0;
 
-    // Apply filters
-    if (status) {
-      query = query.eq("status", status);
-    }
-    if (fulfillment_status) {
-      query = query.eq("fulfillment_status", fulfillment_status);
-    }
-    if (has_cancellation_request === "true") {
-      query = query.not("cancellation_requested_at", "is", null);
-    }
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toLowerCase();
+      
+      // First, check if it looks like a Lulu print job ID (numeric)
+      let orderIdsFromLulu = [];
+      if (/^\d+$/.test(searchTerm)) {
+        const { data: luluJobs } = await supabase
+          .from("lulu_print_jobs")
+          .select("order_id")
+          .eq("lulu_print_job_id", searchTerm);
+        
+        orderIdsFromLulu = luluJobs?.map(j => j.order_id).filter(Boolean) || [];
+      }
+      
+      // Search by order ID prefix or email
+      let query = supabase
+        .from("orders")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false });
+      
+      // Build OR conditions
+      if (orderIdsFromLulu.length > 0) {
+        // If we found matching Lulu jobs, include those order IDs
+        query = query.or(`id.ilike.${searchTerm}%,id.in.(${orderIdsFromLulu.join(',')})`);
+      } else {
+        query = query.ilike("id", `${searchTerm}%`);
+      }
+      
+      // Apply other filters
+      if (status) query = query.eq("status", status);
+      if (fulfillment_status) query = query.eq("fulfillment_status", fulfillment_status);
+      if (has_cancellation_request === "true") query = query.not("cancellation_requested_at", "is", null);
+      
+      const result = await query.range(offset, offset + parseInt(limit) - 1);
+      orders = result.data || [];
+      count = result.count || 0;
+      
+      // Also search by email in customers table
+      if (orders.length === 0 && searchTerm.includes('@')) {
+        const { data: customers } = await supabase
+          .from("customers")
+          .select("user_id")
+          .ilike("email", `%${searchTerm}%`);
+        
+        if (customers?.length > 0) {
+          const userIds = customers.map(c => c.user_id);
+          let emailQuery = supabase
+            .from("orders")
+            .select("*", { count: "exact" })
+            .in("user_id", userIds)
+            .order("created_at", { ascending: false });
+          
+          if (status) emailQuery = emailQuery.eq("status", status);
+          if (fulfillment_status) emailQuery = emailQuery.eq("fulfillment_status", fulfillment_status);
+          if (has_cancellation_request === "true") emailQuery = emailQuery.not("cancellation_requested_at", "is", null);
+          
+          const emailResult = await emailQuery.range(offset, offset + parseInt(limit) - 1);
+          orders = emailResult.data || [];
+          count = emailResult.count || 0;
+        }
+      }
+    } else {
+      // No search - use standard query
+      let query = supabase
+        .from("orders")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + parseInt(limit) - 1);
 
-    const { data: orders, error, count } = await query;
+      // Apply filters
+      if (status) query = query.eq("status", status);
+      if (fulfillment_status) query = query.eq("fulfillment_status", fulfillment_status);
+      if (has_cancellation_request === "true") query = query.not("cancellation_requested_at", "is", null);
 
-    if (error) throw error;
+      const result = await query;
+      if (result.error) throw result.error;
+      orders = result.data || [];
+      count = result.count || 0;
+    }
 
     // Get user details for orders
     const userIds = [...new Set(orders.map(o => o.user_id).filter(Boolean))];

@@ -29,6 +29,7 @@ async function listPrintJobs(req, res) {
     const { 
       status, 
       orderId,
+      search,
       limit = 50,
       offset = 0 
     } = req.query;
@@ -54,6 +55,17 @@ async function listPrintJobs(req, res) {
     }
     if (orderId) {
       query = query.eq("order_id", orderId);
+    }
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      // Search by Lulu print job ID or order ID prefix
+      if (/^\d+$/.test(searchTerm)) {
+        // Numeric - likely Lulu job ID
+        query = query.eq("lulu_print_job_id", searchTerm);
+      } else {
+        // Alphanumeric - likely order ID
+        query = query.ilike("order_id", `${searchTerm}%`);
+      }
     }
 
     const { data: jobs, error, count } = await query;

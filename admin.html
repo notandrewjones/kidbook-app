@@ -447,10 +447,32 @@
       status: '',
       fulfillment_status: '',
       has_cancellation_request: '',
+      search: '',
     };
     let printJobFilters = {
       status: '',
+      search: '',
     };
+    let searchTimeout = null;
+    let printJobSearchTimeout = null;
+
+    // Debounced search for orders
+    function debounceSearch(value) {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        filters.search = value.trim();
+        loadOrders();
+      }, 300);
+    }
+
+    // Debounced search for print jobs
+    function debouncePrintJobSearch(value) {
+      clearTimeout(printJobSearchTimeout);
+      printJobSearchTimeout = setTimeout(() => {
+        printJobFilters.search = value.trim();
+        loadPrintJobs();
+      }, 300);
+    }
 
     // Check auth and load page
     async function init() {
@@ -502,6 +524,11 @@
           <!-- Orders Tab -->
           <div id="orders-tab" style="display: ${activeTab === 'orders' ? 'block' : 'none'}">
             <div class="filters">
+              <div class="filter-group" style="flex: 2;">
+                <span class="filter-label">Search</span>
+                <input type="text" id="order-search" placeholder="Search by order ID, email, or Lulu job ID..." 
+                       onkeyup="debounceSearch(this.value)" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--stroke); background: var(--bg); color: var(--text);" />
+              </div>
               <div class="filter-group">
                 <span class="filter-label">Payment Status</span>
                 <select id="filter-status" onchange="updateFilter('status', this.value)">
@@ -562,6 +589,11 @@
           <!-- Print Jobs Tab -->
           <div id="printJobs-tab" style="display: ${activeTab === 'printJobs' ? 'block' : 'none'}">
             <div class="filters">
+              <div class="filter-group" style="flex: 2;">
+                <span class="filter-label">Search</span>
+                <input type="text" id="printjob-search" placeholder="Search by order ID or Lulu job ID..." 
+                       onkeyup="debouncePrintJobSearch(this.value)" style="width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--stroke); background: var(--bg); color: var(--text);" />
+              </div>
               <div class="filter-group">
                 <span class="filter-label">Lulu Status</span>
                 <select id="filter-lulu-status" onchange="updatePrintJobFilter('status', this.value)">
@@ -688,6 +720,7 @@
         if (filters.status) params.set('status', filters.status);
         if (filters.fulfillment_status) params.set('fulfillment_status', filters.fulfillment_status);
         if (filters.has_cancellation_request) params.set('has_cancellation_request', filters.has_cancellation_request);
+        if (filters.search) params.set('search', filters.search);
 
         const res = await fetch(`/api/admin/orders?${params}`, { credentials: 'include' });
         const data = await res.json();
@@ -759,9 +792,52 @@
       `).join('');
     }
 
-    function openEditModal(orderId) {
+    async function openEditModal(orderId) {
       currentOrder = orders.find(o => o.id === orderId);
       if (!currentOrder) return;
+
+      // Fetch linked print jobs for this order
+      let linkedPrintJobs = [];
+      try {
+        const res = await fetch(`/api/admin/lulu-jobs?orderId=${orderId}`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          linkedPrintJobs = data.printJobs || [];
+        }
+      } catch (e) {
+        console.error('Failed to fetch linked print jobs:', e);
+      }
+
+      const printJobsHtml = linkedPrintJobs.length > 0 ? `
+        <div class="form-group">
+          <label>Linked Print Jobs</label>
+          <div style="background: var(--bg); border: 1px solid var(--stroke); border-radius: 8px; padding: 12px; margin-top: 4px;">
+            ${linkedPrintJobs.map(job => `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--stroke);">
+                <div>
+                  <div style="font-weight: 500; color: var(--text);">
+                    ${job.luluPrintJobId ? `Lulu #${job.luluPrintJobId}` : `Job ${job.id.substring(0, 8).toUpperCase()}`}
+                  </div>
+                  <div style="font-size: 12px; color: var(--muted);">
+                    ${job.bookTitle || 'Untitled Book'} • ${job.size || 'Unknown size'}
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  ${getLuluStatusBadge(job.luluStatus)}
+                  ${job.trackingNumber ? `<a href="${job.trackingUrl || '#'}" target="_blank" style="font-size: 12px; color: var(--accent);">Track</a>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : (currentOrder.productType === 'hardcover' ? `
+        <div class="form-group">
+          <label>Linked Print Jobs</label>
+          <div style="background: var(--bg); border: 1px solid var(--stroke); border-radius: 8px; padding: 12px; margin-top: 4px; color: var(--muted); font-size: 13px;">
+            No print jobs created yet for this hardcover order.
+          </div>
+        </div>
+      ` : '');
 
       document.getElementById('edit-modal-body').innerHTML = `
         <div class="form-group">
@@ -780,6 +856,7 @@
             </p>
           </div>
         ` : ''}
+        ${printJobsHtml}
         <div class="form-group">
           <label>Fulfillment Status</label>
           <select id="edit-fulfillment-status">
@@ -929,6 +1006,7 @@
         const params = new URLSearchParams();
         params.set('limit', '100');
         if (printJobFilters.status) params.set('status', printJobFilters.status);
+        if (printJobFilters.search) params.set('search', printJobFilters.search);
 
         const res = await fetch(`/api/admin/lulu-jobs?${params}`, { credentials: 'include' });
         const data = await res.json();
