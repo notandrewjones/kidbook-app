@@ -51,7 +51,6 @@ async function submitPrintJob(orderId, options = {}) {
       shipping_state,
       shipping_postal_code,
       shipping_country,
-      shipping_phone,
       stripe_checkout_session_id
     `)
     .eq("id", orderId)
