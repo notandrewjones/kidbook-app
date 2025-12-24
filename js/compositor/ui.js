@@ -23,18 +23,56 @@ import {
   getHardcoverSizes 
 } from '../api/cart.js';
 
-// API function to upload rendered pages for print
-async function uploadPrintPages(bookId, pages, coverImage = null) {
-  const response = await fetch('/api/lulu/upload-page-images', {
+// API function to start a new print upload session (clears old pages)
+async function startPrintUpload(bookId) {
+  const response = await fetch('/api/lulu/start-print-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ bookId, pages, coverImage }),
+    body: JSON.stringify({ bookId }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to upload print pages');
+    throw new Error(error.error || 'Failed to start print upload');
+  }
+
+  return response.json();
+}
+
+// API function to upload a single rendered page for print
+async function uploadSinglePrintPage(bookId, pageNumber, imageData) {
+  const response = await fetch('/api/lulu/upload-page-images', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ 
+      bookId, 
+      pages: [{ pageNumber, imageData }],
+      coverImage: pageNumber === 1 ? imageData : null,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to upload print page');
+  }
+
+  return response.json();
+}
+
+// API function to mark print pages upload complete
+async function finalizePrintPages(bookId) {
+  const response = await fetch('/api/lulu/finalize-print-pages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ bookId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to finalize print pages');
   }
 
   return response.json();
@@ -2655,37 +2693,69 @@ export class CompositorUI {
       if (hasHardcover) {
         console.log('[Cart] Hardcover items detected, rendering pages for print...');
         
-        // Update button to show rendering progress
-        const updateProgress = (current, total) => {
-          if (addBtn) {
-            addBtn.innerHTML = `
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
-                <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
-                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-              </svg>
-              Rendering page ${current}/${total}...
-            `;
-          }
-        };
-
         try {
-          // Render all pages as high-quality images
-          const { pages, coverImage } = await this.renderPagesForPrint(updateProgress);
-          
-          // Update button to show upload progress
+          // Start fresh upload session (clears old pages)
           if (addBtn) {
             addBtn.innerHTML = `
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
                 <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
                 <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
               </svg>
-              Uploading print files...
+              Preparing print files...
             `;
           }
           
-          // Upload to server
-          const uploadResult = await uploadPrintPages(this.projectId, pages, coverImage);
-          console.log('[Cart] Print pages uploaded:', uploadResult);
+          await startPrintUpload(this.projectId);
+          console.log('[Cart] Started print upload session');
+          
+          // Render all pages as high-quality images
+          const totalPages = this.bookData?.pages?.length || 0;
+          const template = getTemplate(this.selectedTemplate);
+          const scale = 2; // 2x resolution for print (balances quality vs file size)
+          
+          for (let i = 0; i < totalPages; i++) {
+            const pageData = this.bookData.pages[i];
+            const pageNumber = pageData.page || (i + 1);
+            
+            // Update button to show progress
+            if (addBtn) {
+              addBtn.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+                </svg>
+                Uploading page ${i + 1}/${totalPages}...
+              `;
+            }
+            
+            // Get customizations for this page
+            const overrides = this.getPageOverrides(i);
+            
+            // Render page as SVG
+            const svg = await this.renderer.render(pageData, template, overrides);
+            
+            // Convert SVG to PNG data URL
+            const imageData = await this.svgToDataUrl(svg, scale);
+            
+            // Upload this single page
+            await uploadSinglePrintPage(this.projectId, pageNumber, imageData);
+            
+            console.log(`[Cart] Uploaded page ${pageNumber}/${totalPages}`);
+          }
+          
+          // Finalize the upload
+          if (addBtn) {
+            addBtn.innerHTML = `
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinner-icon">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.3"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+              </svg>
+              Finalizing...
+            `;
+          }
+          
+          await finalizePrintPages(this.projectId);
+          console.log('[Cart] Print pages finalized');
           
         } catch (renderErr) {
           console.error('[Cart] Failed to prepare print files:', renderErr);
@@ -2841,7 +2911,7 @@ export class CompositorUI {
   }
 
   /**
-   * Convert SVG element to data URL (PNG)
+   * Convert SVG element to data URL (JPEG for smaller size)
    */
   async svgToDataUrl(svg, scale = 2) {
     return new Promise((resolve, reject) => {
@@ -2853,8 +2923,8 @@ export class CompositorUI {
       const img = new Image();
       img.onload = () => {
         // Get dimensions from SVG
-        const width = svg.getAttribute('width') || svg.viewBox?.baseVal?.width || 576;
-        const height = svg.getAttribute('height') || svg.viewBox?.baseVal?.height || 576;
+        const width = parseInt(svg.getAttribute('width')) || svg.viewBox?.baseVal?.width || 576;
+        const height = parseInt(svg.getAttribute('height')) || svg.viewBox?.baseVal?.height || 576;
         
         const canvas = document.createElement('canvas');
         canvas.width = width * scale;
@@ -2866,8 +2936,8 @@ export class CompositorUI {
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to PNG data URL
-        const dataUrl = canvas.toDataURL('image/png', 1.0);
+        // Use JPEG for smaller file size (0.92 quality is good for print)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
         
         URL.revokeObjectURL(url);
         resolve(dataUrl);

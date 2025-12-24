@@ -1,5 +1,6 @@
 // api/lulu/upload-page-images.js
 // Receives rendered page images from the compositor and stores them for print PDF generation
+// Supports incremental uploads (one page at a time) to avoid payload size limits
 
 const { createClient } = require("@supabase/supabase-js");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
@@ -70,7 +71,7 @@ module.exports = async function handler(req, res) {
     // Verify user owns this book
     const { data: book } = await supabase
       .from('book_projects')
-      .select('id, user_id')
+      .select('id, user_id, print_pages')
       .eq('id', bookId)
       .single();
 
@@ -78,9 +79,20 @@ module.exports = async function handler(req, res) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    console.log(`[Upload] Uploading ${pages.length} page images for book ${bookId}`);
+    console.log(`[Upload] Uploading ${pages.length} page image(s) for book ${bookId}`);
 
-    const timestamp = Date.now();
+    // Use consistent timestamp for this upload session (stored in existing print_pages or new)
+    const existingPages = book.print_pages || [];
+    let timestamp;
+    
+    if (existingPages.length > 0 && existingPages[0].key) {
+      // Extract timestamp from existing key: print-pages/userId/bookId/TIMESTAMP/page-001.png
+      const match = existingPages[0].key.match(/\/(\d+)\//);
+      timestamp = match ? match[1] : Date.now();
+    } else {
+      timestamp = Date.now();
+    }
+
     const uploadedPages = [];
 
     // Upload each page image
@@ -114,7 +126,7 @@ module.exports = async function handler(req, res) {
       console.log(`[Upload] Page ${pageNumber} uploaded: ${url}`);
     }
 
-    // Upload cover image if provided
+    // Upload cover image if provided (usually first page)
     let coverUrl = null;
     if (coverImage) {
       const base64Data = coverImage.replace(/^data:image\/\w+;base64,/, '');
@@ -128,26 +140,47 @@ module.exports = async function handler(req, res) {
       console.log(`[Upload] Cover uploaded: ${coverUrl}`);
     }
 
-    // Store the page URLs in the book_projects table
+    // Merge with existing pages (for incremental uploads)
+    const mergedPages = [...existingPages];
+    for (const newPage of uploadedPages) {
+      // Replace if same page number exists, otherwise add
+      const existingIndex = mergedPages.findIndex(p => p.pageNumber === newPage.pageNumber);
+      if (existingIndex >= 0) {
+        mergedPages[existingIndex] = newPage;
+      } else {
+        mergedPages.push(newPage);
+      }
+    }
+    
+    // Sort by page number
+    mergedPages.sort((a, b) => a.pageNumber - b.pageNumber);
+
+    // Update the book_projects table
+    const updateData = {
+      print_pages: mergedPages,
+      print_pages_updated_at: new Date().toISOString(),
+    };
+    
+    if (coverUrl) {
+      updateData.print_cover_image = coverUrl;
+    }
+
     const { error: updateError } = await supabase
       .from('book_projects')
-      .update({
-        print_pages: uploadedPages,
-        print_cover_image: coverUrl,
-        print_pages_updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', bookId);
 
     if (updateError) {
       console.error('[Upload] Failed to update book:', updateError);
-      // Don't fail - pages are uploaded, just metadata update failed
+      return res.status(500).json({ error: 'Failed to save page data' });
     }
 
     return res.status(200).json({
       success: true,
-      pageCount: uploadedPages.length,
+      pageCount: mergedPages.length,
       pages: uploadedPages,
       coverUrl,
+      totalPages: mergedPages.length,
     });
 
   } catch (error) {
