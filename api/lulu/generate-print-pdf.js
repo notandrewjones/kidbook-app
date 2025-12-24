@@ -366,4 +366,3 @@ module.exports = {
   COVER_WRAP,
   COVER_BLEED,
 };
-};
