@@ -266,7 +266,7 @@ async function processAllPendingOrders(options = {}) {
       product:product_id (name)
     `)
     .eq("status", "paid")
-    .in("fulfillment_status", ["pending_pdf", "pending_submission"])
+    .in("fulfillment_status", ["pending_pdf", "pending_submission", "generating", "error"])
     .eq("product_id", hardcoverProductId)
     .limit(limit);
 
