@@ -55,8 +55,21 @@ async function handler(req, res) {
 
     // Step 6: Actually try calling processAllPendingOrders if requested
     let processResult = null;
+    let directOrderTest = null;
+    
     if (req.query.run === 'true') {
       processResult = await processAllPendingOrders({ limit: 1 });
+    }
+    
+    // Step 7: Direct order fetch test
+    if (req.query.order) {
+      const { data: testOrder, error: testError } = await supabase
+        .from("orders")
+        .select("id, user_id, book_id, status, size, fulfillment_status, product_id")
+        .eq("id", req.query.order)
+        .single();
+      
+      directOrderTest = { order: testOrder, error: testError };
     }
 
     return res.status(200).json({
@@ -66,6 +79,7 @@ async function handler(req, res) {
       autoFulfillQueryResult: autoFulfillQuery,
       luluConfigured,
       processResult,
+      directOrderTest,
       errors: {
         error1,
         error2, 
