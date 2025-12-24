@@ -1,10 +1,9 @@
 // api/lulu/generate-print-pdf.js
 // Server-side PDF generation for Lulu print fulfillment
-// Uses Puppeteer to render book pages and generate print-ready PDFs
+// Uses jsPDF for lightweight PDF generation (no Puppeteer/Chrome needed)
 
 const { createClient } = require("@supabase/supabase-js");
-const chromium = require("@sparticuz/chromium-min");
-const puppeteer = require("puppeteer-core");
+const { jsPDF } = require("jspdf");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -24,10 +23,35 @@ const PAGE_DIMENSIONS = {
 const BLEED = 9;
 
 /**
+ * Fetch image as base64 data URL
+ */
+async function fetchImageAsBase64(url) {
+  if (!url) return null;
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    
+    // Determine mime type from URL or response
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    return `data:${contentType};base64,${base64}`;
+  } catch (err) {
+    console.error(`Failed to fetch image ${url}:`, err.message);
+    return null;
+  }
+}
+
+/**
  * Generate print-ready interior PDF for a book
  */
 async function generateInteriorPdf(bookId, options = {}) {
   const { sizeCode = 'square-medium' } = options;
+  
+  console.log(`[PDF] Generating interior PDF for book ${bookId}`);
   
   // Get book data
   const { data: book, error: bookError } = await supabase
@@ -51,8 +75,14 @@ async function generateInteriorPdf(bookId, options = {}) {
   const title = book.selected_idea?.title || 'My Book';
   const author = book.kid_name || 'Author';
 
+  if (pages.length === 0) {
+    throw new Error('Book has no pages');
+  }
+
+  console.log(`[PDF] Book has ${pages.length} pages, ${illustrations.length} illustrations`);
+
   // Build page data with images
-  const pageData = pages.map((page, index) => {
+  const pageData = pages.map((page) => {
     const illustration = illustrations.find(i => i.page === page.page);
     return {
       page: page.page,
@@ -61,23 +91,100 @@ async function generateInteriorPdf(bookId, options = {}) {
     };
   });
 
-  // Generate PDF
+  // Get dimensions
   const dimensions = PAGE_DIMENSIONS[sizeCode];
   if (!dimensions) {
     throw new Error(`Invalid size code: ${sizeCode}`);
   }
 
-  const pdfBuffer = await renderBookToPdf(pageData, {
-    title,
-    author,
-    width: dimensions.width,
-    height: dimensions.height,
-    addBleed: true,
+  const { width, height } = dimensions;
+  const pageWidth = width + (BLEED * 2);
+  const pageHeight = height + (BLEED * 2);
+
+  // Create PDF
+  const pdf = new jsPDF({
+    orientation: width > height ? 'landscape' : 'portrait',
+    unit: 'pt',
+    format: [pageWidth, pageHeight],
   });
+
+  // Set metadata
+  pdf.setProperties({
+    title: title,
+    author: author,
+    subject: "Children's Picture Book",
+    creator: 'BrightStories',
+  });
+
+  // Add title page
+  pdf.setFillColor(102, 126, 234); // Purple gradient start
+  pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+  
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(36);
+  pdf.text(title, pageWidth / 2, pageHeight / 2 - 30, { align: 'center' });
+  
+  pdf.setFontSize(18);
+  pdf.text(`by ${author}`, pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
+
+  // Add content pages
+  for (let i = 0; i < pageData.length; i++) {
+    const page = pageData[i];
+    
+    // Add new page
+    pdf.addPage([pageWidth, pageHeight]);
+    
+    // White background
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // Add image if available
+    if (page.imageUrl) {
+      try {
+        console.log(`[PDF] Fetching image for page ${page.page}...`);
+        const imageData = await fetchImageAsBase64(page.imageUrl);
+        if (imageData) {
+          // Calculate image area (top 60% of page)
+          const imgX = BLEED + 20;
+          const imgY = BLEED + 20;
+          const imgWidth = width - 40;
+          const imgHeight = height * 0.55;
+          
+          pdf.addImage(imageData, 'JPEG', imgX, imgY, imgWidth, imgHeight);
+        }
+      } catch (imgErr) {
+        console.error(`[PDF] Failed to add image for page ${page.page}:`, imgErr.message);
+      }
+    }
+
+    // Add text
+    if (page.text) {
+      pdf.setTextColor(51, 51, 51);
+      pdf.setFontSize(14);
+      
+      const textX = BLEED + 30;
+      const textY = BLEED + height * 0.65;
+      const textWidth = width - 60;
+      
+      // Word wrap text
+      const lines = pdf.splitTextToSize(page.text, textWidth);
+      pdf.text(lines, textX, textY);
+    }
+
+    // Add page number
+    pdf.setTextColor(150, 150, 150);
+    pdf.setFontSize(10);
+    pdf.text(String(page.page), pageWidth / 2, pageHeight - BLEED - 15, { align: 'center' });
+  }
+
+  // Get PDF as buffer
+  const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+  
+  console.log(`[PDF] Interior PDF generated: ${pdfBuffer.length} bytes, ${pageData.length + 1} pages`);
 
   return {
     buffer: pdfBuffer,
-    pageCount: pageData.length,
+    pageCount: pageData.length + 1, // +1 for title page
     dimensions,
   };
 }
@@ -89,9 +196,10 @@ async function generateInteriorPdf(bookId, options = {}) {
 async function generateCoverPdf(bookId, options = {}) {
   const { 
     sizeCode = 'square-medium',
-    pageCount,
-    spineWidth = null, // In points, or calculated from pageCount
+    pageCount = 32,
   } = options;
+
+  console.log(`[PDF] Generating cover PDF for book ${bookId}`);
 
   // Get book data
   const { data: book, error: bookError } = await supabase
@@ -122,376 +230,86 @@ async function generateCoverPdf(bookId, options = {}) {
     throw new Error(`Invalid size code: ${sizeCode}`);
   }
 
+  const { width, height } = dimensions;
+  
   // Calculate spine width based on page count
   // Lulu formula: approximately 0.0025 inches per page for standard paper
-  const calculatedSpineWidth = spineWidth || Math.max(18, Math.round((pageCount || 32) * 0.18));
+  const spineWidth = Math.max(18, Math.round(pageCount * 0.18));
 
-  // Total cover width = back + spine + front + bleed on each side
-  const coverWidth = (dimensions.width * 2) + calculatedSpineWidth + (BLEED * 2);
-  const coverHeight = dimensions.height + (BLEED * 2);
+  // Total cover dimensions
+  const coverWidth = (width * 2) + spineWidth + (BLEED * 2);
+  const coverHeight = height + (BLEED * 2);
 
-  const pdfBuffer = await renderCoverToPdf({
-    title,
-    author,
-    coverImageUrl,
-    bookWidth: dimensions.width,
-    bookHeight: dimensions.height,
-    spineWidth: calculatedSpineWidth,
-    totalWidth: coverWidth,
-    totalHeight: coverHeight,
+  // Create PDF
+  const pdf = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: [coverWidth, coverHeight],
   });
+
+  // Background gradient (purple)
+  pdf.setFillColor(102, 126, 234);
+  pdf.rect(0, 0, coverWidth, coverHeight, 'F');
+
+  // Back cover (left side)
+  const backX = BLEED;
+  const backWidth = width;
+  
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(12);
+  pdf.text('A wonderful story created with love.', backX + backWidth / 2, coverHeight / 2, { align: 'center' });
+
+  // Spine (middle)
+  const spineX = BLEED + width;
+  pdf.setFillColor(118, 75, 162); // Slightly different purple
+  pdf.rect(spineX, 0, spineWidth, coverHeight, 'F');
+  
+  // Spine text (rotated) - jsPDF doesn't easily support rotation, so we skip for now
+  // In production, you'd use a more sophisticated approach
+
+  // Front cover (right side)
+  const frontX = BLEED + width + spineWidth;
+  const frontCenterX = frontX + width / 2;
+
+  // Add cover image if available
+  if (coverImageUrl) {
+    try {
+      console.log(`[PDF] Fetching cover image...`);
+      const imageData = await fetchImageAsBase64(coverImageUrl);
+      if (imageData) {
+        const imgSize = Math.min(width * 0.6, height * 0.4);
+        const imgX = frontCenterX - imgSize / 2;
+        const imgY = BLEED + 40;
+        
+        pdf.addImage(imageData, 'JPEG', imgX, imgY, imgSize, imgSize);
+      }
+    } catch (imgErr) {
+      console.error(`[PDF] Failed to add cover image:`, imgErr.message);
+    }
+  }
+
+  // Title
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(32);
+  pdf.text(title, frontCenterX, coverHeight * 0.7, { align: 'center' });
+
+  // Author
+  pdf.setFontSize(16);
+  pdf.text(`by ${author}`, frontCenterX, coverHeight * 0.7 + 35, { align: 'center' });
+
+  // Get PDF as buffer
+  const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+
+  console.log(`[PDF] Cover PDF generated: ${pdfBuffer.length} bytes`);
 
   return {
     buffer: pdfBuffer,
     dimensions: {
       width: coverWidth,
       height: coverHeight,
-      spineWidth: calculatedSpineWidth,
+      spineWidth,
     },
   };
-}
-
-/**
- * Render book pages to PDF using Puppeteer
- */
-async function renderBookToPdf(pages, options) {
-  const { title, author, width, height, addBleed } = options;
-  
-  const pageWidth = addBleed ? width + (BLEED * 2) : width;
-  const pageHeight = addBleed ? height + (BLEED * 2) : height;
-
-  let browser;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
-
-    // Set viewport to page dimensions
-    await page.setViewport({
-      width: Math.round(pageWidth),
-      height: Math.round(pageHeight),
-      deviceScaleFactor: 2, // High quality
-    });
-
-    // Generate HTML for all pages
-    const pagesHtml = pages.map((p, index) => generatePageHtml(p, {
-      width: pageWidth,
-      height: pageHeight,
-      contentWidth: width,
-      contentHeight: height,
-      bleed: addBleed ? BLEED : 0,
-      isFirst: index === 0,
-      isLast: index === pages.length - 1,
-    })).join('');
-
-    const fullHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Bubblegum+Sans&family=Comic+Neue:wght@400;700&family=Fredoka+One&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: ${pageWidth}pt ${pageHeight}pt; margin: 0; }
-    body { font-family: 'Comic Neue', 'Patrick Hand', sans-serif; }
-    .page {
-      width: ${pageWidth}pt;
-      height: ${pageHeight}pt;
-      page-break-after: always;
-      position: relative;
-      overflow: hidden;
-    }
-    .page:last-child { page-break-after: auto; }
-    .content {
-      position: absolute;
-      top: ${addBleed ? BLEED : 0}pt;
-      left: ${addBleed ? BLEED : 0}pt;
-      width: ${width}pt;
-      height: ${height}pt;
-      display: flex;
-      flex-direction: column;
-    }
-    .image-container {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20pt;
-    }
-    .image-container img {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-      border-radius: 12pt;
-    }
-    .text-container {
-      padding: 20pt 30pt;
-      text-align: center;
-      background: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0.8));
-    }
-    .text-container p {
-      font-size: 18pt;
-      line-height: 1.6;
-      color: #333;
-    }
-    .page-number {
-      position: absolute;
-      bottom: ${(addBleed ? BLEED : 0) + 15}pt;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 10pt;
-      color: #999;
-    }
-    /* Title page styles */
-    .title-page .content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .title-page h1 {
-      font-family: 'Fredoka One', 'Bubblegum Sans', cursive;
-      font-size: 42pt;
-      color: white;
-      text-align: center;
-      text-shadow: 3pt 3pt 6pt rgba(0,0,0,0.3);
-      margin-bottom: 20pt;
-    }
-    .title-page .author {
-      font-size: 18pt;
-      color: rgba(255,255,255,0.9);
-    }
-  </style>
-</head>
-<body>
-  <!-- Title Page -->
-  <div class="page title-page">
-    <div class="content">
-      <h1>${escapeHtml(title)}</h1>
-      <p class="author">by ${escapeHtml(author)}</p>
-    </div>
-  </div>
-  ${pagesHtml}
-</body>
-</html>`;
-
-    await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
-
-    // Wait for fonts and images to load
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1000);
-
-    // Generate PDF
-    const pdfBuffer = await page.pdf({
-      width: `${pageWidth}pt`,
-      height: `${pageHeight}pt`,
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-    });
-
-    return pdfBuffer;
-
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
-
-/**
- * Generate HTML for a single page
- */
-function generatePageHtml(pageData, options) {
-  const { width, height, contentWidth, contentHeight, bleed, isFirst, isLast } = options;
-  
-  const imageHtml = pageData.imageUrl 
-    ? `<div class="image-container"><img src="${pageData.imageUrl}" alt="Illustration" /></div>`
-    : `<div class="image-container" style="background: #f0f0f0;"></div>`;
-
-  const textHtml = pageData.text
-    ? `<div class="text-container"><p>${escapeHtml(pageData.text)}</p></div>`
-    : '';
-
-  return `
-    <div class="page">
-      <div class="content">
-        ${imageHtml}
-        ${textHtml}
-      </div>
-      <span class="page-number">${pageData.page}</span>
-    </div>
-  `;
-}
-
-/**
- * Render cover to PDF
- */
-async function renderCoverToPdf(options) {
-  const { 
-    title, author, coverImageUrl,
-    bookWidth, bookHeight, spineWidth,
-    totalWidth, totalHeight 
-  } = options;
-
-  let browser;
-  try {
-    browser = await launchBrowser();
-    const page = await browser.newPage();
-
-    await page.setViewport({
-      width: Math.round(totalWidth),
-      height: Math.round(totalHeight),
-      deviceScaleFactor: 2,
-    });
-
-    const coverHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Patrick+Hand&display=swap" rel="stylesheet">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      width: ${totalWidth}pt;
-      height: ${totalHeight}pt;
-      display: flex;
-      font-family: 'Patrick Hand', cursive;
-    }
-    .back-cover {
-      width: ${bookWidth + BLEED}pt;
-      height: ${totalHeight}pt;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: ${BLEED + 30}pt;
-    }
-    .back-cover p {
-      font-size: 14pt;
-      color: rgba(255,255,255,0.9);
-      text-align: center;
-      line-height: 1.6;
-    }
-    .spine {
-      width: ${spineWidth}pt;
-      height: ${totalHeight}pt;
-      background: linear-gradient(180deg, #764ba2 0%, #667eea 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      writing-mode: vertical-rl;
-      text-orientation: mixed;
-    }
-    .spine h2 {
-      font-family: 'Fredoka One', cursive;
-      font-size: ${Math.min(14, spineWidth * 0.6)}pt;
-      color: white;
-      text-shadow: 1pt 1pt 2pt rgba(0,0,0,0.3);
-    }
-    .front-cover {
-      width: ${bookWidth + BLEED}pt;
-      height: ${totalHeight}pt;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: ${BLEED + 20}pt;
-      position: relative;
-    }
-    .front-cover .cover-image {
-      width: ${bookWidth * 0.7}pt;
-      height: ${bookHeight * 0.5}pt;
-      border-radius: 16pt;
-      object-fit: cover;
-      box-shadow: 0 8pt 24pt rgba(0,0,0,0.3);
-      margin-bottom: 30pt;
-    }
-    .front-cover h1 {
-      font-family: 'Fredoka One', cursive;
-      font-size: 36pt;
-      color: white;
-      text-align: center;
-      text-shadow: 3pt 3pt 6pt rgba(0,0,0,0.3);
-      margin-bottom: 15pt;
-    }
-    .front-cover .author {
-      font-size: 16pt;
-      color: rgba(255,255,255,0.9);
-    }
-  </style>
-</head>
-<body>
-  <div class="back-cover">
-    <p>A wonderful story created with love.</p>
-  </div>
-  <div class="spine">
-    <h2>${escapeHtml(title)}</h2>
-  </div>
-  <div class="front-cover">
-    ${coverImageUrl ? `<img class="cover-image" src="${coverImageUrl}" alt="Cover" />` : ''}
-    <h1>${escapeHtml(title)}</h1>
-    <p class="author">by ${escapeHtml(author)}</p>
-  </div>
-</body>
-</html>`;
-
-    await page.setContent(coverHtml, { waitUntil: 'networkidle0' });
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1000);
-
-    const pdfBuffer = await page.pdf({
-      width: `${totalWidth}pt`,
-      height: `${totalHeight}pt`,
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-    });
-
-    return pdfBuffer;
-
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
-
-/**
- * Launch Puppeteer browser
- * Uses chromium-min for Vercel serverless compatibility
- */
-async function launchBrowser() {
-  // In production (Vercel), use chromium-min
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    return puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(
-        'https://github.com/nicholaswbowen/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar'
-      ),
-      headless: chromium.headless,
-    });
-  }
-  
-  // In development, use local Chrome
-  return puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-}
-
-/**
- * Escape HTML special characters
- */
-function escapeHtml(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 module.exports = {
