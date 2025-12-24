@@ -2711,7 +2711,7 @@ export class CompositorUI {
           // Render all pages as high-quality images
           const totalPages = this.bookData?.pages?.length || 0;
           const template = getTemplate(this.selectedTemplate);
-          const scale = 2; // 2x resolution for print (balances quality vs file size)
+          const scale = 5; // 5x resolution for 300ppi print (576px × 5 = 2880px for ~8.5" at 300ppi)
           
           for (let i = 0; i < totalPages; i++) {
             const pageData = this.bookData.pages[i];
@@ -2868,7 +2868,7 @@ export class CompositorUI {
     const template = getTemplate(this.selectedTemplate);
     const pages = [];
     const totalPages = this.bookData.pages.length;
-    const scale = 3; // High resolution for print (3x)
+    const scale = 5; // 5x resolution for 300ppi print (576px × 5 = 2880px)
 
     console.log(`[Print] Rendering ${totalPages} pages for print...`);
 
@@ -2936,8 +2936,8 @@ export class CompositorUI {
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Use JPEG for smaller file size (0.92 quality is good for print)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        // Use JPEG for smaller file size (0.95 quality for print)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         
         URL.revokeObjectURL(url);
         resolve(dataUrl);
