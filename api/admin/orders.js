@@ -43,31 +43,46 @@ async function handler(req, res) {
         orderIdsFromLulu = luluJobs?.map(j => j.order_id).filter(Boolean) || [];
       }
       
-      // Search by order ID prefix or email
-      let query = supabase
-        .from("orders")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false });
-      
-      // Build OR conditions
       if (orderIdsFromLulu.length > 0) {
-        // If we found matching Lulu jobs, include those order IDs
-        query = query.or(`id.in.(${orderIdsFromLulu.join(',')})`);
+        // Found matching Lulu jobs - fetch those orders directly
+        let query = supabase
+          .from("orders")
+          .select("*", { count: "exact" })
+          .in("id", orderIdsFromLulu)
+          .order("created_at", { ascending: false });
+        
+        if (status) query = query.eq("status", status);
+        if (fulfillment_status) query = query.eq("fulfillment_status", fulfillment_status);
+        if (has_cancellation_request === "true") query = query.not("cancellation_requested_at", "is", null);
+        
+        const result = await query.range(offset, offset + parseInt(limit) - 1);
+        orders = result.data || [];
+        count = result.count || 0;
       } else {
-        // Search by order ID prefix (cast to text for pattern matching)
-        query = query.filter("id::text", "ilike", `${searchTerm}%`);
+        // Search by order ID prefix - fetch recent orders and filter in memory
+        let query = supabase
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(500);
+        
+        if (status) query = query.eq("status", status);
+        if (fulfillment_status) query = query.eq("fulfillment_status", fulfillment_status);
+        if (has_cancellation_request === "true") query = query.not("cancellation_requested_at", "is", null);
+        
+        const { data: allOrders, error } = await query;
+        if (error) throw error;
+        
+        // Filter by order ID starting with search term
+        const filteredOrders = allOrders.filter(order => 
+          order.id && order.id.toLowerCase().startsWith(searchTerm)
+        );
+        
+        orders = filteredOrders.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+        count = filteredOrders.length;
       }
       
-      // Apply other filters
-      if (status) query = query.eq("status", status);
-      if (fulfillment_status) query = query.eq("fulfillment_status", fulfillment_status);
-      if (has_cancellation_request === "true") query = query.not("cancellation_requested_at", "is", null);
-      
-      const result = await query.range(offset, offset + parseInt(limit) - 1);
-      orders = result.data || [];
-      count = result.count || 0;
-      
-      // Also search by email in customers table
+      // Also search by email in customers table if no results
       if (orders.length === 0 && searchTerm.includes('@')) {
         const { data: customers } = await supabase
           .from("customers")

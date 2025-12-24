@@ -22,6 +22,68 @@ async function handler(req, res) {
 }
 
 /**
+ * Helper to format jobs and return response
+ */
+async function formatAndReturnJobs(res, jobs, count, limit, offset) {
+  // Get book titles
+  const bookIds = [...new Set(jobs.map(j => j.book_id).filter(Boolean))];
+  let booksMap = {};
+  if (bookIds.length > 0) {
+    const { data: books } = await supabase
+      .from("book_projects")
+      .select("id, selected_idea")
+      .in("id", bookIds);
+    
+    books?.forEach(b => {
+      booksMap[b.id] = b.selected_idea?.title || 'Untitled';
+    });
+  }
+
+  const formattedJobs = jobs.map(job => ({
+    id: job.id,
+    orderId: job.order_id,
+    bookId: job.book_id,
+    bookTitle: booksMap[job.book_id] || 'Unknown',
+    luluPrintJobId: job.lulu_print_job_id,
+    luluStatus: job.lulu_status,
+    luluStatusMessage: job.lulu_status_message,
+    podPackageId: job.pod_package_id,
+    pageCount: job.page_count,
+    quantity: job.quantity,
+    size: job.size,
+    shippingLevel: job.shipping_level,
+    shippingName: job.shipping_name,
+    shippingCity: job.shipping_city,
+    shippingCountry: job.shipping_country_code,
+    trackingId: job.tracking_id,
+    carrierName: job.carrier_name,
+    trackingUrls: job.tracking_urls,
+    trackingNumber: job.tracking_id,
+    trackingUrl: job.tracking_urls?.[0],
+    luluCostCents: job.lulu_cost_cents,
+    shippingCostCents: job.shipping_cost_cents,
+    totalCostCents: job.total_cost_cents,
+    estimatedShipDate: job.estimated_ship_date,
+    estimatedDeliveryMin: job.estimated_delivery_min,
+    estimatedDeliveryMax: job.estimated_delivery_max,
+    createdAt: job.created_at,
+    submittedAt: job.submitted_at,
+    shippedAt: job.shipped_at,
+    errorMessage: job.error_message,
+    retryCount: job.retry_count,
+    order: job.order,
+  }));
+
+  return res.status(200).json({
+    jobs: formattedJobs,
+    printJobs: formattedJobs, // Alias for compatibility
+    total: count,
+    limit: parseInt(limit),
+    offset: parseInt(offset),
+  });
+}
+
+/**
  * List all print jobs with filtering
  */
 async function listPrintJobs(req, res) {
@@ -34,6 +96,68 @@ async function listPrintJobs(req, res) {
       offset = 0 
     } = req.query;
 
+    // Handle search separately since UUID fields need special handling
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toLowerCase();
+      
+      // Check if it's a numeric search (Lulu job ID)
+      if (/^\d+$/.test(searchTerm)) {
+        let query = supabase
+          .from("lulu_print_jobs")
+          .select(`
+            *,
+            order:order_id (
+              id,
+              status,
+              amount_cents,
+              shipping_name,
+              shipping_city,
+              shipping_country
+            )
+          `, { count: "exact" })
+          .eq("lulu_print_job_id", searchTerm)
+          .order("created_at", { ascending: false });
+        
+        if (status) query = query.eq("lulu_status", status);
+        
+        const { data: jobs, error, count } = await query;
+        if (error) throw error;
+        
+        return await formatAndReturnJobs(res, jobs, count, limit, offset);
+      } else {
+        // Search by order ID - fetch recent jobs and filter in memory
+        let query = supabase
+          .from("lulu_print_jobs")
+          .select(`
+            *,
+            order:order_id (
+              id,
+              status,
+              amount_cents,
+              shipping_name,
+              shipping_city,
+              shipping_country
+            )
+          `)
+          .order("created_at", { ascending: false })
+          .limit(500); // Fetch more to filter
+        
+        if (status) query = query.eq("lulu_status", status);
+        
+        const { data: allJobs, error } = await query;
+        if (error) throw error;
+        
+        // Filter by order_id starting with search term
+        const filteredJobs = allJobs.filter(job => 
+          job.order_id && job.order_id.toLowerCase().startsWith(searchTerm)
+        );
+        
+        const paginatedJobs = filteredJobs.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+        return await formatAndReturnJobs(res, paginatedJobs, filteredJobs.length, limit, offset);
+      }
+    }
+
+    // Standard query without search
     let query = supabase
       .from("lulu_print_jobs")
       .select(`
@@ -56,74 +180,12 @@ async function listPrintJobs(req, res) {
     if (orderId) {
       query = query.eq("order_id", orderId);
     }
-    if (search && search.trim()) {
-      const searchTerm = search.trim();
-      // Search by Lulu print job ID or order ID prefix
-      if (/^\d+$/.test(searchTerm)) {
-        // Numeric - likely Lulu job ID
-        query = query.eq("lulu_print_job_id", searchTerm);
-      } else {
-        // Alphanumeric - likely order ID (cast to text for pattern matching)
-        query = query.filter("order_id::text", "ilike", `${searchTerm}%`);
-      }
-    }
 
     const { data: jobs, error, count } = await query;
 
     if (error) throw error;
 
-    // Get book titles
-    const bookIds = [...new Set(jobs.map(j => j.book_id).filter(Boolean))];
-    let booksMap = {};
-    if (bookIds.length > 0) {
-      const { data: books } = await supabase
-        .from("book_projects")
-        .select("id, selected_idea")
-        .in("id", bookIds);
-      
-      books?.forEach(b => {
-        booksMap[b.id] = b.selected_idea?.title || 'Untitled';
-      });
-    }
-
-    const formattedJobs = jobs.map(job => ({
-      id: job.id,
-      orderId: job.order_id,
-      bookId: job.book_id,
-      bookTitle: booksMap[job.book_id] || 'Unknown',
-      luluPrintJobId: job.lulu_print_job_id,
-      luluStatus: job.lulu_status,
-      luluStatusMessage: job.lulu_status_message,
-      podPackageId: job.pod_package_id,
-      pageCount: job.page_count,
-      quantity: job.quantity,
-      shippingLevel: job.shipping_level,
-      shippingName: job.shipping_name,
-      shippingCity: job.shipping_city,
-      shippingCountry: job.shipping_country_code,
-      trackingId: job.tracking_id,
-      carrierName: job.carrier_name,
-      trackingUrls: job.tracking_urls,
-      luluCostCents: job.lulu_cost_cents,
-      shippingCostCents: job.shipping_cost_cents,
-      totalCostCents: job.total_cost_cents,
-      estimatedShipDate: job.estimated_ship_date,
-      estimatedDeliveryMin: job.estimated_delivery_min,
-      estimatedDeliveryMax: job.estimated_delivery_max,
-      createdAt: job.created_at,
-      submittedAt: job.submitted_at,
-      shippedAt: job.shipped_at,
-      errorMessage: job.error_message,
-      retryCount: job.retry_count,
-      order: job.order,
-    }));
-
-    return res.status(200).json({
-      jobs: formattedJobs,
-      total: count,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-    });
+    return await formatAndReturnJobs(res, jobs, count, limit, offset);
 
   } catch (err) {
     console.error("List print jobs error:", err);
