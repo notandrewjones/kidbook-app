@@ -198,8 +198,9 @@ RULES FOR PROPS:
 
 // -------------------------------------------------------
 // Helper: Build character visual rules for the prompt
+// Now includes reference image numbers for clarity
 // -------------------------------------------------------
-function buildCharacterVisualRules(registry, sceneComposition) {
+function buildCharacterVisualRules(registry, sceneComposition, charImageIndexMap) {
   const rules = [];
   const charactersInScene = sceneComposition.characters_in_scene || [];
 
@@ -212,7 +213,12 @@ function buildCharacterVisualRules(registry, sceneComposition) {
     }
 
     if (char.has_model && char.visual_source === "user") {
-      rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): MUST match uploaded reference image EXACTLY.`);
+      const imageIndex = charImageIndexMap?.[sceneChar.key];
+      if (imageIndex !== undefined) {
+        rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): MUST match Reference Image #${imageIndex + 1} EXACTLY - this is ${sceneChar.name}.`);
+      } else {
+        rules.push(`• ${sceneChar.name} (${sceneChar.prominence}): MUST match uploaded reference image EXACTLY.`);
+      }
     } else if (char.visual) {
       const v = char.visual;
       if (char.type === "human") {
@@ -402,8 +408,9 @@ async function preparePropReferenceImages(registry, sceneComposition) {
 // -------------------------------------------------------
 // Helper: Build prop visual rules for the prompt
 // Props with reference images should NOT get text descriptions (avoid conflicts)
+// Now includes reference image numbers for clarity
 // -------------------------------------------------------
-function buildPropVisualRules(registry, sceneComposition) {
+function buildPropVisualRules(registry, sceneComposition, propImageIndexMap) {
   const rules = [];
   const propsInScene = sceneComposition.props_in_scene || [];
 
@@ -415,9 +422,14 @@ function buildPropVisualRules(registry, sceneComposition) {
       continue;
     }
 
-    // Props with reference images: ONLY say to match the image, no text description
+    // Props with reference images: specify WHICH image number to match
     if (prop.reference_image_url && prop.image_source === "user") {
-      rules.push(`• ${prop.name} (${sceneProp.importance}): Match the uploaded reference image exactly. (See reference images below)`);
+      const imageIndex = propImageIndexMap?.[sceneProp.key];
+      if (imageIndex !== undefined) {
+        rules.push(`• ${prop.name} (${sceneProp.importance}): MUST match Reference Image #${imageIndex + 1} EXACTLY - this is the ${prop.name}.`);
+      } else {
+        rules.push(`• ${prop.name} (${sceneProp.importance}): Match the uploaded reference image exactly.`);
+      }
     } 
     // Props WITHOUT reference images: include text description
     else if (prop.description || prop.visual) {
@@ -528,12 +540,29 @@ async function handler(req, res) {
       extractPropsUsingAI(pageText, registry.props),
     ]);
 
-    // 6. Build the prompt
-    const characterRules = buildCharacterVisualRules(registry, sceneComposition);
-    const propRules = buildPropVisualRules(registry, sceneComposition);
-    
     // Combine all reference images (characters first, then props)
     const allReferenceImages = [...characterImages, ...propImages];
+    
+    // Build index maps so we can tell the model "Image #1 is Wowzer, Image #2 is PlayStation Controller"
+    const charImageIndexMap = {};
+    const propImageIndexMap = {};
+    
+    allReferenceImages.forEach((img, index) => {
+      if (img.importance) {
+        // It's a prop (has importance field)
+        propImageIndexMap[img.key] = index;
+      } else {
+        // It's a character
+        charImageIndexMap[img.key] = index;
+      }
+    });
+    
+    console.log("Image index map - Characters:", charImageIndexMap);
+    console.log("Image index map - Props:", propImageIndexMap);
+
+    // 6. Build the prompt with image index references
+    const characterRules = buildCharacterVisualRules(registry, sceneComposition, charImageIndexMap);
+    const propRules = buildPropVisualRules(registry, sceneComposition, propImageIndexMap);
     
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
@@ -558,9 +587,11 @@ ${sceneComposition.props_in_scene?.map(p => `${p.name} (${p.importance}): ${p.re
 ${propRules || "Depict props consistently with story context."}
 
 ${allReferenceImages.length > 0 ? `
-=== REFERENCE IMAGES PROVIDED ===
-${allReferenceImages.map((img, i) => `Image ${i + 1}: ${img.name}${img.importance ? ` (prop - ${img.importance})` : ' (character)'}`).join("\n")}
-Characters and props with reference images MUST match them EXACTLY. Do not deviate from the reference images.
+=== REFERENCE IMAGES PROVIDED (${allReferenceImages.length} total) ===
+The following reference images are attached IN ORDER. You MUST use them:
+${allReferenceImages.map((img, i) => `• Reference Image #${i + 1}: ${img.name} ${img.importance ? `(PROP - show this exact object)` : '(CHARACTER - draw this exact person/animal)'}`).join("\n")}
+
+CRITICAL: Each character and prop listed above with a reference image MUST look EXACTLY like their reference image. Copy the colors, shape, and details precisely.
 ` : ''}
 
 === ENVIRONMENT STYLE ===
@@ -576,12 +607,10 @@ ${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-frie
 • 1024×1024 PNG
 
 === STRICT RULES ===
-• Match reference images EXACTLY for characters and props with uploaded images
-• Keep characters visually consistent with their descriptions
-• Include ALL characters listed in "Characters in Scene"
-• Include ALL props listed in "Props in Scene"
-• Props should match their reference images or registry descriptions
-• Environments should be consistent across pages
+• Reference images are EXACT visual guides - match them precisely
+• The prop/character MUST look identical to their reference image
+• Include ALL characters and props listed for this scene
+• Maintain consistent art style while matching references
 
 Generate the illustration now.
 `;
