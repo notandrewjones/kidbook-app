@@ -233,8 +233,34 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
   const isLastPage = Number(currentPage) === totalPages;
   const pagePosition = isFirstPage ? "FIRST PAGE" : isLastPage ? "LAST PAGE" : `Page ${currentPage} of ${totalPages}`;
 
+  // Extract locations mentioned in previous pages for continuity
+  const previousPagesText = (allPages || [])
+    .filter(p => Number(p.page) < Number(currentPage))
+    .map(p => p.text)
+    .join(" ");
+
   const prompt = `
-Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, determine TIME OF DAY, and choose the best SHOT TYPE.
+Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, determine TIME OF DAY, LOCATION, and choose the best SHOT TYPE.
+
+=== LOCATION CONTINUITY (CRITICAL) ===
+Locations should PERSIST unless the text explicitly indicates a scene change.
+
+STORY SO FAR (for location tracking):
+${storyBefore || "(This is the first page)"}
+
+CURRENT PAGE: "${pageText}"
+
+LOCATION RULES:
+1. If a location was established on a previous page and NOT explicitly changed, STAY in that location
+2. "Under benches" at a skating rink = benches AT THE RINK, not a park
+3. Only change location if text says: "went to", "arrived at", "back home", "at the [new place]", etc.
+4. Indoor/outdoor should be consistent unless travel is mentioned
+5. Return the location in your response - use the SAME location as previous page unless changed
+
+Examples:
+- Page 1: "At the rink" → location: "skating rink"
+- Page 2: "Under benches, a puppy stayed" (no location change mentioned) → location: "skating rink" (SAME)
+- Page 3: "They walked to the park" → location: "park" (explicit change)
 
 === CHARACTER PRESENCE RULES (CRITICAL) ===
 Characters MUST appear if:
@@ -246,6 +272,32 @@ Characters MUST appear if:
 
 "They told tall tales" → ALL established characters must appear
 "Inside their treehouse" → ALL characters who own/use the treehouse must appear
+
+=== SUBJECT ATTRIBUTION (CRITICAL) ===
+When descriptors appear, determine WHO or WHAT they describe:
+
+RULES:
+1. Descriptors usually apply to the MOST RECENTLY INTRODUCED subject
+2. When a NEW entity is introduced (a puppy, a girl, an old man), descriptors likely apply to IT
+3. Named characters doing actions have descriptors applied to them
+4. Emotional states should be LOGICAL - helpers are kind/caring, lost animals are scared
+
+Examples:
+- "A puppy stayed. Small and scared with eyes so bright" → PUPPY is small and scared, NOT the protagonist
+- "Andrew said, 'Let's help'" → Andrew is being HELPFUL/KIND, not scared
+- "A little girl with shining eyes ran up" → The GIRL has shining eyes
+- "He found a tiny kitten, cold and alone" → The KITTEN is cold and alone
+
+For this page, identify:
+- WHO has what emotional state (scared, happy, sad, etc.)
+- WHO has what physical descriptors (small, bright eyes, etc.)
+- Include this in the "emotion_attribution" field
+
+=== UNNAMED CHARACTERS (IMPORTANT) ===
+If the text introduces an unnamed character ("a little girl", "an old man", "a kind stranger"):
+1. Add them to "unnamed_characters_in_scene"
+2. They need a consistent visual description for the illustration
+3. Check if this same unnamed character appeared on previous pages - use consistent description
 
 === GROUP PRESENCE RULES ===
 - Groups are collective references like "the grandkids", "cousins", "siblings"
@@ -341,9 +393,18 @@ ${JSON.stringify(knownProps, null, 2)}
 
 Return ONLY JSON:
 {
+  "location": "specific location name (e.g., 'skating rink', 'park', 'bedroom')",
+  "location_reasoning": "why this location - MUST explain if same as previous page or if changed",
   "characters_in_scene": [
-    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why present" }
+    { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "emotion": "their emotional state", "reason": "why present" }
   ],
+  "unnamed_characters_in_scene": [
+    { "description": "a little girl", "visual": "detailed visual description for consistency (age, hair, clothing, etc.)", "emotion": "emotional state", "role_in_scene": "what they're doing" }
+  ],
+  "emotion_attribution": {
+    "description": "WHO has what emotion - be specific about which character/entity has which descriptor",
+    "examples": ["The PUPPY is small and scared", "ANDREW is kind and helpful", "The GIRL has shining eyes"]
+  },
   "groups_in_scene": [
     { "key": "group_key", "name": "Group Name", "reason": "why this group appears" }
   ],
@@ -373,6 +434,12 @@ RULES FOR CHARACTERS (IMPORTANT - READ CAREFULLY):
 5. "Together", "with", "and" = multiple characters
 6. If uncertain, INCLUDE the character - empty scenes are rarely correct
 7. An empty scene (no characters) should only happen if explicitly described as empty
+8. Include EMOTION for each character - who is happy, sad, scared, helpful, etc.
+
+RULES FOR UNNAMED CHARACTERS:
+1. "A little girl", "an old man", "a stranger" = unnamed characters
+2. Give them detailed visual descriptions so they look consistent if they appear again
+3. Include their emotional state and what they're doing in the scene
 
 RULES FOR GROUPS:
 1. If a group term (grandkids, cousins, etc.) is mentioned, include the group
@@ -385,6 +452,11 @@ RULES FOR PROPS:
 3. Props being actively used = "focal" importance
 4. Props in background = "background" importance
 5. When in doubt about presence, check the CONTEXT CLUES above
+
+RULES FOR LOCATION:
+1. Return the SAME location as the previous page unless the text explicitly indicates a change
+2. "Under benches" at a rink = benches at the RINK, not a different location
+3. Only change location for explicit travel: "went to", "arrived at", "back at", etc.
 
 NOTE: Max ${MAX_TOTAL_REFERENCE_IMAGES} total reference images (characters + group members + props combined).
 `;
@@ -883,10 +955,17 @@ async function handler(req, res) {
     const sceneComposition = await analyzeSceneComposition(
       pageText, registry, project.character_models, allPages, page, shotHistory, totalPages, shotTypeOverride
     );
-    console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
+    console.log("Location:", sceneComposition.location, sceneComposition.location_reasoning ? `(${sceneComposition.location_reasoning})` : '');
+    console.log("Characters:", sceneComposition.characters_in_scene?.map(c => `${c.name}${c.emotion ? ` [${c.emotion}]` : ''}`));
+    if (sceneComposition.unnamed_characters_in_scene?.length > 0) {
+      console.log("Unnamed characters:", sceneComposition.unnamed_characters_in_scene?.map(uc => uc.description));
+    }
     console.log("Groups:", sceneComposition.groups_in_scene?.map(g => g.name));
     console.log("Time of day:", sceneComposition.time_of_day, sceneComposition.time_reason ? `(${sceneComposition.time_reason})` : '');
     console.log("Shot type:", sceneComposition.shot_type, sceneComposition.shot_reason ? `(${sceneComposition.shot_reason})` : '');
+    if (sceneComposition.emotion_attribution?.examples?.length > 0) {
+      console.log("Emotion attribution:", sceneComposition.emotion_attribution.examples);
+    }
     console.log("Props to SHOW:", sceneComposition.props_in_scene?.map(p => p.name));
     if (sceneComposition.hidden_props?.length > 0) {
       console.log("Props HIDDEN:", sceneComposition.hidden_props?.map(p => `${p.name} (${p.hiding_spot})`));
@@ -1001,13 +1080,28 @@ async function handler(req, res) {
     };
     const currentFraming = framingGuide[shotType] || framingGuide.medium;
     
+    // Use scene composition location if available, otherwise fall back to detected
+    const sceneLocation = sceneComposition.location || detectedLocation || "infer from context";
+    
+    // Build emotion attribution section
+    const emotionSection = sceneComposition.emotion_attribution?.examples?.length > 0
+      ? `\n=== EMOTION ATTRIBUTION (CRITICAL) ===\n${sceneComposition.emotion_attribution.examples.join("\n")}\nApply these emotions to the CORRECT characters/entities as described above.`
+      : '';
+    
+    // Build unnamed characters section
+    const unnamedCharsSection = sceneComposition.unnamed_characters_in_scene?.length > 0
+      ? `\n=== UNNAMED CHARACTERS IN SCENE ===\n${sceneComposition.unnamed_characters_in_scene.map(uc => 
+          `• ${uc.description}: ${uc.visual}\n  Emotion: ${uc.emotion || 'neutral'}\n  Role: ${uc.role_in_scene || 'present in scene'}`
+        ).join("\n")}\nThese unnamed characters must look EXACTLY as described for visual consistency.`
+      : '';
+    
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
 Return ONLY a tool call.
 
 === SCENE INFO ===
 Page text: "${pageText}"
-Location: ${detectedLocation || "infer from context"}
+Location: ${sceneLocation}${sceneComposition.location_reasoning ? ` (${sceneComposition.location_reasoning})` : ''}
 Time of day: ${timeOfDay.toUpperCase()}${sceneComposition.time_reason ? ` (${sceneComposition.time_reason})` : ''}
 
 === SHOT TYPE / FRAMING (CRITICAL) ===
@@ -1016,12 +1110,14 @@ ${sceneComposition.shot_reason ? `Reason: ${sceneComposition.shot_reason}` : ''}
 Framing: ${currentFraming}
 
 Focal point: ${sceneComposition.focal_point}
+${emotionSection}
 
 === CHARACTERS IN SCENE ===
-${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): ${c.reason || ''}`).join("\n") || "None specified"}
+${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): ${c.emotion ? `[${c.emotion}] ` : ''}${c.reason || ''}`).join("\n") || "None specified"}
 
 === CHARACTER VISUAL RULES ===
 ${characterRules}
+${unnamedCharsSection}
 
 ${sceneComposition.groups_in_scene?.length > 0 ? `
 === GROUPS IN SCENE ===
