@@ -237,6 +237,9 @@ function buildCharacterVisualRules(registry, sceneComposition) {
   return rules.join("\n\n");
 }
 
+// Valid image types for OpenAI API
+const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 // -------------------------------------------------------
 // Helper: Load character model images
 // -------------------------------------------------------
@@ -262,11 +265,14 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
           continue;
         }
         
-        // Detect content type from response or URL
-        let contentType = resp.headers.get('content-type') || 'image/png';
+        // Get content type from response header
+        let contentType = resp.headers.get('content-type') || '';
         
-        // If content-type is generic, try to detect from URL
-        if (contentType === 'application/octet-stream' || !contentType.startsWith('image/')) {
+        // Strip charset and other parameters
+        contentType = contentType.split(';')[0].trim().toLowerCase();
+        
+        // If content-type is not valid for OpenAI, try to detect from URL extension
+        if (!VALID_IMAGE_TYPES.includes(contentType)) {
           const url = char.model_url.toLowerCase();
           if (url.includes('.jpg') || url.includes('.jpeg')) {
             contentType = 'image/jpeg';
@@ -274,9 +280,14 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
             contentType = 'image/webp';
           } else if (url.includes('.gif')) {
             contentType = 'image/gif';
+          } else if (url.includes('.png')) {
+            contentType = 'image/png';
           } else {
+            // Default to PNG
+            console.warn(`Unknown content type for ${char.name}, defaulting to image/png`);
             contentType = 'image/png';
           }
+          console.log(`📷 Content-type override for ${char.name}: ${resp.headers.get('content-type')} -> ${contentType}`);
         }
         
         const buffer = await resp.arrayBuffer();
@@ -325,11 +336,14 @@ async function preparePropReferenceImages(registry, sceneComposition) {
           continue;
         }
         
-        // Detect content type from response or URL
-        let contentType = resp.headers.get('content-type') || 'image/png';
+        // Get content type from response header
+        let contentType = resp.headers.get('content-type') || '';
         
-        // If content-type is generic, try to detect from URL
-        if (contentType === 'application/octet-stream' || !contentType.startsWith('image/')) {
+        // Strip charset and other parameters (e.g., "image/svg+xml; charset=utf-8" -> "image/svg+xml")
+        contentType = contentType.split(';')[0].trim().toLowerCase();
+        
+        // If content-type is not valid for OpenAI, try to detect from URL extension
+        if (!VALID_IMAGE_TYPES.includes(contentType)) {
           const url = prop.reference_image_url.toLowerCase();
           if (url.includes('.jpg') || url.includes('.jpeg')) {
             contentType = 'image/jpeg';
@@ -337,9 +351,14 @@ async function preparePropReferenceImages(registry, sceneComposition) {
             contentType = 'image/webp';
           } else if (url.includes('.gif')) {
             contentType = 'image/gif';
+          } else if (url.includes('.png')) {
+            contentType = 'image/png';
           } else {
+            // Default to PNG, OpenAI will validate the actual bytes
+            console.warn(`Unknown content type for ${prop.name}, defaulting to image/png`);
             contentType = 'image/png';
           }
+          console.log(`📦 Content-type override for ${prop.name}: ${resp.headers.get('content-type')} -> ${contentType}`);
         }
         
         const buffer = await resp.arrayBuffer();
