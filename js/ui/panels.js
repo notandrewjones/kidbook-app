@@ -549,16 +549,25 @@ export function openAddCharacterModal(forProtagonist = false) {
           
           <div class="form-group">
             <label class="label">Role</label>
-            <select id="new-char-role" class="select select-full">
-              <option value="protagonist">Main Character (Protagonist)</option>
-              <option value="sibling">Sibling</option>
-              <option value="parent">Parent</option>
-              <option value="grandparent">Grandparent</option>
-              <option value="friend">Friend</option>
-              <option value="pet">Pet</option>
-              <option value="teacher">Teacher</option>
-              <option value="other">Other</option>
-            </select>
+            <div class="custom-select" id="new-char-role-container">
+              <button type="button" class="custom-select-trigger" id="new-char-role-trigger">
+                <span class="custom-select-value">Other</span>
+                <svg class="custom-select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <div class="custom-select-dropdown" id="new-char-role-dropdown">
+                <div class="custom-select-option" data-value="protagonist">Main Character (Protagonist)</div>
+                <div class="custom-select-option" data-value="sibling">Sibling</div>
+                <div class="custom-select-option" data-value="parent">Parent</div>
+                <div class="custom-select-option" data-value="grandparent">Grandparent</div>
+                <div class="custom-select-option" data-value="friend">Friend</div>
+                <div class="custom-select-option" data-value="pet">Pet</div>
+                <div class="custom-select-option" data-value="teacher">Teacher</div>
+                <div class="custom-select-option selected" data-value="other">Other</div>
+              </div>
+              <input type="hidden" id="new-char-role" value="other" />
+            </div>
           </div>
           
           <div id="new-char-dropzone" class="dropzone" tabindex="0">
@@ -590,6 +599,46 @@ export function openAddCharacterModal(forProtagonist = false) {
 
     modal.querySelector(".modal-backdrop").addEventListener("click", () => {
       modal.classList.add("hidden");
+    });
+
+    // Custom dropdown handling
+    const roleContainer = modal.querySelector("#new-char-role-container");
+    const roleTrigger = modal.querySelector("#new-char-role-trigger");
+    const roleDropdown = modal.querySelector("#new-char-role-dropdown");
+    const roleInput = modal.querySelector("#new-char-role");
+    const roleValueDisplay = modal.querySelector(".custom-select-value");
+
+    roleTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      roleContainer.classList.toggle("open");
+    });
+
+    roleDropdown.querySelectorAll(".custom-select-option").forEach(option => {
+      option.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const value = option.dataset.value;
+        const text = option.textContent;
+        
+        // Update hidden input
+        roleInput.value = value;
+        
+        // Update display
+        roleValueDisplay.textContent = text;
+        
+        // Update selected state
+        roleDropdown.querySelectorAll(".custom-select-option").forEach(o => o.classList.remove("selected"));
+        option.classList.add("selected");
+        
+        // Close dropdown
+        roleContainer.classList.remove("open");
+      });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (!roleContainer.contains(e.target)) {
+        roleContainer.classList.remove("open");
+      }
     });
 
     const dropzone = modal.querySelector("#new-char-dropzone");
@@ -728,7 +777,30 @@ export function openAddCharacterModal(forProtagonist = false) {
   const createBtn = modal.querySelector("#create-char-btn");
 
   nameInput.value = forProtagonist ? (state.cachedProject?.kid_name || "") : "";
-  roleSelect.value = forProtagonist ? "protagonist" : "other";
+  
+  // Reset custom dropdown
+  const roleValue = forProtagonist ? "protagonist" : "other";
+  const roleLabels = {
+    protagonist: "Main Character (Protagonist)",
+    sibling: "Sibling",
+    parent: "Parent",
+    grandparent: "Grandparent",
+    friend: "Friend",
+    pet: "Pet",
+    teacher: "Teacher",
+    other: "Other"
+  };
+  roleSelect.value = roleValue;
+  const roleValueDisplay = modal.querySelector(".custom-select-value");
+  if (roleValueDisplay) roleValueDisplay.textContent = roleLabels[roleValue] || "Other";
+  const roleDropdown = modal.querySelector("#new-char-role-dropdown");
+  if (roleDropdown) {
+    roleDropdown.querySelectorAll(".custom-select-option").forEach(o => {
+      o.classList.toggle("selected", o.dataset.value === roleValue);
+    });
+  }
+  modal.querySelector("#new-char-role-container")?.classList.remove("open");
+  
   fileInput.value = "";
   preview.innerHTML = "";
   preview.classList.add("hidden");
@@ -750,9 +822,30 @@ function openRegenerateCharacterModal(model) {
       const nameInput = modal.querySelector("#new-char-name");
       const roleSelect = modal.querySelector("#new-char-role");
       const title = modal.querySelector(".modal-title");
+      const roleValueDisplay = modal.querySelector(".custom-select-value");
+      const roleDropdown = modal.querySelector("#new-char-role-dropdown");
       
       if (nameInput) nameInput.value = model.name;
       if (roleSelect) roleSelect.value = model.role;
+      
+      // Update custom dropdown display
+      const roleLabels = {
+        protagonist: "Main Character (Protagonist)",
+        sibling: "Sibling",
+        parent: "Parent",
+        grandparent: "Grandparent",
+        friend: "Friend",
+        pet: "Pet",
+        teacher: "Teacher",
+        other: "Other"
+      };
+      if (roleValueDisplay) roleValueDisplay.textContent = roleLabels[model.role] || "Other";
+      if (roleDropdown) {
+        roleDropdown.querySelectorAll(".custom-select-option").forEach(o => {
+          o.classList.toggle("selected", o.dataset.value === model.role);
+        });
+      }
+      
       if (title) title.textContent = `Regenerate ${model.name}`;
     }
   }, 50);

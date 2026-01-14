@@ -380,15 +380,28 @@ PAGE POSITION: ${pagePosition}
 - Middle pages should vary based on content
 
 PREVIOUS SHOTS IN THIS BOOK: ${shotHistoryText}
-- Avoid using the same shot type more than 2-3 times in a row
-- If recent shots are all "wide" or "medium", consider a closer shot for variety
-- Visual rhythm keeps readers engaged
+
+SHOT VARIETY RULES (CRITICAL - PREVENT REPETITION):
+1. NEVER use the same shot type as the immediately previous page
+2. If the last 2 pages were "wide" or "medium", you MUST use "medium-close", "close-up", or "detail"
+3. Aim for this rhythm: wide → medium → close-up → medium → detail → wide (varied)
+4. If you've used 2 wide shots in the last 3 pages, do NOT use wide again
+5. DETAIL shots are underutilized - use them more often for props/objects
+
+WHEN TO USE DETAIL SHOT (be generous):
+- Any new important prop is introduced (map, treasure, letter, toy, etc.)
+- "They looked at...", "They stared at...", "They found..."
+- Object is central to the page's meaning
+- Mystery/discovery moment
+- Reader should see what characters are seeing
 
 SHOT TYPE GUIDELINES:
-- Single character + emotional text → consider "medium-close" or "close-up"
-- Multiple characters interacting → "medium" or "wide"
-- Important prop/object focus ("they stared at the map") → "detail" or "close-up"
-- New location introduction → "wide" or "establishing"
+- Single character + emotional text → "medium-close" or "close-up"
+- Multiple characters interacting → "medium" or "wide" 
+- Important prop/object focus → PREFER "detail" (show the object!)
+- "They looked at the map" → DETAIL shot of the map
+- "She found a treasure chest" → DETAIL shot of chest
+- New location introduction → "wide"
 - Action/movement → "medium" or "wide"
 - Dialogue or thoughts → "medium-close"
 - Climactic emotional moment → "close-up"
