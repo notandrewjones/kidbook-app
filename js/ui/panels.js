@@ -10,6 +10,14 @@ import {
 import { openUploadModal } from './modals.js';
 import { openProjectById } from '../api/projects.js';
 
+// Track characters currently being generated
+const generatingCharacters = new Set();
+
+// Check if any character is generating (for disabling scene generation)
+export function isCharacterGenerating() {
+  return generatingCharacters.size > 0;
+}
+
 // Render the character panel in storyboard view
 export function renderCharacterPanel(project) {
   const panel = $("character-panel-content");
@@ -357,11 +365,17 @@ function renderDetectedCharacterCard(character) {
 function renderCharacterCard(model, isProtagonist) {
   const roleLabel = getRoleLabel(model.role);
   const modelUrl = model.model_url;
+  const isGenerating = generatingCharacters.has(model.character_key);
 
   return `
-    <div class="character-card ${isProtagonist ? 'protagonist' : ''}">
+    <div class="character-card ${isProtagonist ? 'protagonist' : ''} ${isGenerating ? 'generating' : ''}" data-character-key="${model.character_key}">
       <div class="character-card-image">
-        ${modelUrl 
+        ${isGenerating ? `
+          <div class="character-generating-overlay">
+            <div class="spinner"></div>
+            <div class="generating-text">Generating...</div>
+          </div>
+        ` : modelUrl 
           ? `<img src="${modelUrl}" alt="${escapeHtml(model.name)}'s character model">`
           : `<div class="character-placeholder">?</div>`
         }
@@ -375,6 +389,7 @@ function renderCharacterCard(model, isProtagonist) {
           class="icon-btn icon-btn-sm" 
           data-regenerate-character="${model.character_key}"
           title="Regenerate model"
+          ${isGenerating ? 'disabled' : ''}
         >↻</button>
         ${!isProtagonist ? `
           <button 
@@ -639,7 +654,7 @@ export function openAddCharacterModal(forProtagonist = false) {
       if (!name || !file) return;
 
       createBtn.disabled = true;
-      createBtn.textContent = "Creating...";
+      createBtn.textContent = "Processing...";
       
       // Compress image if needed
       if (status) status.textContent = "Processing image...";
@@ -653,20 +668,52 @@ export function openAddCharacterModal(forProtagonist = false) {
         return;
       }
       
-      if (status) status.textContent = "Uploading and generating model...";
-
+      // Generate a character key for tracking
+      const characterKey = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
       const isProtagonist = role === "protagonist";
+      
+      // Close modal immediately and start generation in background
+      modal.classList.add("hidden");
+      showToast("Generating character", `Creating model for ${name}...`, "success");
+      
+      // Mark as generating and update UI
+      generatingCharacters.add(characterKey);
+      
+      // Create a temporary model entry so the card shows with spinner
+      if (state.cachedProject) {
+        const tempModel = {
+          character_key: characterKey,
+          name: name,
+          role: role,
+          is_protagonist: isProtagonist,
+          model_url: null, // No URL yet
+        };
+        state.cachedProject.character_models = state.cachedProject.character_models || [];
+        state.cachedProject.character_models.push(tempModel);
+        
+        // Re-render panel to show generating state
+        renderCharacterPanel(state.cachedProject);
+      }
+
+      // Generate in background
       const result = await uploadAndGenerateCharacterModel(file, name, role, isProtagonist);
+      
+      // Remove from generating set
+      generatingCharacters.delete(characterKey);
 
       if (result) {
-        modal.classList.add("hidden");
-        showToast("Character added", `${name} is ready`, "success");
+        showToast("Character ready", `${name}'s model is complete`, "success");
         const pid = getProjectId();
         if (pid) await openProjectById(pid);
       } else {
-        createBtn.disabled = false;
-        createBtn.textContent = "Create Character Model";
-        if (status) status.textContent = "Failed. Try again.";
+        showToast("Generation failed", `Failed to create model for ${name}`, "error");
+        // Remove temporary model
+        if (state.cachedProject) {
+          state.cachedProject.character_models = state.cachedProject.character_models.filter(
+            cm => cm.character_key !== characterKey
+          );
+          renderCharacterPanel(state.cachedProject);
+        }
       }
     });
   }

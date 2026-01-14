@@ -177,7 +177,7 @@ function deduplicateProps(props) {
 // -------------------------------------------------------
 // Helper: Analyze which characters AND props appear in this scene
 // -------------------------------------------------------
-async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage, shotHistory = [], totalPages = 1, shotTypeOverride = null) {
+async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage, shotHistory = [], totalPages = 1, shotTypeOverride = null, timeHistory = [], previousPageData = null) {
   // Build character list from registry
   const knownCharacters = Object.entries(registry.characters || {}).map(([key, char]) => ({
     key,
@@ -228,6 +228,15 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     ? shotHistory.map(s => `Page ${s.page}: ${s.shot_type}`).join(", ")
     : "No previous shots yet";
 
+  // Format time history for the prompt
+  const timeHistoryText = timeHistory.length > 0
+    ? timeHistory.map(t => `Page ${t.page}: ${t.time_of_day}${t.location ? ` at ${t.location}` : ''}`).join("\n")
+    : null;
+  
+  // Get previous page's time and location for strong continuity
+  const previousTime = previousPageData?.time_of_day || null;
+  const previousLocation = previousPageData?.location || null;
+
   // Determine page position context
   const isFirstPage = Number(currentPage) === 1;
   const isLastPage = Number(currentPage) === totalPages;
@@ -242,10 +251,17 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
   const prompt = `
 Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, determine TIME OF DAY, LOCATION, and choose the best SHOT TYPE.
 
+=== PREVIOUS PAGE'S TIME AND LOCATION (USE FOR CONTINUITY) ===
+${previousTime ? `Previous page time: ${previousTime.toUpperCase()}` : 'No previous page (this is page 1)'}
+${previousLocation ? `Previous page location: ${previousLocation}` : ''}
+${timeHistoryText ? `\nFull time/location history:\n${timeHistoryText}` : ''}
+
+CRITICAL: Unless the current page EXPLICITLY indicates a time or location change, use the SAME values as the previous page.
+
 === LOCATION CONTINUITY (CRITICAL) ===
 Locations should PERSIST unless the text explicitly indicates a scene change.
 
-STORY SO FAR (for location AND time tracking):
+STORY SO FAR (for context):
 ${storyBefore || "(This is the first page)"}
 
 CURRENT PAGE: "${pageText}"
@@ -314,45 +330,39 @@ If the text introduces an unnamed character ("a little girl", "an old man", "a k
 - If a group is mentioned, include it in groups_in_scene
 - All members of the group with uploaded reference images should appear
 
-=== TIME OF DAY CONTINUITY (CRITICAL) ===
-Time should PERSIST unless explicitly changed or significant time passes.
-
-ESTABLISHED TIME FROM PREVIOUS PAGES:
-${storyBefore ? `Review the story so far to determine established time:
-${storyBefore}` : "(This is the first page - determine time from current page context)"}
+=== TIME OF DAY CONTINUITY (CRITICAL - DEFAULT TO PREVIOUS TIME) ===
+${previousTime ? `
+**PREVIOUS PAGE WAS: ${previousTime.toUpperCase()}**
+USE ${previousTime.toUpperCase()} UNLESS you find an EXPLICIT time change in the current page text.
+` : 'This is the first page - determine time from current page context.'}
 
 TIME DETECTION RULES:
-1. MAINTAIN previous time unless current page explicitly changes it
-2. "One night" establishes NIGHT for that page AND subsequent pages until changed
-3. Space/stars/moon scenes are ALWAYS NIGHT unless explicitly stated otherwise
-4. "Beside her", "Then", "Next" = SAME TIME as previous page
-5. Only change time for explicit transitions: "The next morning", "When dawn came", "Later that day"
+1. **DEFAULT: Use "${previousTime || 'afternoon'}" (previous page's time) unless explicitly changed**
+2. "One night" establishes NIGHT for that page AND all subsequent pages until changed
+3. Space/stars/moon scenes are ALWAYS NIGHT
+4. "Beside her", "Then", "Next", "And so" = SAME TIME as previous page
+5. Only change time for EXPLICIT transitions: "The next morning", "When dawn came", "Later that day"
 
-LITERAL vs FIGURATIVE LANGUAGE (CRITICAL):
-- "like early dawn" = SIMILE describing brightness, NOT a time change
+WORDS THAT DO NOT CHANGE TIME (FIGURATIVE/METAPHORICAL):
+- "like early dawn" = SIMILE, stay at ${previousTime || 'current time'}
 - "eyes so bright" = describing eyes, NOT daytime
-- "heart with light" = metaphor for happiness, NOT daytime
-- "glittering", "gleaming", "sparkling" = describing objects, NOT indicating daytime
-- Only LITERAL time references should change the time of day
+- "heart with light" = metaphor, NOT daytime
+- "glittering", "gleaming", "sparkling" = describing objects, NOT time
+- "shining", "bright", "glow" when describing objects/emotions = NOT time
 
-NIGHT INDICATORS (use night lighting):
-- stars, moon, space, rocket in space, cosmos, galaxies
-- "one night", "that night", "into the night"
-- bedtime, dreams, sleeping, pajamas
-- dark sky, stargazing
+NIGHT INDICATORS (change to night):
+- "stars", "moon", "space", "rocket in space", "cosmos", "galaxies"
+- "one night", "that night", "into the night", "nighttime"
+- "bedtime", "dreams", "sleeping", "pajamas", "dark sky"
 
-KEEP SAME TIME when:
-- "Beside her" = same moment as previous page
-- "Then", "Next", "And so" = continuation
-- No explicit time transition mentioned
-- Scene is a continuation of previous action
+EXPLICIT TIME CHANGES ONLY:
+- "The next morning" → morning
+- "When the sun rose" → morning
+- "At noon" → afternoon
+- "That evening" → evening
+- "When night fell" → night
 
-TIME DETECTION:
-- "morning", "sunrise", "woke up", "breakfast", "dawn" (LITERAL use only) → morning
-- "afternoon", "lunch", "midday" → afternoon  
-- "evening", "sunset", "dinner" → evening
-- "night", "nighttime", "dark", "stars", "moon", "space adventure", "rocket through space" → night
-- If NO time mentioned → MAINTAIN previous page's time
+IF IN DOUBT: Use ${previousTime ? previousTime.toUpperCase() : 'AFTERNOON'} (maintain continuity)
 
 === CINEMATOGRAPHY / SHOT TYPE (IMPORTANT) ===
 ${shotTypeOverride ? `USER OVERRIDE: Use "${shotTypeOverride}" shot type for this page.` : 'Choose the best shot type based on story context and visual variety.'}
@@ -998,6 +1008,19 @@ async function handler(req, res) {
         shot_type: i.scene_composition.shot_type
       }));
 
+    // Build time history from previous pages' illustrations
+    const timeHistory = existingIllustrations
+      .filter(i => Number(i.page) < Number(page) && i.scene_composition?.time_of_day)
+      .sort((a, b) => Number(a.page) - Number(b.page))
+      .map(i => ({
+        page: i.page,
+        time_of_day: i.scene_composition.time_of_day,
+        location: i.scene_composition.location
+      }));
+    
+    // Get the most recent time/location for continuity
+    const previousPageData = timeHistory.length > 0 ? timeHistory[timeHistory.length - 1] : null;
+
     // Check if user requested a specific shot type override
     const shotTypeOverride = req.body.shotTypeOverride || null;
 
@@ -1005,7 +1028,7 @@ async function handler(req, res) {
     console.log("=== ANALYZING SCENE ===");
     const totalPages = allPages?.length || 1;
     const sceneComposition = await analyzeSceneComposition(
-      pageText, registry, project.character_models, allPages, page, shotHistory, totalPages, shotTypeOverride
+      pageText, registry, project.character_models, allPages, page, shotHistory, totalPages, shotTypeOverride, timeHistory, previousPageData
     );
     console.log("Location:", sceneComposition.location, sceneComposition.location_reasoning ? `(${sceneComposition.location_reasoning})` : '');
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => `${c.name}${c.emotion ? ` [${c.emotion}]` : ''}`));

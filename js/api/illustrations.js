@@ -7,6 +7,7 @@ import { reRenderCurrentView } from '../ui/render.js';
 import { openProjectById, recordCompletedIllustration } from './projects.js';
 import { closeImageModal } from '../ui/modals.js';
 import { addToHistory, updateQueueBadge, refreshDropdownIfOpen } from '../ui/queue.js';
+import { isCharacterGenerating } from '../ui/panels.js';
 
 // Queue system
 const MAX_CONCURRENT = 2;
@@ -157,6 +158,12 @@ export function generateSingleIllustration(pageNum, pageText, isRegeneration = f
   const projectId = getProjectId();
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first.", "error");
+    return;
+  }
+
+  // Check if a character model is being generated
+  if (isCharacterGenerating()) {
+    showToast("Please wait", "Character model is being generated. Scene generation will be available once complete.", "warn");
     return;
   }
 
