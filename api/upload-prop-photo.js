@@ -1,12 +1,10 @@
 // api/upload-prop-photo.js
 // Upload a reference photo for a prop (airplane, toy, etc.)
 // Unlike characters, we don't generate a model - we use the raw photo as reference
+// NOTE: No DEV_MODE skip here - prop uploads are cheap (no generation), so always upload
 
 import { createClient } from "@supabase/supabase-js";
 import { uploadToR2 } from "./_r2.js";
-
-const DEV_MODE = process.env.DEV_MODE === "true";
-const DEV_PROP_URL = "https://placehold.co/512x512/34d399/white?text=PROP";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -78,38 +76,26 @@ export default async function handler(req, res) {
     if (!propKey && !propName) {
       return res.status(400).json({ error: "Missing propKey or propName" });
     }
-    // In DEV_MODE, we don't require an actual file
-    if (!fileBuffer && !DEV_MODE) {
+    if (!fileBuffer) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
     // Use provided key or generate from name
     const finalPropKey = propKey || generatePropKey(propName);
     
-    let photoUrl;
-    
-    // -------------------------------------------------------------
-    // 🔧 DEV MODE — Skip actual R2 upload, use placeholder URL
-    // -------------------------------------------------------------
-    if (DEV_MODE) {
-      console.log("🔧 DEV MODE — Skipping R2 upload for prop, using placeholder URL");
-      photoUrl = DEV_PROP_URL;
-    } else {
-      // Production: Upload to R2
-      const ext = fileInfo.filename?.split(".").pop() || "png";
-      const filePath = `prop_photos/${projectId}/${finalPropKey}.${ext}`;
+    // Always upload to R2 (no DEV_MODE skip - prop uploads have no generation cost)
+    const ext = fileInfo.filename?.split(".").pop() || "png";
+    const filePath = `prop_photos/${projectId}/${finalPropKey}.${ext}`;
 
-      const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
+    const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
 
-      if (!uploadResult.success) {
-        console.error("R2 upload error:", uploadResult.error);
-        return res.status(500).json({ error: "Upload failed" });
-      }
-
-      photoUrl = uploadResult.publicUrl;
+    if (!uploadResult.success) {
+      console.error("R2 upload error:", uploadResult.error);
+      return res.status(500).json({ error: "Upload failed" });
     }
-    
-    console.log("Prop photo URL:", photoUrl);
+
+    const photoUrl = uploadResult.publicUrl;
+    console.log("Prop photo uploaded:", photoUrl);
 
     // Update the props_registry with the reference image URL
     const { data: project, error: fetchError } = await supabase

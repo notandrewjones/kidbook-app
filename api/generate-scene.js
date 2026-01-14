@@ -240,6 +240,13 @@ function buildCharacterVisualRules(registry, sceneComposition) {
 // Valid image types for OpenAI API
 const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
+// Check if base64 data is actually an SVG (common issue with placeholder services)
+function isActuallySVG(base64Data) {
+  // SVG files start with "<?xml" or "<svg" - check the first few bytes
+  // In base64: "PHN2Zy" = "<svg" and "PD94bW" = "<?xm"
+  return base64Data.startsWith('PHN2Zy') || base64Data.startsWith('PD94bW');
+}
+
 // -------------------------------------------------------
 // Helper: Load character model images
 // -------------------------------------------------------
@@ -292,6 +299,12 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
         
         const buffer = await resp.arrayBuffer();
         const base64 = Buffer.from(buffer).toString("base64");
+        
+        // Check if the actual content is SVG (common with placeholder services)
+        if (isActuallySVG(base64)) {
+          console.error(`⚠️ Skipping ${char.name}: File content is SVG, not a valid image format`);
+          continue;
+        }
         
         images.push({
           key: sceneChar.key,
@@ -363,6 +376,12 @@ async function preparePropReferenceImages(registry, sceneComposition) {
         
         const buffer = await resp.arrayBuffer();
         const base64 = Buffer.from(buffer).toString("base64");
+        
+        // Check if the actual content is SVG (common with placeholder services)
+        if (isActuallySVG(base64)) {
+          console.error(`⚠️ Skipping ${prop.name}: File content is SVG, not a valid image format`);
+          continue;
+        }
         
         images.push({
           key: sceneProp.key,

@@ -5,7 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import { uploadToR2 } from "./_r2.js";
 
 const DEV_MODE = process.env.DEV_MODE === "true";
-const DEV_PHOTO_URL = process.env.DEV_CHARACTER_MODEL_URL || "https://placehold.co/512x512/7c5cff/white?text=DEV";
+// placehold.co returns SVG by default - use .png extension to force PNG format
+const DEV_PHOTO_URL = process.env.DEV_CHARACTER_MODEL_URL || "https://placehold.co/512x512/7c5cff/white.png?text=DEV";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
