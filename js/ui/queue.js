@@ -1,7 +1,7 @@
 // js/ui/queue.js
 // Generation queue and history UI
 
-import { state } from '../core/state.js';
+import { state, getProjectId } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';
 import { openProjectById } from '../api/projects.js';
 import { openImageModal } from './modals.js';
@@ -276,7 +276,7 @@ function renderQueueDropdown() {
   state.generatingPages.forEach(pageNum => {
     activeItems.push({
       id: `gen-${pageNum}`,
-      projectId: localStorage.getItem("projectId"),
+      projectId: getProjectId(),
       projectTitle: state.cachedProject?.selected_idea?.title || 'Current Project',
       page: pageNum,
       imageUrl: null,
@@ -289,7 +289,7 @@ function renderQueueDropdown() {
   state.queuedPages.forEach(pageNum => {
     activeItems.push({
       id: `queue-${pageNum}`,
-      projectId: localStorage.getItem("projectId"),
+      projectId: getProjectId(),
       projectTitle: state.cachedProject?.selected_idea?.title || 'Current Project',
       page: pageNum,
       imageUrl: null,

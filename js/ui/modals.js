@@ -1,7 +1,7 @@
 // js/ui/modals.js
 // Modal dialogs for image preview and file upload
 
-import { state } from '../core/state.js';
+import { state, getProjectId } from '../core/state.js';
 import { $ } from '../core/utils.js';
 import { handleRegenerateIllustration, handleSetIllustration } from '../api/illustrations.js';
 import { uploadPhoto } from '../api/character.js';
@@ -225,7 +225,7 @@ function closeHumanRequestModal() {
 async function handleHumanRequestSubmit(e) {
   e.preventDefault();
   
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   const notes = $("human-request-notes")?.value?.trim();
   
   if (!projectId || !currentPageNum || !notes) {

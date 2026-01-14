@@ -721,7 +721,7 @@ function renderPropCard(prop) {
   const hasImage = prop.reference_image_url && prop.image_source === "user";
   
   return `
-    <div class="prop-card" data-prop-key="${escapeHtml(prop.key)}">
+    <div class="prop-card ${hasImage ? 'prop-card-has-image' : 'prop-card-ai-mode'}" data-prop-key="${escapeHtml(prop.key)}">
       <div class="prop-card-header">
         ${hasImage ? `
           <img class="prop-card-thumb" src="${prop.reference_image_url}" alt="${escapeHtml(prop.name)}">
@@ -735,28 +735,31 @@ function renderPropCard(prop) {
           <div class="prop-card-desc">${escapeHtml(prop.description || "No description")}</div>
         </div>
       </div>
+      <div class="prop-card-mode-indicator">
+        ${hasImage ? `
+          <span class="mode-badge mode-badge-image">
+            <span class="mode-icon">📷</span> Using Reference Image
+          </span>
+        ` : `
+          <span class="mode-badge mode-badge-ai">
+            <span class="mode-icon">✨</span> Using AI Description
+          </span>
+        `}
+      </div>
       <div class="prop-card-actions">
         ${hasImage ? `
-          <button class="btn btn-xs btn-secondary" data-remove-prop-image="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
-            Remove
+          <button class="btn btn-xs btn-danger-subtle" data-remove-prop-image="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            ✕ Remove
           </button>
           <button class="btn btn-xs btn-secondary" data-upload-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
             Replace
           </button>
         ` : `
-          <button class="btn btn-xs btn-secondary" data-upload-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
-            <span class="btn-icon">📷</span> Upload
-          </button>
-          <button class="btn btn-xs btn-ai" data-ai-describe-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
-            <span class="btn-icon">✨</span> AI
+          <button class="btn btn-xs btn-primary" data-upload-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            <span class="btn-icon">📷</span> Upload Image
           </button>
         `}
       </div>
-      ${hasImage ? `
-        <div class="prop-card-status prop-card-status-ready">Reference uploaded</div>
-      ` : `
-        <div class="prop-card-status prop-card-status-pending">Using AI description</div>
-      `}
     </div>
   `;
 }

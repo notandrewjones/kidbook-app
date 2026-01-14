@@ -1,7 +1,7 @@
 // js/api/illustrations.js
 // Illustration generation API calls with queue system
 
-import { state } from '../core/state.js';
+import { state, getProjectId, getLastStoryPages } from '../core/state.js';
 import { $, showToast } from '../core/utils.js';
 import { reRenderCurrentView } from '../ui/render.js';
 import { openProjectById, recordCompletedIllustration } from './projects.js';
@@ -27,7 +27,7 @@ function processQueue() {
 
 // Actually run the generation (internal)
 async function executeGeneration(pageNum, pageText, isRegeneration) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) return;
 
   const status = $("illustration-status");
@@ -140,7 +140,7 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
 
 // Public API: Generate a single illustration (queued)
 export function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first.", "error");
     return;
@@ -177,7 +177,7 @@ export function generateSingleIllustration(pageNum, pageText, isRegeneration = f
 
 // Generate all missing illustrations
 export async function generateIllustrations() {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   if (!projectId) {
     showToast("No project loaded", "Open a project first", "error");
     return;
@@ -227,7 +227,7 @@ export async function generateIllustrations() {
 
 // Handle regeneration from modal
 export async function handleRegenerateIllustration() {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   const regenBtn = $("regen-btn");
   const notes = $("revision-notes");
   if (!projectId || !regenBtn) return;
@@ -235,8 +235,8 @@ export async function handleRegenerateIllustration() {
   const pageNum = Number(regenBtn.dataset.page || "0");
   if (!pageNum) return;
 
-  // Pages are stored in sessionStorage, not localStorage
-  const pages = JSON.parse(sessionStorage.getItem("lastStoryPages") || "[]");
+  // Pages are stored in sessionStorage via getLastStoryPages
+  const pages = getLastStoryPages() || [];
   const pageData = pages.find((p) => Number(p.page) === pageNum);
   if (!pageData) {
     showToast("Error", "Could not find page data for regeneration", "error");
@@ -258,7 +258,7 @@ export async function handleRegenerateIllustration() {
 
 // Handle setting a past revision as the primary illustration
 export async function handleSetIllustration() {
-  const projectId = localStorage.getItem("projectId");
+  const projectId = getProjectId();
   const useVersionBtn = $("use-version-btn");
   
   if (!projectId || !useVersionBtn) return;
