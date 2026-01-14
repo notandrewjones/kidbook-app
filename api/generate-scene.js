@@ -49,17 +49,27 @@ Text: "${pageText}"
 // -------------------------------------------------------
 async function extractPropsUsingAI(pageText, existingProps) {
   const existingKeys = Object.keys(existingProps || {});
+  const existingNames = Object.values(existingProps || {}).map(p => p.name?.toLowerCase()).filter(Boolean);
   
   const extraction = await client.responses.create({
     model: "gpt-4.1-mini",
     input: `
 Extract physical objects/props from this text that could appear in an illustration.
-EXCLUDE these already-known props: ${existingKeys.join(", ") || "none"}
+
+ALREADY KNOWN PROPS (do not duplicate these):
+${existingKeys.map(k => `- ${k}: ${existingProps[k]?.name || k}`).join("\n") || "none"}
+
+DEDUPLICATION RULES:
+- "controller" and "PlayStation controller" are the SAME object - don't create both
+- "ball" and "red ball" are the SAME object - use the more specific name
+- "toy" and "teddy bear" might be different OR the same - use context clues
+- Singular and plural of same item = same prop (unless story has multiple distinct ones)
+- Generic term + specific term for same thing = use specific term only
 
 Return ONLY JSON:
 {
   "props": [
-    { "name": "object-name", "description": "brief visual description" }
+    { "name": "specific-object-name", "description": "brief visual description" }
   ]
 }
 
@@ -79,6 +89,91 @@ Text: "${pageText}"
 }
 
 // -------------------------------------------------------
+// Helper: Check if two prop names likely refer to the same object
+// -------------------------------------------------------
+function arePropsSimilar(name1, name2) {
+  const n1 = name1.toLowerCase().trim();
+  const n2 = name2.toLowerCase().trim();
+  
+  // Exact match
+  if (n1 === n2) return true;
+  
+  // One contains the other (e.g., "controller" vs "playstation controller")
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  
+  // Remove common modifiers and compare
+  const stripModifiers = (s) => s
+    .replace(/^(the|a|an|his|her|their|my)\s+/i, '')
+    .replace(/\s+(toy|magic|special|favorite|old|new|big|small|little|red|blue|green|yellow|pink|purple|orange|black|white)\s*/gi, ' ')
+    .trim();
+  
+  const stripped1 = stripModifiers(n1);
+  const stripped2 = stripModifiers(n2);
+  
+  if (stripped1 === stripped2) return true;
+  if (stripped1.includes(stripped2) || stripped2.includes(stripped1)) return true;
+  
+  // Check for singular/plural
+  const singularize = (s) => s
+    .replace(/ies$/, 'y')
+    .replace(/es$/, '')
+    .replace(/s$/, '');
+  
+  if (singularize(stripped1) === singularize(stripped2)) return true;
+  
+  return false;
+}
+
+// -------------------------------------------------------
+// Helper: Merge duplicate props in registry
+// -------------------------------------------------------
+function deduplicateProps(props) {
+  const merged = {};
+  const processed = new Set();
+  
+  const entries = Object.entries(props);
+  
+  for (let i = 0; i < entries.length; i++) {
+    const [key1, prop1] = entries[i];
+    
+    if (processed.has(key1)) continue;
+    
+    // Find all props that are similar to this one
+    const similarProps = [{ key: key1, prop: prop1 }];
+    
+    for (let j = i + 1; j < entries.length; j++) {
+      const [key2, prop2] = entries[j];
+      if (processed.has(key2)) continue;
+      
+      if (arePropsSimilar(prop1.name || key1, prop2.name || key2)) {
+        similarProps.push({ key: key2, prop: prop2 });
+        processed.add(key2);
+      }
+    }
+    
+    processed.add(key1);
+    
+    // Pick the best version (prefer one with reference image, then most specific name)
+    similarProps.sort((a, b) => {
+      // Prefer one with reference image
+      if (a.prop.reference_image_url && !b.prop.reference_image_url) return -1;
+      if (!a.prop.reference_image_url && b.prop.reference_image_url) return 1;
+      // Prefer longer/more specific name
+      return (b.prop.name?.length || 0) - (a.prop.name?.length || 0);
+    });
+    
+    const best = similarProps[0];
+    merged[best.key] = best.prop;
+    
+    if (similarProps.length > 1) {
+      console.log(`📦 Merged duplicate props: ${similarProps.map(p => p.prop.name || p.key).join(' + ')} → ${best.prop.name || best.key}`);
+    }
+  }
+  
+  return merged;
+}
+
+// -------------------------------------------------------
 // Helper: Analyze which characters AND props appear in this scene
 // -------------------------------------------------------
 async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage) {
@@ -91,38 +186,75 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     has_model: char.has_model,
   }));
 
-  // Build props list from registry
-  const knownProps = Object.entries(registry.props || {}).map(([key, prop]) => ({
+  // Build props list from registry (deduplicated)
+  const deduplicatedProps = deduplicateProps(registry.props || {});
+  const knownProps = Object.entries(deduplicatedProps).map(([key, prop]) => ({
     key,
     name: prop.name,
     description: prop.description || prop.visual || "",
     has_reference_image: !!prop.reference_image_url,
   }));
 
-  // Story context up to current page
-  const storyContext = (allPages || [])
-    .filter(p => Number(p.page) <= Number(currentPage))
+  // Story context BEFORE current page (what has happened)
+  const storyBefore = (allPages || [])
+    .filter(p => Number(p.page) < Number(currentPage))
+    .map(p => `Page ${p.page}: ${p.text}`)
+    .join("\n");
+
+  // Story context AFTER current page (what will happen - for hidden item locations)
+  const storyAfter = (allPages || [])
+    .filter(p => Number(p.page) > Number(currentPage))
     .map(p => `Page ${p.page}: ${p.text}`)
     .join("\n");
 
   const prompt = `
-Analyze WHO and WHAT should appear in this illustration.
+Analyze WHO and WHAT should VISUALLY APPEAR in this illustration.
 
-TRACK CHARACTER PRESENCE through narrative flow:
+=== CHARACTER PRESENCE RULES ===
 - "Harley visits Gary's house" → Gary is NOW PRESENT
 - "They played together" → BOTH characters in scene
 - Plural pronouns (they, them, we) after establishing characters → ALL present
 
-TRACK PROPS/OBJECTS in the scene:
-- Only include props that are ACTIVELY part of this scene
-- Props being used, held, or visually important should be included
-- Don't include props just because they exist in the story
+=== PROP PRESENCE RULES (CRITICAL) ===
+Determine if each prop should VISUALLY APPEAR based on narrative context:
 
-STORY SO FAR:
-${storyContext}
+SHOW the prop when:
+✓ Character is actively using/holding/interacting with it
+✓ Prop is physically present in the scene
+✓ "He picked up his controller" → show controller
+✓ "She opened the magic box" → show box
+
+DO NOT SHOW the prop when:
+✗ Prop is LOST/MISSING/GONE - "his controller had gone away", "couldn't find her toy"
+✗ Prop is REMEMBERED/WISHED FOR - "she dreamed of a bicycle", "he missed his teddy"
+✗ Prop is being SEARCHED FOR - "looking everywhere for the key"
+✗ Prop is BROKEN/DESTROYED - show broken pieces only if dramatic
+✗ Prop is in a DIFFERENT LOCATION - "left his bag at school" (if scene is at home)
+✗ Prop is FUTURE/HYPOTHETICAL - "maybe he would get a puppy someday"
+
+=== HIDDEN ITEMS RULE (IMPORTANT) ===
+If an item is LOST or being SEARCHED FOR on this page, check the FUTURE PAGES to see WHERE it gets found.
+- If the item is found "under the blanket" later → show it hidden under blanket NOW (subtly visible, partially hidden)
+- If the item is found "behind the couch" later → show it hidden behind couch NOW
+- If the item is found "in the garden" later → DON'T show it if current scene is indoors
+- The hiding spot must be CONSISTENT with where it's eventually found
+- Show hidden items subtly - partially obscured, in background, not obvious
+
+CONTEXT CLUES for ABSENCE:
+- "gone", "lost", "missing", "disappeared", "couldn't find", "where is", "vanished"
+- "wished for", "dreamed of", "hoped for", "wanted", "imagined"
+- "left behind", "forgot", "at home", "at school" (when scene is elsewhere)
+- "broken", "shattered", "destroyed", "ruined" (show aftermath, not intact object)
+- Questions like "Where did it go?" indicate absence
+
+STORY BEFORE THIS PAGE:
+${storyBefore || "(This is the first page)"}
 
 CURRENT PAGE (Page ${currentPage}):
 "${pageText}"
+
+STORY AFTER THIS PAGE (use to find where lost items are discovered):
+${storyAfter || "(This is the last page)"}
 
 KNOWN CHARACTERS:
 ${JSON.stringify(knownCharacters, null, 2)}
@@ -136,12 +268,18 @@ Return ONLY JSON:
     { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why present" }
   ],
   "props_in_scene": [
-    { "key": "prop_key", "name": "Prop Name", "importance": "focal|supporting|background", "reason": "why included" }
+    { "key": "prop_key", "name": "Prop Name", "importance": "focal|supporting|background", "reason": "why VISUALLY shown", "visible": true }
+  ],
+  "hidden_props": [
+    { "key": "prop_key", "name": "Prop Name", "hiding_spot": "where to hide it", "reason": "found here on page X" }
+  ],
+  "absent_props": [
+    { "key": "prop_key", "name": "Prop Name", "reason": "why NOT shown (lost/missing/not in this location)" }
   ],
   "shot_type": "close-up|medium|wide|establishing",
   "focal_point": "what viewer should focus on",
   "show_characters": true,
-  "notes": "composition notes"
+  "notes": "composition notes including any absent items"
 }
 
 RULES FOR CHARACTERS:
@@ -153,10 +291,12 @@ RULES FOR CHARACTERS:
 6. Max ${MAX_CHARACTER_MODELS_PER_SCENE} characters
 
 RULES FOR PROPS:
-1. Only include props that are MENTIONED or IMPLIED in this specific page
-2. Props being actively used or interacted with = "focal" or "supporting"
-3. Props in the background or setting = "background"
-4. Max 4 props with reference images will be used
+1. ONLY include props that should VISUALLY APPEAR in the illustration
+2. If a prop is lost/missing/gone per the text, put it in "absent_props" NOT "props_in_scene"
+3. Props being actively used = "focal" importance
+4. Props in background = "background" importance
+5. When in doubt about presence, check the CONTEXT CLUES above
+6. Max 4 props with reference images will be used
 `;
 
   const response = await client.responses.create({
@@ -335,9 +475,16 @@ const MAX_PROP_IMAGES_PER_SCENE = 4;
 async function preparePropReferenceImages(registry, sceneComposition) {
   const images = [];
   const propsInScene = sceneComposition.props_in_scene || [];
+  const hiddenProps = sceneComposition.hidden_props || [];
+
+  // Combine visible and hidden props, marking hidden ones
+  const allPropsToLoad = [
+    ...propsInScene.map(p => ({ ...p, isHidden: false })),
+    ...hiddenProps.map(p => ({ ...p, importance: 'background', isHidden: true })),
+  ];
 
   // Sort by importance and limit
-  const sorted = [...propsInScene].sort((a, b) => {
+  const sorted = [...allPropsToLoad].sort((a, b) => {
     const order = { focal: 0, supporting: 1, background: 2 };
     return (order[a.importance] || 2) - (order[b.importance] || 2);
   }).slice(0, MAX_PROP_IMAGES_PER_SCENE);
@@ -393,9 +540,12 @@ async function preparePropReferenceImages(registry, sceneComposition) {
           key: sceneProp.key,
           name: prop.name,
           importance: sceneProp.importance,
+          isHidden: sceneProp.isHidden || false,
+          hidingSpot: sceneProp.hiding_spot || null,
           data_url: `data:${contentType};base64,${base64}`,
         });
-        console.log(`📦 Loaded prop reference: ${prop.name} (${contentType})`);
+        const hiddenLabel = sceneProp.isHidden ? ` (HIDDEN: ${sceneProp.hiding_spot})` : '';
+        console.log(`📦 Loaded prop reference: ${prop.name}${hiddenLabel} (${contentType})`);
       } catch (err) {
         console.error(`Failed to load prop image for ${prop.name}:`, err.message);
       }
@@ -526,12 +676,18 @@ async function handler(req, res) {
       pageText, registry, project.character_models, allPages, page
     );
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
-    console.log("Props:", sceneComposition.props_in_scene?.map(p => p.name));
+    console.log("Props to SHOW:", sceneComposition.props_in_scene?.map(p => p.name));
+    if (sceneComposition.hidden_props?.length > 0) {
+      console.log("Props HIDDEN:", sceneComposition.hidden_props?.map(p => `${p.name} (${p.hiding_spot})`));
+    }
+    if (sceneComposition.absent_props?.length > 0) {
+      console.log("Props ABSENT (not shown):", sceneComposition.absent_props?.map(p => `${p.name} (${p.reason})`));
+    }
 
     // 4. Prepare character images
     const characterImages = await prepareCharacterModelImages(registry, sceneComposition);
 
-    // 4b. Prepare prop reference images
+    // 4b. Prepare prop reference images (include hidden props too)
     const propImages = await preparePropReferenceImages(registry, sceneComposition);
 
     // 5. Extract location and new props
@@ -580,16 +736,37 @@ ${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): $
 === CHARACTER VISUAL RULES ===
 ${characterRules}
 
-=== PROPS IN SCENE ===
-${sceneComposition.props_in_scene?.map(p => `${p.name} (${p.importance}): ${p.reason || ''}`).join("\n") || "None specified"}
+=== PROPS TO SHOW IN SCENE ===
+${sceneComposition.props_in_scene?.map(p => `${p.name} (${p.importance}): ${p.reason || ''}`).join("\n") || "None - no props should appear"}
 
 === PROP VISUAL RULES ===
-${propRules || "Depict props consistently with story context."}
+${propRules || "No props to show in this scene."}
+
+${sceneComposition.hidden_props?.length > 0 ? `
+=== HIDDEN PROPS (show partially obscured) ===
+These items should appear HIDDEN in the scene - partially visible but not obvious:
+${sceneComposition.hidden_props.map(p => `• ${p.name}: Hide it ${p.hiding_spot} (${p.reason})`).join("\n")}
+IMPORTANT: Show hidden items subtly - peeking out, partially covered, in the background. The reader should be able to spot them if looking carefully.
+` : ''}
+
+${sceneComposition.absent_props?.length > 0 ? `
+=== PROPS TO EXCLUDE (DO NOT DRAW) ===
+These items are mentioned but should NOT appear visually:
+${sceneComposition.absent_props.map(p => `• ${p.name}: ${p.reason}`).join("\n")}
+` : ''}
 
 ${allReferenceImages.length > 0 ? `
 === REFERENCE IMAGES PROVIDED (${allReferenceImages.length} total) ===
 The following reference images are attached IN ORDER. You MUST use them:
-${allReferenceImages.map((img, i) => `• Reference Image #${i + 1}: ${img.name} ${img.importance ? `(PROP - show this exact object)` : '(CHARACTER - draw this exact person/animal)'}`).join("\n")}
+${allReferenceImages.map((img, i) => {
+  if (img.isHidden) {
+    return `• Reference Image #${i + 1}: ${img.name} (PROP - show HIDDEN ${img.hidingSpot})`;
+  } else if (img.importance) {
+    return `• Reference Image #${i + 1}: ${img.name} (PROP - show this exact object)`;
+  } else {
+    return `• Reference Image #${i + 1}: ${img.name} (CHARACTER - draw this exact person/animal)`;
+  }
+}).join("\n")}
 
 CRITICAL: Each character and prop listed above with a reference image MUST look EXACTLY like their reference image. Copy the colors, shape, and details precisely.
 ` : ''}
@@ -610,6 +787,7 @@ ${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-frie
 • Reference images are EXACT visual guides - match them precisely
 • The prop/character MUST look identical to their reference image
 • Include ALL characters and props listed for this scene
+• Hidden props should be subtle but findable by careful readers
 • Maintain consistent art style while matching references
 
 Generate the illustration now.
@@ -621,7 +799,8 @@ Generate the illustration now.
       // Log the data URL prefix to debug content type issues
       const prefix = img.data_url.substring(0, 50);
       const imgType = img.importance ? 'prop' : 'character';
-      console.log(`Adding ${imgType} image for ${img.name}: ${prefix}...`);
+      const hiddenLabel = img.isHidden ? ' (hidden)' : '';
+      console.log(`Adding ${imgType} image for ${img.name}${hiddenLabel}: ${prefix}...`);
       inputContent.push({ type: "input_image", image_url: img.data_url });
     }
 
