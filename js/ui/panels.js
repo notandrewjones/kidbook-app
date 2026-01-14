@@ -33,6 +33,9 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
   // Detect characters from context_registry that don't have models yet
   const detectedCharacters = getDetectedCharactersNeedingModels(project, characterModels);
 
+  // Get props from registry
+  const props = getPropsFromRegistry(project);
+
   panel.innerHTML = `
     <div class="character-panel-inner">
       <div class="panel-section">
@@ -79,6 +82,21 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
         </button>
       </div>
       
+      ${props.length > 0 ? `
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Props & Objects</span>
+            <span class="panel-section-count">${props.length}</span>
+          </div>
+          <p class="panel-section-desc">
+            Upload reference photos for items in your story, or let AI generate them.
+          </p>
+          <div class="props-list">
+            ${props.map(prop => renderPropCard(prop)).join("")}
+          </div>
+        </div>
+      ` : ""}
+      
       ${!protagonistModel ? `
         <div class="panel-section panel-section-muted">
           <div class="panel-tip panel-tip-warning">
@@ -88,8 +106,8 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       ` : `
         <div class="panel-section panel-section-muted">
           <div class="panel-tip">
-            <strong>Tip:</strong> Characters without photos will be AI-generated based on story context.
-            Max 4 character references per scene.
+            <strong>Tip:</strong> Characters and props without photos will be AI-generated based on story context.
+            Max 4 character references + 4 prop references per scene.
           </div>
         </div>
       `}
@@ -144,6 +162,34 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       const name = btn.dataset.characterName;
       showToast("AI Generation", `${name} will be AI-generated based on story context`, "success");
       // Mark as "use AI" in the UI - the actual generation happens during scene generation
+    });
+  });
+
+  // Wire up prop actions
+  panel.querySelectorAll("[data-upload-prop]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.uploadProp;
+      const name = btn.dataset.propName;
+      openPropUploadModal(key, name);
+    });
+  });
+
+  panel.querySelectorAll("[data-ai-describe-prop]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.aiDescribeProp;
+      const name = btn.dataset.propName;
+      showToast("AI Description", `${name} will use AI-generated description`, "success");
+    });
+  });
+
+  panel.querySelectorAll("[data-remove-prop-image]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.removePropImage;
+      const name = btn.dataset.propName;
+      await removePropReferenceImage(key, name);
     });
   });
 }
@@ -537,13 +583,26 @@ export function openAddCharacterModal(forProtagonist = false) {
     createBtn.addEventListener("click", async () => {
       const name = nameInput.value.trim();
       const role = modal.querySelector("#new-char-role").value;
-      const file = fileInput.files?.[0];
+      let file = fileInput.files?.[0];
       const status = modal.querySelector("#new-char-status");
 
       if (!name || !file) return;
 
       createBtn.disabled = true;
       createBtn.textContent = "Creating...";
+      
+      // Compress image if needed
+      if (status) status.textContent = "Processing image...";
+      try {
+        file = await compressImageIfNeeded(file, 4 * 1024 * 1024); // 4MB limit
+      } catch (err) {
+        console.error("Image compression failed:", err);
+        if (status) status.textContent = "Failed to process image. Try a smaller file.";
+        createBtn.disabled = false;
+        createBtn.textContent = "Create Character Model";
+        return;
+      }
+      
       if (status) status.textContent = "Uploading and generating model...";
 
       const isProtagonist = role === "protagonist";
@@ -630,4 +689,335 @@ function openAddCharacterModalPrefilled(name, role) {
 export function closeCharacterModal() {
   const modal = $("add-character-modal");
   if (modal) modal.classList.add("hidden");
+}
+
+// =====================================================
+// PROPS FUNCTIONS
+// =====================================================
+
+// Get props from project registry
+function getPropsFromRegistry(project) {
+  let registry = {};
+  if (Array.isArray(project.props_registry) && project.props_registry.length > 0) {
+    registry = project.props_registry[0];
+  } else if (project.props_registry && typeof project.props_registry === "object") {
+    registry = project.props_registry;
+  }
+  
+  const props = registry.props || {};
+  
+  return Object.entries(props).map(([key, prop]) => ({
+    key,
+    name: prop.name || key,
+    description: prop.description || prop.visual || "",
+    reference_image_url: prop.reference_image_url || null,
+    image_source: prop.image_source || null,
+    first_seen_page: prop.first_seen_page || 1,
+  }));
+}
+
+// Render a prop card
+function renderPropCard(prop) {
+  const hasImage = prop.reference_image_url && prop.image_source === "user";
+  
+  return `
+    <div class="prop-card" data-prop-key="${escapeHtml(prop.key)}">
+      <div class="prop-card-header">
+        ${hasImage ? `
+          <img class="prop-card-thumb" src="${prop.reference_image_url}" alt="${escapeHtml(prop.name)}">
+        ` : `
+          <div class="prop-card-thumb-placeholder">
+            <span>📦</span>
+          </div>
+        `}
+        <div class="prop-card-info">
+          <div class="prop-card-name">${escapeHtml(prop.name)}</div>
+          <div class="prop-card-desc">${escapeHtml(prop.description || "No description")}</div>
+        </div>
+      </div>
+      <div class="prop-card-actions">
+        ${hasImage ? `
+          <button class="btn btn-xs btn-secondary" data-remove-prop-image="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            Remove
+          </button>
+          <button class="btn btn-xs btn-secondary" data-upload-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            Replace
+          </button>
+        ` : `
+          <button class="btn btn-xs btn-secondary" data-upload-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            <span class="btn-icon">📷</span> Upload
+          </button>
+          <button class="btn btn-xs btn-ai" data-ai-describe-prop="${escapeHtml(prop.key)}" data-prop-name="${escapeHtml(prop.name)}">
+            <span class="btn-icon">✨</span> AI
+          </button>
+        `}
+      </div>
+      ${hasImage ? `
+        <div class="prop-card-status prop-card-status-ready">Reference uploaded</div>
+      ` : `
+        <div class="prop-card-status prop-card-status-pending">Using AI description</div>
+      `}
+    </div>
+  `;
+}
+
+// Open modal to upload a prop reference image
+function openPropUploadModal(propKey, propName) {
+  // Remove any existing prop upload modal
+  const existingModal = $("prop-upload-modal");
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "prop-upload-modal";
+  modal.className = "modal";
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Upload Reference: ${escapeHtml(propName)}</div>
+          <div class="modal-subtitle">Upload a photo of the actual item for visual consistency.</div>
+        </div>
+        <button class="icon-btn close-modal-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body modal-body-col">
+        <div id="prop-dropzone" class="dropzone" tabindex="0">
+          <div class="dropzone-inner">
+            <div class="drop-icon">📦</div>
+            <div class="drop-title">Drop prop photo here</div>
+            <div class="drop-sub">or click to choose a file</div>
+            <div class="drop-hint">PNG / JPG • Max 4MB</div>
+          </div>
+        </div>
+        <input id="prop-file-input" type="file" accept="image/*" class="hidden" />
+        <div id="prop-upload-preview" class="upload-preview hidden"></div>
+        <div id="prop-upload-status" class="status-line"></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Wire up events
+  const closeBtn = modal.querySelector(".close-modal-btn");
+  const backdrop = modal.querySelector(".modal-backdrop");
+  const dropzone = modal.querySelector("#prop-dropzone");
+  const fileInput = modal.querySelector("#prop-file-input");
+  const preview = modal.querySelector("#prop-upload-preview");
+  const status = modal.querySelector("#prop-upload-status");
+
+  const closeModal = () => modal.remove();
+  closeBtn.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", closeModal);
+
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  ["dragenter", "dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      handlePropFileSelect(files[0], propKey, propName, modal);
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files?.[0];
+    if (f) handlePropFileSelect(f, propKey, propName, modal);
+  });
+}
+
+// Handle prop file selection and upload
+async function handlePropFileSelect(file, propKey, propName, modal) {
+  const preview = modal.querySelector("#prop-upload-preview");
+  const status = modal.querySelector("#prop-upload-status");
+  const dropzone = modal.querySelector("#prop-dropzone");
+  const projectId = getProjectId();
+
+  if (!projectId) {
+    if (status) status.textContent = "No project loaded.";
+    return;
+  }
+
+  // Compress image if needed
+  if (status) status.textContent = "Processing image...";
+  
+  let processedFile = file;
+  try {
+    processedFile = await compressImageIfNeeded(file, 4 * 1024 * 1024); // 4MB limit
+  } catch (err) {
+    console.error("Image compression failed:", err);
+    if (status) status.textContent = "Failed to process image. Try a smaller file.";
+    return;
+  }
+
+  // Show preview
+  if (preview) {
+    const url = URL.createObjectURL(processedFile);
+    preview.innerHTML = `<img src="${url}" alt="preview">`;
+    preview.classList.remove("hidden");
+  }
+
+  if (dropzone) dropzone.style.display = "none";
+  if (status) status.textContent = "Uploading prop reference...";
+
+  const formData = new FormData();
+  formData.append("photo", processedFile);
+  formData.append("projectId", projectId);
+  formData.append("propKey", propKey);
+  formData.append("propName", propName);
+
+  try {
+    const res = await fetch("/api/upload-prop-photo", { method: "POST", body: formData });
+    
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Upload failed:", res.status, text);
+      if (status) status.textContent = `Upload failed: ${res.status}`;
+      if (dropzone) dropzone.style.display = "block";
+      return;
+    }
+    
+    const data = await res.json();
+
+    if (data.photoUrl) {
+      if (status) status.textContent = "Reference uploaded!";
+      showToast("Prop reference uploaded", `${propName} will now use this image`, "success");
+
+      // Close modal and refresh
+      setTimeout(async () => {
+        modal.remove();
+        const pid = getProjectId();
+        if (pid) await openProjectById(pid);
+      }, 800);
+    } else {
+      if (status) status.textContent = "Upload failed. Try again.";
+      if (dropzone) dropzone.style.display = "block";
+    }
+  } catch (e) {
+    console.error("Prop upload error:", e);
+    if (status) status.textContent = "Upload failed. Try again.";
+    if (dropzone) dropzone.style.display = "block";
+  }
+}
+
+// Remove prop reference image
+async function removePropReferenceImage(propKey, propName) {
+  const projectId = getProjectId();
+  if (!projectId) return;
+
+  try {
+    const res = await fetch("/api/remove-prop-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, propKey }),
+    });
+
+    if (res.ok) {
+      showToast("Reference removed", `${propName} will use AI description`, "success");
+      const pid = getProjectId();
+      if (pid) await openProjectById(pid);
+    } else {
+      showToast("Failed to remove", "Try again", "error");
+    }
+  } catch (e) {
+    console.error("Remove prop image error:", e);
+    showToast("Failed to remove", "Try again", "error");
+  }
+}
+
+// =====================================================
+// IMAGE COMPRESSION
+// =====================================================
+
+/**
+ * Compress an image file if it exceeds the size limit
+ * @param {File} file - The original file
+ * @param {number} maxSizeBytes - Maximum file size in bytes (default 4MB)
+ * @returns {Promise<File>} - Compressed file or original if already small enough
+ */
+async function compressImageIfNeeded(file, maxSizeBytes = 4 * 1024 * 1024) {
+  // If file is already small enough, return as-is
+  if (file.size <= maxSizeBytes) {
+    console.log(`Image ${file.name} is ${(file.size / 1024 / 1024).toFixed(2)}MB - no compression needed`);
+    return file;
+  }
+
+  console.log(`Image ${file.name} is ${(file.size / 1024 / 1024).toFixed(2)}MB - compressing...`);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    img.onload = () => {
+      // Calculate new dimensions - max 2048px on longest side
+      let { width, height } = img;
+      const maxDimension = 2048;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Draw and compress
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Try different quality levels until we're under the limit
+      const tryCompress = (quality) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error("Canvas toBlob failed"));
+              return;
+            }
+
+            console.log(`Compressed to ${(blob.size / 1024 / 1024).toFixed(2)}MB at quality ${quality}`);
+
+            if (blob.size <= maxSizeBytes || quality <= 0.3) {
+              // Good enough, or we've reached minimum quality
+              const compressedFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              // Still too big, try lower quality
+              tryCompress(quality - 0.1);
+            }
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      // Start with 0.8 quality
+      tryCompress(0.8);
+    };
+
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = URL.createObjectURL(file);
+  });
 }

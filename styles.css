@@ -4471,3 +4471,119 @@ body[data-phase="compositor"] .compositor-wrap {
 #prop-upload-modal .drop-icon {
   font-size: 32px;
 }
+
+/* =============================================
+   Prop Cards
+   ============================================= */
+
+.props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.prop-card:hover {
+  border-color: rgba(52, 211, 153, 0.3);
+  background: var(--panel2);
+}
+
+.prop-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prop-card-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--stroke);
+  flex-shrink: 0;
+}
+
+.prop-card-thumb-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand2) 0%, rgba(52, 211, 153, 0.3) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.prop-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.prop-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prop-card-desc {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prop-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.prop-card-status {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.prop-card-status-ready {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--brand2);
+}
+
+.prop-card-status-pending {
+  background: var(--panel);
+  color: var(--muted);
+}
+
+/* Extra small button */
+.btn.btn-xs {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+/* AI button style */
+.btn.btn-ai {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.15) 0%, rgba(52, 211, 153, 0.15) 100%);
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  color: var(--text);
+}
+
+.btn.btn-ai:hover {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.25) 0%, rgba(52, 211, 153, 0.25) 100%);
+  border-color: rgba(124, 92, 255, 0.4);
+}
