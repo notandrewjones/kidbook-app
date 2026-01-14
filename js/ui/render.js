@@ -473,6 +473,10 @@ export function renderStoryboard(project) {
     const lastUpdated = i?.last_updated || "";
     const isGenerating = state.generatingPages.has(Number(p.page));
     const isQueued = state.queuedPages?.has(Number(p.page));
+    
+    // Get shot type from scene_composition if available
+    const shotType = i?.scene_composition?.shot_type || null;
+    const timeOfDay = i?.scene_composition?.time_of_day || null;
 
     const cacheBuster = lastUpdated || rev || Date.now();
     const imageUrl = url ? `${url}?v=${cacheBuster}` : "";
@@ -506,11 +510,23 @@ export function renderStoryboard(project) {
         ? `<img src="${imageUrl}" alt="Page ${p.page}">`
         : `<div class="thumb-placeholder">${hasProtagonist ? 'Click to generate' : 'Add protagonist first'}</div>`;
     }
+    
+    // Shot type badge (only show when image exists and not generating)
+    const shotBadge = (url && !isGenerating && !isQueued && shotType) 
+      ? `<span class="shot-badge shot-${shotType.replace('-', '')}">${shotType.toUpperCase()}</span>` 
+      : '';
+    
+    // Time badge (only show when image exists)
+    const timeBadge = (url && !isGenerating && !isQueued && timeOfDay)
+      ? `<span class="time-badge time-${timeOfDay}">${timeOfDay === 'night' ? '🌙' : timeOfDay === 'evening' ? '🌅' : timeOfDay === 'morning' ? '🌄' : '☀️'}</span>`
+      : '';
 
     return `
       <div class="story-card ${cardClass}" data-page="${p.page}" data-image="${imageUrl}" data-can-generate="${hasProtagonist}">
         <div class="thumb">
           <span class="badge">${`Page ${p.page} • ${badge}`}</span>
+          ${shotBadge}
+          ${timeBadge}
           ${thumbContent}
         </div>
         <div class="card-body">

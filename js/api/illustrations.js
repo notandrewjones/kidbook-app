@@ -26,7 +26,7 @@ function processQueue() {
 }
 
 // Actually run the generation (internal)
-async function executeGeneration(pageNum, pageText, isRegeneration) {
+async function executeGeneration(pageNum, pageText, isRegeneration, shotTypeOverride = null) {
   const projectId = getProjectId();
   if (!projectId) return;
 
@@ -53,6 +53,7 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
         page: pageNum,
         pageText,
         isRegeneration,
+        shotTypeOverride,
       }),
     });
 
@@ -152,7 +153,7 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
 }
 
 // Public API: Generate a single illustration (queued)
-export function generateSingleIllustration(pageNum, pageText, isRegeneration = false) {
+export function generateSingleIllustration(pageNum, pageText, isRegeneration = false, shotTypeOverride = null) {
   const projectId = getProjectId();
   if (!projectId) {
     showToast("No project loaded", "Open or create a project first.", "error");
@@ -176,10 +177,10 @@ export function generateSingleIllustration(pageNum, pageText, isRegeneration = f
       `Page ${pageNum}`,
       "success"
     );
-    executeGeneration(pageNum, pageText, isRegeneration);
+    executeGeneration(pageNum, pageText, isRegeneration, shotTypeOverride);
     updateQueueBadge();
   } else {
-    // Add to queue
+    // Add to queue (note: queue doesn't support shot type override currently)
     state.queuedPages.add(pageNum);
     generationQueue.push({ pageNum, pageText, isRegeneration });
     showToast("Queued", `Page ${pageNum} will generate next`, "success");
@@ -243,6 +244,7 @@ export async function handleRegenerateIllustration() {
   const projectId = getProjectId();
   const regenBtn = $("regen-btn");
   const notes = $("revision-notes");
+  const shotTypeSelect = $("shot-type-override");
   if (!projectId || !regenBtn) return;
 
   const pageNum = Number(regenBtn.dataset.page || "0");
@@ -260,11 +262,14 @@ export async function handleRegenerateIllustration() {
   const pageTextWithNotes = revisionText
     ? `${pageData.text}\n\nArtist revision notes: ${revisionText}`
     : pageData.text;
+    
+  // Get shot type override if selected
+  const shotTypeOverride = shotTypeSelect?.value || null;
 
   // Close modal immediately so user sees the tile updating
   closeImageModal();
   
-  generateSingleIllustration(pageNum, pageTextWithNotes, true);
+  generateSingleIllustration(pageNum, pageTextWithNotes, true, shotTypeOverride);
 
   // The UI will update via reRenderCurrentView from the queue system
 }

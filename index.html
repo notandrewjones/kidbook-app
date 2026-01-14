@@ -198,9 +198,21 @@
             
             <!-- Regeneration controls -->
             <div class="preview-section preview-regen-section">
-              <div class="preview-section-label">Regenerate with Notes</div>
+              <div class="preview-section-label">Regenerate with Options</div>
               <div id="regen-available" class="regen-controls">
                 <div class="form-group">
+                  <label class="label label-sm">Shot Type Override (optional)</label>
+                  <select id="shot-type-override" class="select select-sm">
+                    <option value="">Auto (AI decides)</option>
+                    <option value="wide">Wide - Full scene, environment</option>
+                    <option value="medium">Medium - Full body</option>
+                    <option value="medium-close">Medium Close - Chest/waist up</option>
+                    <option value="close-up">Close-up - Head/shoulders</option>
+                    <option value="detail">Detail - Object focus</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="label label-sm">Additional Notes (optional)</label>
                   <textarea id="revision-notes" class="textarea textarea-sm" placeholder="e.g., remove balloons, make it sunset, add more cowbell..."></textarea>
                 </div>
                 <button id="regen-btn" class="btn btn-primary btn-full">

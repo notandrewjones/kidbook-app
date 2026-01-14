@@ -177,7 +177,7 @@ function deduplicateProps(props) {
 // -------------------------------------------------------
 // Helper: Analyze which characters AND props appear in this scene
 // -------------------------------------------------------
-async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage) {
+async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage, shotHistory = [], totalPages = 1, shotTypeOverride = null) {
   // Build character list from registry
   const knownCharacters = Object.entries(registry.characters || {}).map(([key, char]) => ({
     key,
@@ -223,8 +223,18 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     .map(p => `Page ${p.page}: ${p.text}`)
     .join("\n");
 
+  // Format shot history for the prompt
+  const shotHistoryText = shotHistory.length > 0
+    ? shotHistory.map(s => `Page ${s.page}: ${s.shot_type}`).join(", ")
+    : "No previous shots yet";
+
+  // Determine page position context
+  const isFirstPage = Number(currentPage) === 1;
+  const isLastPage = Number(currentPage) === totalPages;
+  const pagePosition = isFirstPage ? "FIRST PAGE" : isLastPage ? "LAST PAGE" : `Page ${currentPage} of ${totalPages}`;
+
   const prompt = `
-Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, and determine the TIME OF DAY.
+Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, determine TIME OF DAY, and choose the best SHOT TYPE.
 
 === CHARACTER PRESENCE RULES (CRITICAL) ===
 Characters MUST appear if:
@@ -249,6 +259,35 @@ Detect the time from context clues:
 - "evening", "sunset", "dinner" → evening
 - "night", "nighttime", "dark", "stars", "moon", "deep into the night", "bedtime" → night
 - If no time mentioned, infer from activities or maintain previous scene's time
+
+=== CINEMATOGRAPHY / SHOT TYPE (IMPORTANT) ===
+${shotTypeOverride ? `USER OVERRIDE: Use "${shotTypeOverride}" shot type for this page.` : 'Choose the best shot type based on story context and visual variety.'}
+
+SHOT TYPES:
+• "wide" - Full scene, environment visible. Good for: establishing locations, group activities, action with movement
+• "medium" - Full body with some environment. Good for: character interactions, general storytelling
+• "medium-close" - Waist/chest up framing. Good for: emotional moments, dialogue, reactions, character focus
+• "close-up" - Head/shoulders or single important object. Good for: big emotions, dramatic reveals, intimate moments
+• "detail" - Extreme close on object/hands. Good for: mystery items, clues, important props, "look at this" moments
+
+PAGE POSITION: ${pagePosition}
+- First pages often benefit from "wide" or "medium" to establish the scene
+- Last pages often benefit from "medium-close" or "close-up" for emotional resolution
+- Middle pages should vary based on content
+
+PREVIOUS SHOTS IN THIS BOOK: ${shotHistoryText}
+- Avoid using the same shot type more than 2-3 times in a row
+- If recent shots are all "wide" or "medium", consider a closer shot for variety
+- Visual rhythm keeps readers engaged
+
+SHOT TYPE GUIDELINES:
+- Single character + emotional text → consider "medium-close" or "close-up"
+- Multiple characters interacting → "medium" or "wide"
+- Important prop/object focus ("they stared at the map") → "detail" or "close-up"
+- New location introduction → "wide" or "establishing"
+- Action/movement → "medium" or "wide"
+- Dialogue or thoughts → "medium-close"
+- Climactic emotional moment → "close-up"
 
 === PROP PRESENCE RULES ===
 Determine if each prop should VISUALLY APPEAR based on narrative context:
@@ -319,7 +358,8 @@ Return ONLY JSON:
   ],
   "time_of_day": "morning|afternoon|evening|night",
   "time_reason": "why this time (e.g., 'deep into the night' mentioned)",
-  "shot_type": "close-up|medium|wide|establishing",
+  "shot_type": "wide|medium|medium-close|close-up|detail",
+  "shot_reason": "why this shot type (e.g., 'emotional conclusion with single character')",
   "focal_point": "what viewer should focus on",
   "show_characters": true,
   "notes": "composition notes including any absent items"
@@ -825,14 +865,28 @@ async function handler(req, res) {
     const existingHistory = existingForPage?.revision_history || [];
     const isRegen = !!isRegeneration;
 
-    // 3. Analyze scene composition (now includes props and groups)
+    // Build shot history from previous pages' illustrations
+    const shotHistory = existingIllustrations
+      .filter(i => Number(i.page) < Number(page) && i.scene_composition?.shot_type)
+      .sort((a, b) => Number(a.page) - Number(b.page))
+      .map(i => ({
+        page: i.page,
+        shot_type: i.scene_composition.shot_type
+      }));
+
+    // Check if user requested a specific shot type override
+    const shotTypeOverride = req.body.shotTypeOverride || null;
+
+    // 3. Analyze scene composition (now includes props, groups, and cinematography)
     console.log("=== ANALYZING SCENE ===");
+    const totalPages = allPages?.length || 1;
     const sceneComposition = await analyzeSceneComposition(
-      pageText, registry, project.character_models, allPages, page
+      pageText, registry, project.character_models, allPages, page, shotHistory, totalPages, shotTypeOverride
     );
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
     console.log("Groups:", sceneComposition.groups_in_scene?.map(g => g.name));
     console.log("Time of day:", sceneComposition.time_of_day, sceneComposition.time_reason ? `(${sceneComposition.time_reason})` : '');
+    console.log("Shot type:", sceneComposition.shot_type, sceneComposition.shot_reason ? `(${sceneComposition.shot_reason})` : '');
     console.log("Props to SHOW:", sceneComposition.props_in_scene?.map(p => p.name));
     if (sceneComposition.hidden_props?.length > 0) {
       console.log("Props HIDDEN:", sceneComposition.hidden_props?.map(p => `${p.name} (${p.hiding_spot})`));
@@ -936,6 +990,17 @@ async function handler(req, res) {
     };
     const currentLighting = lightingGuide[timeOfDay] || lightingGuide.afternoon;
     
+    // Determine framing based on shot type
+    const shotType = sceneComposition.shot_type || 'medium';
+    const framingGuide = {
+      wide: "Full scene visible, characters shown head-to-toe with environment surrounding them, establishing the location",
+      medium: "Characters shown full-body or from knees up, balanced view of characters and environment",
+      "medium-close": "Characters framed from waist or chest up, focus on upper body and face, minimal background",
+      "close-up": "Head and shoulders framing, or single important object filling most of frame, intimate emotional focus",
+      detail: "Extreme close-up on hands, object, or specific detail, minimal or no character bodies visible"
+    };
+    const currentFraming = framingGuide[shotType] || framingGuide.medium;
+    
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
 Return ONLY a tool call.
@@ -944,7 +1009,12 @@ Return ONLY a tool call.
 Page text: "${pageText}"
 Location: ${detectedLocation || "infer from context"}
 Time of day: ${timeOfDay.toUpperCase()}${sceneComposition.time_reason ? ` (${sceneComposition.time_reason})` : ''}
-Shot type: ${sceneComposition.shot_type}
+
+=== SHOT TYPE / FRAMING (CRITICAL) ===
+Shot: ${shotType.toUpperCase()}
+${sceneComposition.shot_reason ? `Reason: ${sceneComposition.shot_reason}` : ''}
+Framing: ${currentFraming}
+
 Focal point: ${sceneComposition.focal_point}
 
 === CHARACTERS IN SCENE ===
@@ -1008,8 +1078,8 @@ ${currentLighting}
 • Soft pastel children's-book illustration
 • Clean rounded outlines, gentle shading
 • MUST match the time of day: ${timeOfDay.toUpperCase()} lighting
+• MUST use ${shotType.toUpperCase()} shot framing: ${currentFraming}
 • Simple uncluttered backgrounds
-• Full-body characters, never awkwardly cropped
 • No text in image
 • 1024×1024 PNG
 
@@ -1018,6 +1088,7 @@ ${currentLighting}
 • The prop/character MUST look identical to their reference image
 • Include ALL characters listed - empty scenes are usually WRONG
 • Match the TIME OF DAY lighting exactly (${timeOfDay})
+• Match the SHOT TYPE framing exactly (${shotType})
 • Hidden props should be subtle but findable by careful readers
 • Maintain consistent art style while matching references
 
