@@ -224,19 +224,33 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     .join("\n");
 
   const prompt = `
-Analyze WHO and WHAT should VISUALLY APPEAR in this illustration.
+Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, and determine the TIME OF DAY.
 
-=== CHARACTER PRESENCE RULES ===
-- "Harley visits Gary's house" → Gary is NOW PRESENT
-- "They played together" → BOTH characters in scene
-- Plural pronouns (they, them, we) after establishing characters → ALL present
+=== CHARACTER PRESENCE RULES (CRITICAL) ===
+Characters MUST appear if:
+✓ They are named on this page
+✓ Pronouns refer to them: "they", "them", "we", "their"
+✓ They were established as present and not shown leaving
+✓ The scene involves an action they're part of: "told tales", "played", "laughed"
+✓ Dialogue or thoughts are attributed to them
+
+"They told tall tales" → ALL established characters must appear
+"Inside their treehouse" → ALL characters who own/use the treehouse must appear
 
 === GROUP PRESENCE RULES ===
 - Groups are collective references like "the grandkids", "cousins", "siblings"
 - If a group is mentioned, include it in groups_in_scene
 - All members of the group with uploaded reference images should appear
 
-=== PROP PRESENCE RULES (CRITICAL) ===
+=== TIME OF DAY DETECTION (CRITICAL) ===
+Detect the time from context clues:
+- "morning", "sunrise", "woke up", "breakfast" → morning
+- "afternoon", "lunch", "midday" → afternoon  
+- "evening", "sunset", "dinner" → evening
+- "night", "nighttime", "dark", "stars", "moon", "deep into the night", "bedtime" → night
+- If no time mentioned, infer from activities or maintain previous scene's time
+
+=== PROP PRESENCE RULES ===
 Determine if each prop should VISUALLY APPEAR based on narrative context:
 
 SHOW the prop when:
@@ -303,18 +317,22 @@ Return ONLY JSON:
   "absent_props": [
     { "key": "prop_key", "name": "Prop Name", "reason": "why NOT shown (lost/missing/not in this location)" }
   ],
+  "time_of_day": "morning|afternoon|evening|night",
+  "time_reason": "why this time (e.g., 'deep into the night' mentioned)",
   "shot_type": "close-up|medium|wide|establishing",
   "focal_point": "what viewer should focus on",
   "show_characters": true,
   "notes": "composition notes including any absent items"
 }
 
-RULES FOR CHARACTERS:
-1. Protagonist appears unless explicitly excluded
-2. Going to someone's location means they're there
-3. Plural pronouns = all recently mentioned characters
-4. "Together", "with", "and" = multiple characters
-5. If uncertain, INCLUDE the character
+RULES FOR CHARACTERS (IMPORTANT - READ CAREFULLY):
+1. Protagonist appears unless explicitly excluded or scene is about other characters alone
+2. If pronouns like "they", "them", "their" are used, include ALL characters recently established
+3. Actions like "told tales", "played games", "laughed together" require the characters DOING those actions
+4. Going to someone's location means they're there
+5. "Together", "with", "and" = multiple characters
+6. If uncertain, INCLUDE the character - empty scenes are rarely correct
+7. An empty scene (no characters) should only happen if explicitly described as empty
 
 RULES FOR GROUPS:
 1. If a group term (grandkids, cousins, etc.) is mentioned, include the group
@@ -814,6 +832,7 @@ async function handler(req, res) {
     );
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
     console.log("Groups:", sceneComposition.groups_in_scene?.map(g => g.name));
+    console.log("Time of day:", sceneComposition.time_of_day, sceneComposition.time_reason ? `(${sceneComposition.time_reason})` : '');
     console.log("Props to SHOW:", sceneComposition.props_in_scene?.map(p => p.name));
     if (sceneComposition.hidden_props?.length > 0) {
       console.log("Props HIDDEN:", sceneComposition.hidden_props?.map(p => `${p.name} (${p.hiding_spot})`));
@@ -907,6 +926,16 @@ async function handler(req, res) {
     const groupRules = buildGroupVisualRules(registry, sceneComposition, groupMemberIndexMap);
     const propRules = buildPropVisualRules(registry, sceneComposition, propImageIndexMap);
     
+    // Determine lighting based on time of day
+    const timeOfDay = sceneComposition.time_of_day || 'afternoon';
+    const lightingGuide = {
+      morning: "Warm golden morning light, soft orange/yellow tones, gentle sunrise glow, long shadows",
+      afternoon: "Bright daylight, warm colors (5000-5500K), clear and cheerful",
+      evening: "Warm sunset colors, orange/pink sky tones, golden hour lighting, cozy atmosphere",
+      night: "Nighttime scene with dark blue/purple sky, moonlight or warm indoor lighting, stars visible if outdoors, cozy lamp light if indoors"
+    };
+    const currentLighting = lightingGuide[timeOfDay] || lightingGuide.afternoon;
+    
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
 Return ONLY a tool call.
@@ -914,6 +943,7 @@ Return ONLY a tool call.
 === SCENE INFO ===
 Page text: "${pageText}"
 Location: ${detectedLocation || "infer from context"}
+Time of day: ${timeOfDay.toUpperCase()}${sceneComposition.time_reason ? ` (${sceneComposition.time_reason})` : ''}
 Shot type: ${sceneComposition.shot_type}
 Focal point: ${sceneComposition.focal_point}
 
@@ -971,10 +1001,13 @@ CRITICAL: Each character, group member, and prop listed above with a reference i
 === ENVIRONMENT STYLE ===
 ${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-friendly, bright, simple"}
 
+=== LIGHTING (CRITICAL - MATCH TIME OF DAY) ===
+${currentLighting}
+
 === STYLE REQUIREMENTS ===
 • Soft pastel children's-book illustration
 • Clean rounded outlines, gentle shading
-• Warm daylight colors (5000-5500K)
+• MUST match the time of day: ${timeOfDay.toUpperCase()} lighting
 • Simple uncluttered backgrounds
 • Full-body characters, never awkwardly cropped
 • No text in image
@@ -983,7 +1016,8 @@ ${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-frie
 === STRICT RULES ===
 • Reference images are EXACT visual guides - match them precisely
 • The prop/character MUST look identical to their reference image
-• Include ALL characters and props listed for this scene
+• Include ALL characters listed - empty scenes are usually WRONG
+• Match the TIME OF DAY lighting exactly (${timeOfDay})
 • Hidden props should be subtle but findable by careful readers
 • Maintain consistent art style while matching references
 
