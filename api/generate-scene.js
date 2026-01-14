@@ -245,22 +245,32 @@ Analyze WHO and WHAT should VISUALLY APPEAR in this illustration, determine TIME
 === LOCATION CONTINUITY (CRITICAL) ===
 Locations should PERSIST unless the text explicitly indicates a scene change.
 
-STORY SO FAR (for location tracking):
+STORY SO FAR (for location AND time tracking):
 ${storyBefore || "(This is the first page)"}
 
 CURRENT PAGE: "${pageText}"
 
 LOCATION RULES:
 1. If a location was established on a previous page and NOT explicitly changed, STAY in that location
-2. "Under benches" at a skating rink = benches AT THE RINK, not a park
-3. Only change location if text says: "went to", "arrived at", "back home", "at the [new place]", etc.
+2. "Beside her" = SAME LOCATION as previous page (she hasn't moved)
+3. Only change location if text says: "went to", "arrived at", "flew to", "headed home", etc.
 4. Indoor/outdoor should be consistent unless travel is mentioned
 5. Return the location in your response - use the SAME location as previous page unless changed
 
-Examples:
-- Page 1: "At the rink" → location: "skating rink"
-- Page 2: "Under benches, a puppy stayed" (no location change mentioned) → location: "skating rink" (SAME)
-- Page 3: "They walked to the park" → location: "park" (explicit change)
+SPACE ADVENTURE LOCATIONS:
+- "looking at stars" from home = outside, at home, on Earth
+- "flew their rocket" = in space, inside rocket
+- "past the moon", "through sparkly skies" = in space
+- "found treasure" during space adventure = likely on another planet/asteroid, NOT on Earth
+- "headed home" = traveling back in rocket OR arrived home
+
+LOCATION CONTINUITY EXAMPLES:
+- Page 1: "Audrey looked up at the sky" → location: "outside, backyard at night"
+- Page 2: "Beside her beeped a robot" (no location change) → location: "outside, backyard at night" (SAME)
+- Page 5: "They flew their rocket past the moon" → location: "in space, inside rocket"
+- Page 6: "Glittering lights led on and on" (continuing space journey) → location: "in space" (SAME)
+- Page 7: "At last, they found a hidden chest" → location: "alien planet/asteroid" (discovered treasure location)
+- Page 9: "They headed home" → location: "in rocket, heading home" OR "back home"
 
 === CHARACTER PRESENCE RULES (CRITICAL) ===
 Characters MUST appear if:
@@ -304,13 +314,45 @@ If the text introduces an unnamed character ("a little girl", "an old man", "a k
 - If a group is mentioned, include it in groups_in_scene
 - All members of the group with uploaded reference images should appear
 
-=== TIME OF DAY DETECTION (CRITICAL) ===
-Detect the time from context clues:
-- "morning", "sunrise", "woke up", "breakfast" → morning
+=== TIME OF DAY CONTINUITY (CRITICAL) ===
+Time should PERSIST unless explicitly changed or significant time passes.
+
+ESTABLISHED TIME FROM PREVIOUS PAGES:
+${storyBefore ? `Review the story so far to determine established time:
+${storyBefore}` : "(This is the first page - determine time from current page context)"}
+
+TIME DETECTION RULES:
+1. MAINTAIN previous time unless current page explicitly changes it
+2. "One night" establishes NIGHT for that page AND subsequent pages until changed
+3. Space/stars/moon scenes are ALWAYS NIGHT unless explicitly stated otherwise
+4. "Beside her", "Then", "Next" = SAME TIME as previous page
+5. Only change time for explicit transitions: "The next morning", "When dawn came", "Later that day"
+
+LITERAL vs FIGURATIVE LANGUAGE (CRITICAL):
+- "like early dawn" = SIMILE describing brightness, NOT a time change
+- "eyes so bright" = describing eyes, NOT daytime
+- "heart with light" = metaphor for happiness, NOT daytime
+- "glittering", "gleaming", "sparkling" = describing objects, NOT indicating daytime
+- Only LITERAL time references should change the time of day
+
+NIGHT INDICATORS (use night lighting):
+- stars, moon, space, rocket in space, cosmos, galaxies
+- "one night", "that night", "into the night"
+- bedtime, dreams, sleeping, pajamas
+- dark sky, stargazing
+
+KEEP SAME TIME when:
+- "Beside her" = same moment as previous page
+- "Then", "Next", "And so" = continuation
+- No explicit time transition mentioned
+- Scene is a continuation of previous action
+
+TIME DETECTION:
+- "morning", "sunrise", "woke up", "breakfast", "dawn" (LITERAL use only) → morning
 - "afternoon", "lunch", "midday" → afternoon  
 - "evening", "sunset", "dinner" → evening
-- "night", "nighttime", "dark", "stars", "moon", "deep into the night", "bedtime" → night
-- If no time mentioned, infer from activities or maintain previous scene's time
+- "night", "nighttime", "dark", "stars", "moon", "space adventure", "rocket through space" → night
+- If NO time mentioned → MAINTAIN previous page's time
 
 === CINEMATOGRAPHY / SHOT TYPE (IMPORTANT) ===
 ${shotTypeOverride ? `USER OVERRIDE: Use "${shotTypeOverride}" shot type for this page.` : 'Choose the best shot type based on story context and visual variety.'}
@@ -418,13 +460,23 @@ Return ONLY JSON:
     { "key": "prop_key", "name": "Prop Name", "reason": "why NOT shown (lost/missing/not in this location)" }
   ],
   "time_of_day": "morning|afternoon|evening|night",
-  "time_reason": "why this time (e.g., 'deep into the night' mentioned)",
+  "time_reason": "MUST explain: is this SAME as previous page, or CHANGED? If changed, what text triggered the change?",
+  "time_continued_from_previous": true,
   "shot_type": "wide|medium|medium-close|close-up|detail",
   "shot_reason": "why this shot type (e.g., 'emotional conclusion with single character')",
   "focal_point": "what viewer should focus on",
   "show_characters": true,
   "notes": "composition notes including any absent items"
 }
+
+RULES FOR TIME (CRITICAL - READ CAREFULLY):
+1. Default to SAME TIME as previous page unless explicitly changed
+2. "Beside her" = same moment, same time
+3. Space adventures with stars/moon = NIGHT (entire adventure is at night)
+4. "like early dawn" is a SIMILE, not a time change
+5. "eyes so bright" describes eyes, not daytime
+6. Only change time for EXPLICIT transitions: "next morning", "when dawn came"
+7. If in doubt, KEEP THE SAME TIME as previous page
 
 RULES FOR CHARACTERS (IMPORTANT - READ CAREFULLY):
 1. Protagonist appears unless explicitly excluded or scene is about other characters alone
