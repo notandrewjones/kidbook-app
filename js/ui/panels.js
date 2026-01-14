@@ -373,7 +373,6 @@ function renderCharacterCard(model, isProtagonist) {
         ${isGenerating ? `
           <div class="character-generating-overlay">
             <div class="spinner"></div>
-            <div class="generating-text">Generating...</div>
           </div>
         ` : modelUrl 
           ? `<img src="${modelUrl}" alt="${escapeHtml(model.name)}'s character model">`
