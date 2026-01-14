@@ -4283,3 +4283,191 @@ body[data-phase="compositor"] .compositor-wrap {
 .hardcover-size-select {
   display: none;
 }
+/* =============================================
+   Reference Panel (Characters & Props)
+   ============================================= */
+
+.reference-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reference-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reference-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.reference-section-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.reference-count {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--panel2);
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.reference-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--panel);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--stroke);
+}
+
+.reference-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.reference-item:hover {
+  border-color: rgba(124, 92, 255, 0.3);
+  background: var(--panel2);
+}
+
+.reference-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reference-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--stroke);
+  flex-shrink: 0;
+}
+
+.reference-thumb-placeholder {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand) 0%, rgba(124, 92, 255, 0.3) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.reference-thumb-placeholder.prop-placeholder {
+  background: linear-gradient(135deg, var(--brand2) 0%, rgba(52, 211, 153, 0.3) 100%);
+  font-size: 20px;
+}
+
+.reference-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.reference-item-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reference-item-meta {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reference-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.reference-item-actions .btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.reference-item-actions .btn-icon {
+  margin-right: 4px;
+}
+
+.reference-status {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.reference-status-ready {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--brand2);
+}
+
+.reference-status-pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warn);
+}
+
+.reference-status-optional {
+  background: var(--panel);
+  color: var(--muted);
+}
+
+/* Small button variants */
+.btn.btn-sm {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+/* AI Generate button style */
+.btn.btn-ai-generate {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.2) 0%, rgba(52, 211, 153, 0.2) 100%);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+  color: var(--text);
+}
+
+.btn.btn-ai-generate:hover {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.3) 0%, rgba(52, 211, 153, 0.3) 100%);
+  border-color: rgba(124, 92, 255, 0.5);
+}
+
+/* Prop upload modal */
+#prop-upload-modal .modal-dialog {
+  max-width: 440px;
+}
+
+#prop-upload-modal .dropzone {
+  min-height: 160px;
+}
+
+#prop-upload-modal .drop-icon {
+  font-size: 32px;
+}

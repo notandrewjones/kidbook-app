@@ -517,60 +517,396 @@ function reRenderStoryboard() {
 }
 
 // -----------------------------------------------------
-// Character Panel (embedded upload or model display)
+// Character & Props Panel (unified reference management)
 // -----------------------------------------------------
 function renderCharacterPanel(project) {
   const panel = $("character-panel-content");
   if (!panel) return;
 
-  const characterUrl = project.character_model_url || project.characterModelUrl;
-  const kidName = project.kid_name || "Character";
+  // Get registry data
+  const registry = Array.isArray(project.props_registry) && project.props_registry.length
+    ? project.props_registry[0]
+    : { characters: {}, props: {}, environments: {} };
 
-  if (characterUrl) {
-    // Character model exists - show it
-    panel.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:14px;">
-        <div style="font-weight:700;">Character Model</div>
-        <div class="character-preview">
-          <img src="${characterUrl}" alt="${escapeHtml(kidName)}'s character model">
-          <div>
-            <div style="font-weight:600;">${escapeHtml(kidName)}</div>
-            <div style="color: rgba(255,255,255,0.62); font-size:12px;">Model ready</div>
-          </div>
-        </div>
-        <button class="btn btn-secondary" id="open-upload-modal-side">Upload New Photo</button>
-        <button class="btn btn-primary" id="regenerate-character-btn-side">Regenerate Model</button>
+  const characters = Object.entries(registry.characters || {});
+  const props = Object.entries(registry.props || {});
+  const characterModels = project.character_models || [];
+
+  // Build character model lookup
+  const modelLookup = {};
+  for (const cm of characterModels) {
+    modelLookup[cm.character_key] = cm;
+  }
+
+  // Also check legacy character_model_url
+  const legacyCharacterUrl = project.character_model_url || project.characterModelUrl;
+
+  let html = `<div class="reference-panel">`;
+
+  // =====================
+  // CHARACTERS SECTION
+  // =====================
+  html += `
+    <div class="reference-section">
+      <div class="reference-section-header">
+        <span class="reference-section-title">Characters</span>
+        <span class="reference-count">${characters.length}</span>
+      </div>
+  `;
+
+  if (characters.length === 0) {
+    html += `
+      <div class="reference-empty">
+        No characters detected yet. Generate the story first.
       </div>
     `;
-
-    $("regenerate-character-btn-side")?.addEventListener("click", generateCharacterModel);
-    $("open-upload-modal-side")?.addEventListener("click", openUploadModal);
   } else {
-    // No character model yet - show embedded upload UI
-    panel.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        <div style="font-weight:700;">Character Model</div>
-        <div style="color: rgba(255,255,255,0.62); font-size:13px;">
-          Upload a photo to generate a consistent character model for all illustrations.
-        </div>
-        
-        <div id="panel-dropzone" class="dropzone" tabindex="0">
-          <div class="dropzone-inner">
-            <div class="drop-icon">⬆︎</div>
-            <div class="drop-title">Drop photo here</div>
-            <div class="drop-sub">or click to choose</div>
-            <div class="drop-hint">PNG / JPG</div>
+    for (const [key, char] of characters) {
+      const model = modelLookup[key];
+      const hasModel = char.has_model || !!model?.model_url || (key === 'protagonist' && legacyCharacterUrl);
+      const modelUrl = model?.model_url || (key === 'protagonist' ? legacyCharacterUrl : null);
+      
+      html += `
+        <div class="reference-item" data-type="character" data-key="${escapeHtml(key)}">
+          <div class="reference-item-header">
+            ${hasModel && modelUrl ? `
+              <img class="reference-thumb" src="${modelUrl}" alt="${escapeHtml(char.name)}">
+            ` : `
+              <div class="reference-thumb-placeholder">
+                <span>${escapeHtml((char.name || key).charAt(0).toUpperCase())}</span>
+              </div>
+            `}
+            <div class="reference-item-info">
+              <div class="reference-item-name">${escapeHtml(char.name || key)}</div>
+              <div class="reference-item-meta">${escapeHtml(char.role || 'character')} ${char.type ? `• ${char.type}` : ''}</div>
+            </div>
           </div>
+          <div class="reference-item-actions">
+            <button class="btn btn-sm btn-secondary upload-character-btn" data-key="${escapeHtml(key)}" data-name="${escapeHtml(char.name || key)}" data-role="${escapeHtml(char.role || 'other')}">
+              <span class="btn-icon">📷</span> Upload
+            </button>
+            <button class="btn btn-sm btn-primary generate-character-btn" data-key="${escapeHtml(key)}" data-name="${escapeHtml(char.name || key)}" data-role="${escapeHtml(char.role || 'other')}" ${!hasModel ? '' : 'title="Regenerate model"'}>
+              <span class="btn-icon">✨</span> ${hasModel ? 'Regenerate' : 'Generate'}
+            </button>
+          </div>
+          ${hasModel ? `<div class="reference-status reference-status-ready">Model ready</div>` : `<div class="reference-status reference-status-pending">No model yet</div>`}
         </div>
-        
-        <input id="panel-photo-input" type="file" accept="image/*" class="hidden" />
-        
-        <div id="panel-upload-preview" class="upload-preview hidden"></div>
-        <div id="panel-upload-status" class="status-line"></div>
+      `;
+    }
+  }
+
+  html += `</div>`; // End characters section
+
+  // =====================
+  // PROPS SECTION
+  // =====================
+  html += `
+    <div class="reference-section">
+      <div class="reference-section-header">
+        <span class="reference-section-title">Props & Objects</span>
+        <span class="reference-count">${props.length}</span>
+      </div>
+  `;
+
+  if (props.length === 0) {
+    html += `
+      <div class="reference-empty">
+        No props detected yet. Props will appear after story finalization.
       </div>
     `;
+  } else {
+    for (const [key, prop] of props) {
+      const hasImage = prop.reference_image_url && prop.image_source === 'user';
+      
+      html += `
+        <div class="reference-item" data-type="prop" data-key="${escapeHtml(key)}">
+          <div class="reference-item-header">
+            ${hasImage ? `
+              <img class="reference-thumb" src="${prop.reference_image_url}" alt="${escapeHtml(prop.name)}">
+            ` : `
+              <div class="reference-thumb-placeholder prop-placeholder">
+                <span>📦</span>
+              </div>
+            `}
+            <div class="reference-item-info">
+              <div class="reference-item-name">${escapeHtml(prop.name || key)}</div>
+              <div class="reference-item-meta">${escapeHtml(prop.description || 'prop')}</div>
+            </div>
+          </div>
+          <div class="reference-item-actions">
+            <button class="btn btn-sm btn-secondary upload-prop-btn" data-key="${escapeHtml(key)}" data-name="${escapeHtml(prop.name || key)}">
+              <span class="btn-icon">📷</span> Upload
+            </button>
+            <button class="btn btn-sm btn-ai-generate skip-prop-btn" data-key="${escapeHtml(key)}" data-name="${escapeHtml(prop.name || key)}" title="Use AI description instead of reference image">
+              <span class="btn-icon">✨</span> AI Describe
+            </button>
+          </div>
+          ${hasImage ? `<div class="reference-status reference-status-ready">Reference uploaded</div>` : `<div class="reference-status reference-status-optional">Optional - AI will describe</div>`}
+        </div>
+      `;
+    }
+  }
 
-    initPanelUpload();
+  html += `</div>`; // End props section
+
+  html += `</div>`; // End reference-panel
+
+  panel.innerHTML = html;
+
+  // Attach event listeners
+  initReferenceItemListeners();
+}
+
+function initReferenceItemListeners() {
+  // Character upload buttons
+  document.querySelectorAll('.upload-character-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      const name = btn.dataset.name;
+      const role = btn.dataset.role;
+      openCharacterUploadModal(key, name, role);
+    });
+  });
+
+  // Character generate buttons
+  document.querySelectorAll('.generate-character-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.key;
+      const name = btn.dataset.name;
+      const role = btn.dataset.role;
+      await generateCharacterModelForKey(key, name, role);
+    });
+  });
+
+  // Prop upload buttons
+  document.querySelectorAll('.upload-prop-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      const name = btn.dataset.name;
+      openPropUploadModal(key, name);
+    });
+  });
+
+  // Prop "AI Describe" buttons (skip/clear reference image)
+  document.querySelectorAll('.skip-prop-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.key;
+      const name = btn.dataset.name;
+      await clearPropReferenceImage(key, name);
+    });
+  });
+}
+
+// Open modal for uploading character photo
+function openCharacterUploadModal(characterKey, characterName, characterRole) {
+  // Store context for the upload
+  window.pendingCharacterUpload = { characterKey, characterName, characterRole };
+  
+  // Update modal title
+  const modalTitle = document.querySelector('#upload-modal .modal-title');
+  const modalSubtitle = document.querySelector('#upload-modal .modal-subtitle');
+  if (modalTitle) modalTitle.textContent = `Upload Photo: ${characterName}`;
+  if (modalSubtitle) modalSubtitle.textContent = `Upload a reference photo for ${characterName} to generate a character model.`;
+  
+  openUploadModal();
+}
+
+// Open modal for uploading prop photo
+function openPropUploadModal(propKey, propName) {
+  // Create a simple file input modal for props
+  const modal = document.createElement('div');
+  modal.id = 'prop-upload-modal';
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Upload Reference: ${escapeHtml(propName)}</div>
+          <div class="modal-subtitle">Upload a photo of the actual item for visual consistency.</div>
+        </div>
+        <button class="icon-btn modal-close-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="prop-dropzone" class="dropzone" tabindex="0">
+          <div class="dropzone-inner">
+            <div class="drop-icon">📦</div>
+            <div class="drop-title">Drop prop photo here</div>
+            <div class="drop-sub">or click to choose a file</div>
+            <div class="drop-hint">PNG / JPG • The actual item photo</div>
+          </div>
+        </div>
+        <input id="prop-photo-input" type="file" accept="image/*" class="hidden" />
+        <div id="prop-upload-preview" class="upload-preview hidden"></div>
+        <div id="prop-upload-status" class="status-line"></div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Event listeners
+  const closeBtn = modal.querySelector('.modal-close-btn');
+  const backdrop = modal.querySelector('.modal-backdrop');
+  const dropzone = modal.querySelector('#prop-dropzone');
+  const fileInput = modal.querySelector('#prop-photo-input');
+  
+  const closeModal = () => {
+    modal.remove();
+  };
+  
+  closeBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', closeModal);
+  
+  dropzone.addEventListener('click', () => fileInput.click());
+  
+  // Drag and drop
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('dragover');
+    });
+  });
+  
+  ['dragleave', 'drop'].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    });
+  });
+  
+  dropzone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      handlePropFileSelect(files[0], propKey, propName, modal);
+    }
+  });
+  
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files?.[0];
+    if (f) handlePropFileSelect(f, propKey, propName, modal);
+  });
+}
+
+// Handle prop file selection and upload
+async function handlePropFileSelect(file, propKey, propName, modal) {
+  const preview = modal.querySelector('#prop-upload-preview');
+  const status = modal.querySelector('#prop-upload-status');
+  const dropzone = modal.querySelector('#prop-dropzone');
+  const projectId = localStorage.getItem('projectId');
+  
+  if (!projectId) {
+    if (status) status.textContent = 'No project loaded.';
+    return;
+  }
+  
+  // Show preview
+  if (preview) {
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${url}" alt="preview">`;
+    preview.classList.remove('hidden');
+  }
+  
+  if (dropzone) dropzone.style.display = 'none';
+  if (status) status.textContent = 'Uploading prop reference...';
+  
+  const formData = new FormData();
+  formData.append('photo', file);
+  formData.append('projectId', projectId);
+  formData.append('propKey', propKey);
+  formData.append('propName', propName);
+  
+  try {
+    const res = await fetch('/api/upload-prop-photo', { method: 'POST', body: formData });
+    const data = await res.json();
+    
+    if (data.photoUrl) {
+      if (status) status.textContent = 'Reference uploaded!';
+      showToast('Prop reference uploaded', `${propName} will now use this image`, 'success');
+      
+      // Close modal and refresh
+      setTimeout(() => {
+        modal.remove();
+        // Refresh the project to update the panel
+        const projectId = localStorage.getItem('projectId');
+        if (projectId) openProjectById(projectId);
+      }, 800);
+    } else {
+      if (status) status.textContent = 'Upload failed. Try again.';
+      if (dropzone) dropzone.style.display = 'block';
+    }
+  } catch (e) {
+    console.error(e);
+    if (status) status.textContent = 'Upload failed. Try again.';
+    if (dropzone) dropzone.style.display = 'block';
+  }
+}
+
+// Clear prop reference image (use AI description instead)
+async function clearPropReferenceImage(propKey, propName) {
+  const projectId = localStorage.getItem('projectId');
+  if (!projectId) return;
+  
+  showToast('AI Description', `${propName} will use AI-generated description`, 'success');
+  
+  // TODO: Implement API to clear reference_image_url if needed
+  // For now, the AI describe button just confirms the user wants AI description
+}
+
+// Generate character model for a specific character key
+async function generateCharacterModelForKey(characterKey, characterName, characterRole) {
+  const projectId = localStorage.getItem('projectId');
+  
+  if (!projectId) {
+    showToast('No project loaded', 'Open a project first', 'error');
+    return;
+  }
+  
+  // Check if there's a pending photo for this character
+  const { data: project } = await fetch('/api/load-project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId })
+  }).then(r => r.json());
+  
+  const pendingPhotos = project?.project?.pending_character_photos || [];
+  const pendingPhoto = pendingPhotos.find(p => p.character_key === characterKey);
+  
+  if (!pendingPhoto) {
+    showToast('No photo uploaded', `Please upload a photo for ${characterName} first`, 'error');
+    openCharacterUploadModal(characterKey, characterName, characterRole);
+    return;
+  }
+  
+  showToast('Generating character model', `Creating model for ${characterName}...`, 'success');
+  
+  try {
+    const res = await fetch('/api/generate-character-model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        characterName,
+        characterRole,
+        photoUrl: pendingPhoto.photo_url,
+        isProtagonist: characterRole === 'protagonist'
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (data.characterModel) {
+      showToast('Character model ready', `${characterName} model generated`, 'success');
+      // Refresh project
+      await openProjectById(projectId);
+    } else {
+      throw new Error('No model returned');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Generation failed', 'See console for details', 'error');
   }
 }
 
@@ -855,12 +1191,37 @@ async function uploadPhoto() {
   formData.append("photo", fileInput.files[0]);
   formData.append("projectId", projectId);
 
+  // Check if we have a pending character upload context
+  const pendingUpload = window.pendingCharacterUpload;
+  if (pendingUpload) {
+    formData.append("characterName", pendingUpload.characterName);
+    formData.append("characterRole", pendingUpload.characterRole);
+  }
+
   try {
-    const res = await fetch("/api/upload-child-photo", { method: "POST", body: formData });
+    // Use character-specific upload endpoint if we have context
+    const endpoint = pendingUpload ? "/api/upload-character-photo" : "/api/upload-child-photo";
+    const res = await fetch(endpoint, { method: "POST", body: formData });
     const data = await res.json();
 
     if (data.photoUrl) {
-      status.textContent = "Uploaded! You can now generate the character model.";
+      status.textContent = "Uploaded! Generating character model...";
+      showToast("Photo uploaded", `Now generating model for ${pendingUpload?.characterName || 'character'}...`, "success");
+      
+      // Generate the character model
+      if (pendingUpload) {
+        await generateCharacterModelForKey(
+          pendingUpload.characterKey || data.characterKey,
+          pendingUpload.characterName,
+          pendingUpload.characterRole
+        );
+        // Clear the pending context
+        window.pendingCharacterUpload = null;
+      } else {
+        await generateCharacterModel();
+      }
+      
+      closeUploadModal();
     } else {
       status.textContent = "Upload failed.";
     }

@@ -79,7 +79,7 @@ Text: "${pageText}"
 }
 
 // -------------------------------------------------------
-// Helper: Analyze which characters appear in this scene
+// Helper: Analyze which characters AND props appear in this scene
 // -------------------------------------------------------
 async function analyzeSceneComposition(pageText, registry, characterModels, allPages, currentPage) {
   // Build character list from registry
@@ -91,6 +91,14 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     has_model: char.has_model,
   }));
 
+  // Build props list from registry
+  const knownProps = Object.entries(registry.props || {}).map(([key, prop]) => ({
+    key,
+    name: prop.name,
+    description: prop.description || prop.visual || "",
+    has_reference_image: !!prop.reference_image_url,
+  }));
+
   // Story context up to current page
   const storyContext = (allPages || [])
     .filter(p => Number(p.page) <= Number(currentPage))
@@ -98,12 +106,17 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     .join("\n");
 
   const prompt = `
-Analyze WHO should appear in this illustration.
+Analyze WHO and WHAT should appear in this illustration.
 
 TRACK CHARACTER PRESENCE through narrative flow:
 - "Harley visits Gary's house" → Gary is NOW PRESENT
 - "They played together" → BOTH characters in scene
 - Plural pronouns (they, them, we) after establishing characters → ALL present
+
+TRACK PROPS/OBJECTS in the scene:
+- Only include props that are ACTIVELY part of this scene
+- Props being used, held, or visually important should be included
+- Don't include props just because they exist in the story
 
 STORY SO FAR:
 ${storyContext}
@@ -114,10 +127,16 @@ CURRENT PAGE (Page ${currentPage}):
 KNOWN CHARACTERS:
 ${JSON.stringify(knownCharacters, null, 2)}
 
+KNOWN PROPS:
+${JSON.stringify(knownProps, null, 2)}
+
 Return ONLY JSON:
 {
   "characters_in_scene": [
     { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why present" }
+  ],
+  "props_in_scene": [
+    { "key": "prop_key", "name": "Prop Name", "importance": "focal|supporting|background", "reason": "why included" }
   ],
   "shot_type": "close-up|medium|wide|establishing",
   "focal_point": "what viewer should focus on",
@@ -125,13 +144,19 @@ Return ONLY JSON:
   "notes": "composition notes"
 }
 
-RULES:
+RULES FOR CHARACTERS:
 1. Protagonist appears unless explicitly excluded
 2. Going to someone's location means they're there
 3. Plural pronouns = all recently mentioned characters
 4. "Together", "with", "and" = multiple characters
 5. If uncertain, INCLUDE the character
 6. Max ${MAX_CHARACTER_MODELS_PER_SCENE} characters
+
+RULES FOR PROPS:
+1. Only include props that are MENTIONED or IMPLIED in this specific page
+2. Props being actively used or interacted with = "focal" or "supporting"
+3. Props in the background or setting = "background"
+4. Max 4 props with reference images will be used
 `;
 
   const response = await client.responses.create({
@@ -145,6 +170,7 @@ RULES:
     const protagonist = knownCharacters.find(c => c.role === "protagonist");
     return {
       characters_in_scene: protagonist ? [{ ...protagonist, prominence: "primary" }] : [],
+      props_in_scene: [],
       shot_type: "medium",
       focal_point: "the scene",
       show_characters: true,
@@ -153,11 +179,15 @@ RULES:
   }
 
   try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    // Ensure props_in_scene exists
+    if (!parsed.props_in_scene) parsed.props_in_scene = [];
+    return parsed;
   } catch {
     const protagonist = knownCharacters.find(c => c.role === "protagonist");
     return {
       characters_in_scene: protagonist ? [{ ...protagonist, prominence: "primary" }] : [],
+      props_in_scene: [],
       shot_type: "medium",
       focal_point: "the scene",
       show_characters: true,
@@ -268,6 +298,101 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
 }
 
 // -------------------------------------------------------
+// Helper: Load prop reference images
+// -------------------------------------------------------
+const MAX_PROP_IMAGES_PER_SCENE = 4;
+
+async function preparePropReferenceImages(registry, sceneComposition) {
+  const images = [];
+  const propsInScene = sceneComposition.props_in_scene || [];
+
+  // Sort by importance and limit
+  const sorted = [...propsInScene].sort((a, b) => {
+    const order = { focal: 0, supporting: 1, background: 2 };
+    return (order[a.importance] || 2) - (order[b.importance] || 2);
+  }).slice(0, MAX_PROP_IMAGES_PER_SCENE);
+
+  for (const sceneProp of sorted) {
+    const prop = registry.props?.[sceneProp.key];
+    
+    // Only include props that have user-uploaded reference images
+    if (prop?.reference_image_url && prop?.image_source === "user") {
+      try {
+        const resp = await fetch(prop.reference_image_url);
+        
+        if (!resp.ok) {
+          console.error(`Failed to fetch prop image for ${prop.name}: ${resp.status}`);
+          continue;
+        }
+        
+        // Detect content type from response or URL
+        let contentType = resp.headers.get('content-type') || 'image/png';
+        
+        // If content-type is generic, try to detect from URL
+        if (contentType === 'application/octet-stream' || !contentType.startsWith('image/')) {
+          const url = prop.reference_image_url.toLowerCase();
+          if (url.includes('.jpg') || url.includes('.jpeg')) {
+            contentType = 'image/jpeg';
+          } else if (url.includes('.webp')) {
+            contentType = 'image/webp';
+          } else if (url.includes('.gif')) {
+            contentType = 'image/gif';
+          } else {
+            contentType = 'image/png';
+          }
+        }
+        
+        const buffer = await resp.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        
+        images.push({
+          key: sceneProp.key,
+          name: prop.name,
+          importance: sceneProp.importance,
+          data_url: `data:${contentType};base64,${base64}`,
+        });
+        console.log(`📦 Loaded prop reference: ${prop.name} (${contentType})`);
+      } catch (err) {
+        console.error(`Failed to load prop image for ${prop.name}:`, err.message);
+      }
+    }
+  }
+
+  return images;
+}
+
+// -------------------------------------------------------
+// Helper: Build prop visual rules for the prompt
+// Props with reference images should NOT get text descriptions (avoid conflicts)
+// -------------------------------------------------------
+function buildPropVisualRules(registry, sceneComposition) {
+  const rules = [];
+  const propsInScene = sceneComposition.props_in_scene || [];
+
+  for (const sceneProp of propsInScene) {
+    const prop = registry.props?.[sceneProp.key];
+    
+    if (!prop) {
+      rules.push(`• ${sceneProp.name}: Depict based on story context.`);
+      continue;
+    }
+
+    // Props with reference images: ONLY say to match the image, no text description
+    if (prop.reference_image_url && prop.image_source === "user") {
+      rules.push(`• ${prop.name} (${sceneProp.importance}): Match the uploaded reference image exactly. (See reference images below)`);
+    } 
+    // Props WITHOUT reference images: include text description
+    else if (prop.description || prop.visual) {
+      rules.push(`• ${prop.name} (${sceneProp.importance}): ${prop.description || prop.visual}`);
+    } else {
+      rules.push(`• ${prop.name} (${sceneProp.importance}): Depict consistently with story.`);
+    }
+  }
+
+  return rules.join("\n");
+}
+
+// -------------------------------------------------------
 // Main handler
 // -------------------------------------------------------
 async function handler(req, res) {
@@ -345,15 +470,19 @@ async function handler(req, res) {
     const existingHistory = existingForPage?.revision_history || [];
     const isRegen = !!isRegeneration;
 
-    // 3. Analyze scene composition
+    // 3. Analyze scene composition (now includes props)
     console.log("=== ANALYZING SCENE ===");
     const sceneComposition = await analyzeSceneComposition(
       pageText, registry, project.character_models, allPages, page
     );
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
+    console.log("Props:", sceneComposition.props_in_scene?.map(p => p.name));
 
     // 4. Prepare character images
     const characterImages = await prepareCharacterModelImages(registry, sceneComposition);
+
+    // 4b. Prepare prop reference images
+    const propImages = await preparePropReferenceImages(registry, sceneComposition);
 
     // 5. Extract location and new props
     const [detectedLocation, newProps] = await Promise.all([
@@ -363,6 +492,10 @@ async function handler(req, res) {
 
     // 6. Build the prompt
     const characterRules = buildCharacterVisualRules(registry, sceneComposition);
+    const propRules = buildPropVisualRules(registry, sceneComposition);
+    
+    // Combine all reference images (characters first, then props)
+    const allReferenceImages = [...characterImages, ...propImages];
     
     const prompt = `
 You MUST generate this illustration using the image_generation tool.
@@ -380,17 +513,20 @@ ${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): $
 === CHARACTER VISUAL RULES ===
 ${characterRules}
 
-${characterImages.length > 0 ? `
+=== PROPS IN SCENE ===
+${sceneComposition.props_in_scene?.map(p => `${p.name} (${p.importance}): ${p.reason || ''}`).join("\n") || "None specified"}
+
+=== PROP VISUAL RULES ===
+${propRules || "Depict props consistently with story context."}
+
+${allReferenceImages.length > 0 ? `
 === REFERENCE IMAGES PROVIDED ===
-${characterImages.map((img, i) => `Image ${i + 1}: ${img.name}`).join("\n")}
-Characters with reference images MUST match them EXACTLY.
+${allReferenceImages.map((img, i) => `Image ${i + 1}: ${img.name}${img.importance ? ` (prop - ${img.importance})` : ' (character)'}`).join("\n")}
+Characters and props with reference images MUST match them EXACTLY. Do not deviate from the reference images.
 ` : ''}
 
 === ENVIRONMENT STYLE ===
 ${registry.environments?.[detectedLocation?.toLowerCase()]?.style || "Child-friendly, bright, simple"}
-
-=== PROPS TO INCLUDE ===
-${Object.entries(registry.props || {}).slice(0, 5).map(([k, v]) => `${k}: ${v.description || v.visual || v.context}`).join("\n") || "None specified"}
 
 === STYLE REQUIREMENTS ===
 • Soft pastel children's-book illustration
@@ -402,21 +538,23 @@ ${Object.entries(registry.props || {}).slice(0, 5).map(([k, v]) => `${k}: ${v.de
 • 1024×1024 PNG
 
 === STRICT RULES ===
-• Match reference images EXACTLY for characters with models
+• Match reference images EXACTLY for characters and props with uploaded images
 • Keep characters visually consistent with their descriptions
 • Include ALL characters listed in "Characters in Scene"
-• Props should match their registry descriptions
+• Include ALL props listed in "Props in Scene"
+• Props should match their reference images or registry descriptions
 • Environments should be consistent across pages
 
 Generate the illustration now.
 `;
 
-    // 7. Build input with images
+    // 7. Build input with images (characters + props)
     const inputContent = [{ type: "input_text", text: prompt }];
-    for (const img of characterImages) {
+    for (const img of allReferenceImages) {
       // Log the data URL prefix to debug content type issues
       const prefix = img.data_url.substring(0, 50);
-      console.log(`Adding image for ${img.name}: ${prefix}...`);
+      const imgType = img.importance ? 'prop' : 'character';
+      console.log(`Adding ${imgType} image for ${img.name}: ${prefix}...`);
       inputContent.push({ type: "input_image", image_url: img.data_url });
     }
 
