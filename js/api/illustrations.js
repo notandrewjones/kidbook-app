@@ -64,8 +64,21 @@ async function executeGeneration(pageNum, pageText, isRegeneration) {
 
     if (!res.ok || data?.error) {
       console.error("Illustration error:", data);
-      showToast("Illustration failed", `Page ${pageNum}`, "error");
-      if (status) status.textContent = `Failed on page ${pageNum}.`;
+      
+      // Check for safety system rejection (copyright, content policy)
+      if (data?.safety_rejection) {
+        showToast(
+          "Content Policy Violation", 
+          "Image rejected due to potential copyright or policy violation. Please use original, non-copyrighted reference images.", 
+          "error"
+        );
+      } else {
+        showToast("Illustration failed", `Page ${pageNum}`, "error");
+      }
+      
+      if (status) status.textContent = data?.safety_rejection 
+        ? `Page ${pageNum}: Content policy violation` 
+        : `Failed on page ${pageNum}.`;
       processQueue();
       return;
     }

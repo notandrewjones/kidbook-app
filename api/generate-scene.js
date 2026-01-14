@@ -1153,6 +1153,23 @@ Generate the illustration now.
 
   } catch (err) {
     console.error("Generation error:", err?.message, err?.stack);
+    
+    // Check for OpenAI safety system rejection (copyright, content policy, etc.)
+    const errorMessage = err?.message || '';
+    const isSafetyRejection = errorMessage.includes('safety system') || 
+                              errorMessage.includes('rejected') ||
+                              errorMessage.includes('content policy') ||
+                              (err?.status === 400 && errorMessage.toLowerCase().includes('request'));
+    
+    if (isSafetyRejection) {
+      return res.status(400).json({
+        error: "Image generation was rejected by OpenAI's safety system.",
+        details: "This may be due to copyright concerns (e.g., copyrighted characters like Mario, Disney characters, etc.) or content policy violations. Please use original photos or non-copyrighted reference images.",
+        safety_rejection: true,
+        original_error: errorMessage,
+      });
+    }
+    
     return res.status(500).json({
       error: "Failed to generate illustration.",
       details: err?.message,
