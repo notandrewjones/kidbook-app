@@ -169,6 +169,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
+      success: true,
       member: newMember,
       group: group,
     });
@@ -244,6 +245,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
+      success: true,
       member: member,
       group: group,
     });

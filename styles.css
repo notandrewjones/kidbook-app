@@ -1089,7 +1089,9 @@ body[data-phase="storyboard"] .grid {
   overflow: hidden;
 }
 .modal-body-col{
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   padding: 24px;
 }
 
