@@ -4,6 +4,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { uploadToR2 } from "./_r2.js";
 
+const DEV_MODE = process.env.DEV_MODE === "true";
+const DEV_PHOTO_URL = process.env.DEV_CHARACTER_MODEL_URL || "https://placehold.co/512x512/7c5cff/white?text=DEV";
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -74,24 +77,37 @@ export default async function handler(req, res) {
     if (!characterName) {
       return res.status(400).json({ error: "Missing characterName" });
     }
-    if (!fileBuffer) {
+    // In DEV_MODE, we don't require an actual file
+    if (!fileBuffer && !DEV_MODE) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
     const characterKey = generateCharacterKey(characterName);
-    const ext = fileInfo.filename?.split(".").pop() || "png";
-    const filePath = `source_photos/${projectId}/${characterKey}.${ext}`;
+    
+    let photoUrl;
+    
+    // -------------------------------------------------------------
+    // 🔧 DEV MODE — Skip actual R2 upload, use placeholder URL
+    // -------------------------------------------------------------
+    if (DEV_MODE) {
+      console.log("🔧 DEV MODE — Skipping R2 upload, using placeholder URL");
+      photoUrl = DEV_PHOTO_URL;
+    } else {
+      // Production: Upload to R2
+      const ext = fileInfo.filename?.split(".").pop() || "png";
+      const filePath = `source_photos/${projectId}/${characterKey}.${ext}`;
 
-    // Upload to R2
-    const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
+      const uploadResult = await uploadToR2(filePath, fileBuffer, fileInfo.mimeType);
 
-    if (!uploadResult.success) {
-      console.error("R2 upload error:", uploadResult.error);
-      return res.status(500).json({ error: "Upload failed" });
+      if (!uploadResult.success) {
+        console.error("R2 upload error:", uploadResult.error);
+        return res.status(500).json({ error: "Upload failed" });
+      }
+
+      photoUrl = uploadResult.publicUrl;
     }
-
-    const photoUrl = uploadResult.publicUrl;
-    console.log("Character photo uploaded:", photoUrl);
+    
+    console.log("Character photo URL:", photoUrl);
 
     // Update the project's pending_character_photos to track uploads before model generation
     const { data: project } = await supabase
