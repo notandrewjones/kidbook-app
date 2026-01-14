@@ -36,6 +36,9 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
   // Get props from registry
   const props = getPropsFromRegistry(project);
 
+  // Get groups from registry
+  const groups = getGroupsFromRegistry(project);
+
   panel.innerHTML = `
     <div class="character-panel-inner">
       <div class="panel-section">
@@ -82,6 +85,21 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
         </button>
       </div>
       
+      ${groups.length > 0 ? `
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">👥 Groups</span>
+            <span class="panel-section-count">${groups.length}</span>
+          </div>
+          <p class="panel-section-desc">
+            Groups of people mentioned in the story. Add photos for each member.
+          </p>
+          <div class="groups-list">
+            ${groups.map(group => renderGroupCard(group)).join("")}
+          </div>
+        </div>
+      ` : ""}
+      
       ${props.length > 0 ? `
         <div class="panel-section">
           <div class="panel-section-header">
@@ -106,8 +124,8 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       ` : `
         <div class="panel-section panel-section-muted">
           <div class="panel-tip">
-            <strong>Tip:</strong> Characters and props without photos will be AI-generated based on story context.
-            Max 4 character references + 4 prop references per scene.
+            <strong>Tip:</strong> Characters, groups, and props without photos will be AI-generated.
+            Max 12 total reference images per scene.
           </div>
         </div>
       `}
@@ -190,6 +208,38 @@ function renderMultiCharacterPanel(panel, project, characterModels) {
       const key = btn.dataset.removePropImage;
       const name = btn.dataset.propName;
       await removePropReferenceImage(key, name);
+    });
+  });
+
+  // Wire up group actions
+  panel.querySelectorAll("[data-add-group-member]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.addGroupMember;
+      const name = btn.dataset.groupName;
+      openAddGroupMemberModal(key, name);
+    });
+  });
+
+  panel.querySelectorAll("[data-upload-member-photo]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const groupKey = btn.dataset.groupKey;
+      const memberId = btn.dataset.memberId;
+      const memberName = btn.dataset.memberName;
+      openMemberPhotoUploadModal(groupKey, memberId, memberName);
+    });
+  });
+
+  panel.querySelectorAll("[data-remove-group-member]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const groupKey = btn.dataset.groupKey;
+      const memberId = btn.dataset.memberId;
+      const memberName = btn.dataset.memberName;
+      if (confirm(`Remove ${memberName} from this group?`)) {
+        await removeGroupMember(groupKey, memberId, memberName);
+      }
     });
   });
 }
@@ -1023,4 +1073,441 @@ async function compressImageIfNeeded(file, maxSizeBytes = 4 * 1024 * 1024) {
     img.onerror = () => reject(new Error("Failed to load image"));
     img.src = URL.createObjectURL(file);
   });
+}
+
+// =====================================================
+// GROUPS FUNCTIONS
+// =====================================================
+
+// Get groups from project registry
+function getGroupsFromRegistry(project) {
+  let registry = {};
+  if (Array.isArray(project.props_registry) && project.props_registry.length > 0) {
+    registry = project.props_registry[0];
+  } else if (project.props_registry && typeof project.props_registry === "object") {
+    registry = project.props_registry;
+  }
+  
+  const groups = registry.groups || {};
+  
+  return Object.entries(groups).map(([key, group]) => ({
+    key,
+    name: group.name || key,
+    singular: group.singular || key,
+    detected_term: group.detected_term || key,
+    detected_count: group.detected_count || null,
+    count_source: group.count_source || "unknown",
+    members: group.members || [],
+    first_seen_page: group.first_seen_page || 1,
+  }));
+}
+
+// Render a group card with expandable member list
+function renderGroupCard(group) {
+  const memberCount = group.members?.length || 0;
+  const membersWithImages = (group.members || []).filter(m => m.reference_image_url).length;
+  const expectedCount = group.detected_count;
+  const hasMismatch = expectedCount && memberCount !== expectedCount;
+  
+  return `
+    <div class="group-card" data-group-key="${escapeHtml(group.key)}">
+      <div class="group-card-header">
+        <div class="group-card-icon">👥</div>
+        <div class="group-card-info">
+          <div class="group-card-name">${escapeHtml(group.name)}</div>
+          <div class="group-card-meta">
+            ${memberCount} member${memberCount !== 1 ? 's' : ''} added
+            ${membersWithImages > 0 ? ` • ${membersWithImages} with photos` : ''}
+          </div>
+        </div>
+        <button class="btn btn-xs btn-primary" data-add-group-member="${escapeHtml(group.key)}" data-group-name="${escapeHtml(group.name)}">
+          + Add
+        </button>
+      </div>
+      
+      ${hasMismatch ? `
+        <div class="group-card-warning">
+          ⚠️ Story mentions "${expectedCount} ${group.detected_term}" but you have ${memberCount} member${memberCount !== 1 ? 's' : ''}
+        </div>
+      ` : ''}
+      
+      ${memberCount > 0 ? `
+        <div class="group-members-list">
+          ${group.members.map(member => renderGroupMemberCard(group.key, member)).join("")}
+        </div>
+      ` : `
+        <div class="group-empty-notice">
+          No members added yet. Add photos for each ${group.singular || 'person'} in this group.
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// Render a single group member
+function renderGroupMemberCard(groupKey, member) {
+  const hasImage = member.reference_image_url && member.image_source === "user";
+  
+  return `
+    <div class="group-member-card ${hasImage ? 'has-image' : ''}" data-member-id="${escapeHtml(member.id)}">
+      <div class="group-member-thumb">
+        ${hasImage ? `
+          <img src="${member.reference_image_url}" alt="${escapeHtml(member.name)}">
+        ` : `
+          <div class="group-member-thumb-placeholder">👤</div>
+        `}
+      </div>
+      <div class="group-member-info">
+        <div class="group-member-name">${escapeHtml(member.name)}</div>
+        <div class="group-member-status">
+          ${hasImage ? '📷 Photo uploaded' : '✨ Using AI'}
+        </div>
+      </div>
+      <div class="group-member-actions">
+        ${hasImage ? `
+          <button class="btn btn-xs btn-secondary" data-upload-member-photo data-group-key="${escapeHtml(groupKey)}" data-member-id="${escapeHtml(member.id)}" data-member-name="${escapeHtml(member.name)}">
+            Replace
+          </button>
+        ` : `
+          <button class="btn btn-xs btn-primary" data-upload-member-photo data-group-key="${escapeHtml(groupKey)}" data-member-id="${escapeHtml(member.id)}" data-member-name="${escapeHtml(member.name)}">
+            📷 Upload
+          </button>
+        `}
+        <button class="btn btn-xs btn-danger-subtle" data-remove-group-member data-group-key="${escapeHtml(groupKey)}" data-member-id="${escapeHtml(member.id)}" data-member-name="${escapeHtml(member.name)}">
+          ✕
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Open modal to add a new group member
+function openAddGroupMemberModal(groupKey, groupName) {
+  const existingModal = $("add-group-member-modal");
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "add-group-member-modal";
+  modal.className = "modal";
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Add to ${escapeHtml(groupName)}</div>
+          <div class="modal-subtitle">Add a member with an optional photo reference</div>
+        </div>
+        <button class="icon-btn close-modal-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body modal-body-col">
+        <div class="form-group">
+          <label class="label">Name</label>
+          <input id="new-member-name" class="input" type="text" placeholder="e.g., Emma, Grandpa Joe" />
+        </div>
+        
+        <div id="member-dropzone" class="dropzone" tabindex="0">
+          <div class="dropzone-inner">
+            <div class="drop-icon">👤</div>
+            <div class="drop-title">Drop photo here (optional)</div>
+            <div class="drop-sub">or click to choose</div>
+            <div class="drop-hint">PNG / JPG • Max 4MB</div>
+          </div>
+        </div>
+        
+        <input id="member-file-input" type="file" accept="image/*" class="hidden" />
+        <div id="member-upload-preview" class="upload-preview hidden"></div>
+        <div id="member-upload-status" class="status-line"></div>
+        
+        <button id="add-member-btn" class="btn btn-primary btn-full" disabled>
+          Add Member
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Wire up events
+  const closeBtn = modal.querySelector(".close-modal-btn");
+  const backdrop = modal.querySelector(".modal-backdrop");
+  const nameInput = modal.querySelector("#new-member-name");
+  const dropzone = modal.querySelector("#member-dropzone");
+  const fileInput = modal.querySelector("#member-file-input");
+  const preview = modal.querySelector("#member-upload-preview");
+  const addBtn = modal.querySelector("#add-member-btn");
+  const status = modal.querySelector("#member-upload-status");
+
+  const closeModal = () => modal.remove();
+  closeBtn.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", closeModal);
+
+  // Enable button when name is entered
+  nameInput.addEventListener("input", () => {
+    addBtn.disabled = !nameInput.value.trim();
+  });
+
+  // Dropzone events
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  ["dragenter", "dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  let selectedFile = null;
+
+  dropzone.addEventListener("drop", async (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      selectedFile = await compressImageIfNeeded(files[0]);
+      showMemberPreview(selectedFile, preview, dropzone);
+    }
+  });
+
+  fileInput.addEventListener("change", async () => {
+    const f = fileInput.files?.[0];
+    if (f) {
+      selectedFile = await compressImageIfNeeded(f);
+      showMemberPreview(selectedFile, preview, dropzone);
+    }
+  });
+
+  // Add button click
+  addBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+
+    addBtn.disabled = true;
+    addBtn.textContent = "Adding...";
+    if (status) status.textContent = "Adding member...";
+
+    await addGroupMember(groupKey, name, selectedFile, modal);
+  });
+}
+
+// Show preview of selected member photo
+function showMemberPreview(file, preview, dropzone) {
+  if (preview) {
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${url}" alt="preview">`;
+    preview.classList.remove("hidden");
+  }
+  if (dropzone) {
+    dropzone.style.display = "none";
+  }
+}
+
+// Add a new group member via API
+async function addGroupMember(groupKey, memberName, file, modal) {
+  const projectId = getProjectId();
+  if (!projectId) {
+    showToast("Error", "No project loaded", "error");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("projectId", projectId);
+  formData.append("groupKey", groupKey);
+  formData.append("memberName", memberName);
+  if (file) {
+    formData.append("photo", file);
+  }
+
+  try {
+    const res = await fetch("/api/group-members", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Add member failed:", res.status, text);
+      showToast("Failed", "Could not add member", "error");
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.success) {
+      showToast("Member added", `${memberName} added to group`, "success");
+      if (modal) modal.remove();
+      
+      // Refresh the panel
+      const pid = getProjectId();
+      if (pid) await openProjectById(pid);
+    } else {
+      showToast("Failed", data.error || "Could not add member", "error");
+    }
+  } catch (err) {
+    console.error("Add member error:", err);
+    showToast("Error", "Network error", "error");
+  }
+}
+
+// Open modal to upload/replace a member's photo
+function openMemberPhotoUploadModal(groupKey, memberId, memberName) {
+  const existingModal = $("member-photo-modal");
+  if (existingModal) existingModal.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "member-photo-modal";
+  modal.className = "modal";
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <div class="modal-title">Photo for ${escapeHtml(memberName)}</div>
+          <div class="modal-subtitle">Upload a reference photo</div>
+        </div>
+        <button class="icon-btn close-modal-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body modal-body-col">
+        <div id="member-photo-dropzone" class="dropzone" tabindex="0">
+          <div class="dropzone-inner">
+            <div class="drop-icon">📷</div>
+            <div class="drop-title">Drop photo here</div>
+            <div class="drop-sub">or click to choose</div>
+            <div class="drop-hint">PNG / JPG • Max 4MB</div>
+          </div>
+        </div>
+        <input id="member-photo-input" type="file" accept="image/*" class="hidden" />
+        <div id="member-photo-preview" class="upload-preview hidden"></div>
+        <div id="member-photo-status" class="status-line"></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const closeBtn = modal.querySelector(".close-modal-btn");
+  const backdrop = modal.querySelector(".modal-backdrop");
+  const dropzone = modal.querySelector("#member-photo-dropzone");
+  const fileInput = modal.querySelector("#member-photo-input");
+  const preview = modal.querySelector("#member-photo-preview");
+  const status = modal.querySelector("#member-photo-status");
+
+  const closeModal = () => modal.remove();
+  closeBtn.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", closeModal);
+
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  ["dragenter", "dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dragover");
+    });
+  });
+
+  dropzone.addEventListener("drop", async (e) => {
+    const files = e.dataTransfer?.files;
+    if (files && files.length) {
+      await handleMemberPhotoUpload(files[0], groupKey, memberId, memberName, modal, preview, dropzone, status);
+    }
+  });
+
+  fileInput.addEventListener("change", async () => {
+    const f = fileInput.files?.[0];
+    if (f) {
+      await handleMemberPhotoUpload(f, groupKey, memberId, memberName, modal, preview, dropzone, status);
+    }
+  });
+}
+
+// Handle member photo upload
+async function handleMemberPhotoUpload(file, groupKey, memberId, memberName, modal, preview, dropzone, status) {
+  const projectId = getProjectId();
+  if (!projectId) return;
+
+  if (status) status.textContent = "Processing...";
+
+  let processedFile;
+  try {
+    processedFile = await compressImageIfNeeded(file);
+  } catch (err) {
+    if (status) status.textContent = "Failed to process image";
+    return;
+  }
+
+  // Show preview
+  if (preview) {
+    const url = URL.createObjectURL(processedFile);
+    preview.innerHTML = `<img src="${url}" alt="preview">`;
+    preview.classList.remove("hidden");
+  }
+  if (dropzone) dropzone.style.display = "none";
+  if (status) status.textContent = "Uploading...";
+
+  const formData = new FormData();
+  formData.append("projectId", projectId);
+  formData.append("groupKey", groupKey);
+  formData.append("memberId", memberId);
+  formData.append("photo", processedFile);
+
+  try {
+    const res = await fetch("/api/group-members", {
+      method: "PUT",
+      body: formData,
+    });
+
+    if (res.ok) {
+      showToast("Photo uploaded", `Updated photo for ${memberName}`, "success");
+      if (modal) modal.remove();
+      const pid = getProjectId();
+      if (pid) await openProjectById(pid);
+    } else {
+      if (status) status.textContent = "Upload failed";
+      if (dropzone) dropzone.style.display = "block";
+    }
+  } catch (err) {
+    console.error("Member photo upload error:", err);
+    if (status) status.textContent = "Upload failed";
+    if (dropzone) dropzone.style.display = "block";
+  }
+}
+
+// Remove a group member
+async function removeGroupMember(groupKey, memberId, memberName) {
+  const projectId = getProjectId();
+  if (!projectId) return;
+
+  try {
+    const res = await fetch("/api/group-members", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, groupKey, memberId }),
+    });
+
+    if (res.ok) {
+      showToast("Member removed", `${memberName} removed from group`, "success");
+      const pid = getProjectId();
+      if (pid) await openProjectById(pid);
+    } else {
+      showToast("Failed", "Could not remove member", "error");
+    }
+  } catch (err) {
+    console.error("Remove member error:", err);
+    showToast("Error", "Network error", "error");
+  }
 }

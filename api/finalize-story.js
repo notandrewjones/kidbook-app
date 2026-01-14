@@ -37,7 +37,7 @@ function cleanJsonOutput(text) {
 
 /**
  * Extract unified story registry - ALL data in ONE call
- * Combines narrative facts + visual descriptions + props + environments
+ * Combines narrative facts + visual descriptions + props + environments + groups
  */
 async function extractUnifiedRegistry(storyPages, kidInterests, kidName, existingCharacterModels) {
   const fullText = storyPages.map(p => p.text).join("\n");
@@ -108,6 +108,18 @@ Return ONLY JSON in this exact format:
       "first_seen_page": 1
     }
   },
+  "groups": {
+    "group_key": {
+      "name": "Display Name (e.g., 'The Grandkids')",
+      "singular": "grandkid",
+      "detected_term": "the exact term used in story (e.g., 'grandkids', 'cousins')",
+      "detected_count": 3,
+      "count_source": "explicit | implied | unknown",
+      "relationship": "relationship to protagonist",
+      "members": [],
+      "first_seen_page": 1
+    }
+  },
   "props": {
     "prop_key": {
       "name": "Prop Name",
@@ -130,7 +142,7 @@ Return ONLY JSON in this exact format:
 
 CRITICAL RULES:
 
-CHARACTERS:
+CHARACTERS (individual, named people/animals):
 • First, parse the USER'S DESCRIPTION to identify any pets, their breeds, names, and colors
 • The protagonist (main character, the child) should have role: "protagonist" and key based on their name
 • If user mentioned a pet with specific breed/name/color, USE THOSE EXACT DETAILS
@@ -140,6 +152,15 @@ CHARACTERS:
 • Characters WITHOUT models: set has_model: false, visual_source: "auto", generate visual
 • Only include characters that are ACTUALLY IN THE STORY or USER INPUT
 • Use character_key as lowercase underscore version of name (e.g., "hannah", "abby")
+• DO NOT put group references (grandkids, cousins, siblings) in characters - they go in groups
+
+GROUPS (collective references to multiple unnamed people):
+• Detect terms like: grandkids, grandchildren, cousins, siblings, brothers and sisters, teammates, classmates, friends (plural without names)
+• DO NOT create a group if individual names are given (e.g., "Emma and Jake" = two characters, not a group)
+• Extract count if mentioned: "three grandkids" → detected_count: 3, count_source: "explicit"
+• If count not specified: detected_count: null, count_source: "unknown"
+• The members array starts empty - users will add members later
+• Use group_key as lowercase underscore version (e.g., "grandkids", "cousins")
 
 PROPS:
 • Only include significant props that appear multiple times or are important to the story
@@ -173,6 +194,20 @@ VISUAL CONSISTENCY:
     response.output?.[0]?.content?.[0]?.text;
 
   const registry = JSON.parse(cleanJsonOutput(raw));
+  
+  // Ensure groups section exists
+  if (!registry.groups) {
+    registry.groups = {};
+  }
+  
+  // Post-process groups: ensure members array exists for each
+  for (const [key, group] of Object.entries(registry.groups)) {
+    if (!group.members) {
+      group.members = [];
+    }
+    // Add key to group object for easier access
+    group.key = key;
+  }
   
   // Post-process: ensure characters with models have correct flags
   for (const modelChar of existingCharacterModels) {

@@ -15,8 +15,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Maximum character models per scene (quality degrades beyond 4)
-const MAX_CHARACTER_MODELS_PER_SCENE = 4;
+// Total reference images allowed per scene (OpenAI supports up to 16)
+// We cap at 12 for optimal quality - system decides how to allocate
+const MAX_TOTAL_REFERENCE_IMAGES = 12;
 
 // -------------------------------------------------------
 // Helper: Extract location from page text
@@ -195,6 +196,21 @@ async function analyzeSceneComposition(pageText, registry, characterModels, allP
     has_reference_image: !!prop.reference_image_url,
   }));
 
+  // Build groups list from registry
+  const knownGroups = Object.entries(registry.groups || {}).map(([key, group]) => ({
+    key,
+    name: group.name,
+    singular: group.singular,
+    detected_term: group.detected_term,
+    member_count: group.members?.length || 0,
+    members_with_images: (group.members || []).filter(m => m.reference_image_url).length,
+    members: (group.members || []).map(m => ({
+      id: m.id,
+      name: m.name,
+      has_image: !!m.reference_image_url,
+    })),
+  }));
+
   // Story context BEFORE current page (what has happened)
   const storyBefore = (allPages || [])
     .filter(p => Number(p.page) < Number(currentPage))
@@ -214,6 +230,11 @@ Analyze WHO and WHAT should VISUALLY APPEAR in this illustration.
 - "Harley visits Gary's house" → Gary is NOW PRESENT
 - "They played together" → BOTH characters in scene
 - Plural pronouns (they, them, we) after establishing characters → ALL present
+
+=== GROUP PRESENCE RULES ===
+- Groups are collective references like "the grandkids", "cousins", "siblings"
+- If a group is mentioned, include it in groups_in_scene
+- All members of the group with uploaded reference images should appear
 
 === PROP PRESENCE RULES (CRITICAL) ===
 Determine if each prop should VISUALLY APPEAR based on narrative context:
@@ -259,6 +280,9 @@ ${storyAfter || "(This is the last page)"}
 KNOWN CHARACTERS:
 ${JSON.stringify(knownCharacters, null, 2)}
 
+KNOWN GROUPS:
+${JSON.stringify(knownGroups, null, 2)}
+
 KNOWN PROPS:
 ${JSON.stringify(knownProps, null, 2)}
 
@@ -266,6 +290,9 @@ Return ONLY JSON:
 {
   "characters_in_scene": [
     { "key": "character_key", "name": "Name", "prominence": "primary|secondary|background", "reason": "why present" }
+  ],
+  "groups_in_scene": [
+    { "key": "group_key", "name": "Group Name", "reason": "why this group appears" }
   ],
   "props_in_scene": [
     { "key": "prop_key", "name": "Prop Name", "importance": "focal|supporting|background", "reason": "why VISUALLY shown", "visible": true }
@@ -288,7 +315,11 @@ RULES FOR CHARACTERS:
 3. Plural pronouns = all recently mentioned characters
 4. "Together", "with", "and" = multiple characters
 5. If uncertain, INCLUDE the character
-6. Max ${MAX_CHARACTER_MODELS_PER_SCENE} characters
+
+RULES FOR GROUPS:
+1. If a group term (grandkids, cousins, etc.) is mentioned, include the group
+2. All members of that group with uploaded images will be shown
+3. Groups are separate from individual named characters
 
 RULES FOR PROPS:
 1. ONLY include props that should VISUALLY APPEAR in the illustration
@@ -296,7 +327,8 @@ RULES FOR PROPS:
 3. Props being actively used = "focal" importance
 4. Props in background = "background" importance
 5. When in doubt about presence, check the CONTEXT CLUES above
-6. Max 4 props with reference images will be used
+
+NOTE: Max ${MAX_TOTAL_REFERENCE_IMAGES} total reference images (characters + group members + props combined).
 `;
 
   const response = await client.responses.create({
@@ -395,16 +427,17 @@ function isActuallySVG(base64Data) {
 
 // -------------------------------------------------------
 // Helper: Load character model images
+// Returns all available, limiting happens later
 // -------------------------------------------------------
 async function prepareCharacterModelImages(registry, sceneComposition) {
   const images = [];
   const charactersInScene = sceneComposition.characters_in_scene || [];
 
-  // Sort by prominence and limit
+  // Sort by prominence (prioritization happens later when combining all images)
   const sorted = [...charactersInScene].sort((a, b) => {
     const order = { primary: 0, secondary: 1, background: 2 };
     return (order[a.prominence] || 2) - (order[b.prominence] || 2);
-  }).slice(0, MAX_CHARACTER_MODELS_PER_SCENE);
+  });
 
   for (const sceneChar of sorted) {
     const char = registry.characters?.[sceneChar.key];
@@ -469,9 +502,8 @@ async function prepareCharacterModelImages(registry, sceneComposition) {
 
 // -------------------------------------------------------
 // Helper: Load prop reference images
+// Returns all available, limiting happens later
 // -------------------------------------------------------
-const MAX_PROP_IMAGES_PER_SCENE = 4;
-
 async function preparePropReferenceImages(registry, sceneComposition) {
   const images = [];
   const propsInScene = sceneComposition.props_in_scene || [];
@@ -483,11 +515,11 @@ async function preparePropReferenceImages(registry, sceneComposition) {
     ...hiddenProps.map(p => ({ ...p, importance: 'background', isHidden: true })),
   ];
 
-  // Sort by importance and limit
+  // Sort by importance (prioritization happens later when combining all images)
   const sorted = [...allPropsToLoad].sort((a, b) => {
     const order = { focal: 0, supporting: 1, background: 2 };
     return (order[a.importance] || 2) - (order[b.importance] || 2);
-  }).slice(0, MAX_PROP_IMAGES_PER_SCENE);
+  });
 
   for (const sceneProp of sorted) {
     const prop = registry.props?.[sceneProp.key];
@@ -553,6 +585,111 @@ async function preparePropReferenceImages(registry, sceneComposition) {
   }
 
   return images;
+}
+
+// -------------------------------------------------------
+// Helper: Load group member reference images
+// Returns all available, limiting happens later
+// -------------------------------------------------------
+async function prepareGroupMemberImages(registry, sceneComposition) {
+  const images = [];
+  const groupsInScene = sceneComposition.groups_in_scene || [];
+
+  for (const sceneGroup of groupsInScene) {
+    const group = registry.groups?.[sceneGroup.key];
+    
+    if (!group || !group.members) continue;
+
+    // Load images for all members that have reference images
+    for (const member of group.members) {
+      if (!member.reference_image_url) continue;
+
+      try {
+        const resp = await fetch(member.reference_image_url);
+        
+        if (!resp.ok) {
+          console.error(`Failed to fetch image for group member ${member.name}: ${resp.status}`);
+          continue;
+        }
+        
+        // Get content type from response header
+        let contentType = resp.headers.get('content-type') || '';
+        contentType = contentType.split(';')[0].trim().toLowerCase();
+        
+        // If content-type is not valid for OpenAI, try to detect from URL extension
+        if (!VALID_IMAGE_TYPES.includes(contentType)) {
+          const url = member.reference_image_url.toLowerCase();
+          if (url.includes('.jpg') || url.includes('.jpeg')) {
+            contentType = 'image/jpeg';
+          } else if (url.includes('.webp')) {
+            contentType = 'image/webp';
+          } else if (url.includes('.gif')) {
+            contentType = 'image/gif';
+          } else if (url.includes('.png')) {
+            contentType = 'image/png';
+          } else {
+            console.warn(`Unknown content type for ${member.name}, defaulting to image/png`);
+            contentType = 'image/png';
+          }
+        }
+        
+        const buffer = await resp.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        
+        // Check if the actual content is SVG
+        if (isActuallySVG(base64)) {
+          console.error(`⚠️ Skipping ${member.name}: File content is SVG, not a valid image format`);
+          continue;
+        }
+        
+        images.push({
+          key: member.id,
+          name: member.name,
+          group_key: sceneGroup.key,
+          group_name: group.name,
+          type: 'group_member',
+          data_url: `data:${contentType};base64,${base64}`,
+        });
+        console.log(`👥 Loaded group member: ${member.name} from ${group.name} (${contentType})`);
+      } catch (err) {
+        console.error(`Failed to load image for group member ${member.name}:`, err.message);
+      }
+    }
+  }
+
+  return images;
+}
+
+// -------------------------------------------------------
+// Helper: Build group visual rules for the prompt
+// -------------------------------------------------------
+function buildGroupVisualRules(registry, sceneComposition, groupMemberIndexMap) {
+  const rules = [];
+  const groupsInScene = sceneComposition.groups_in_scene || [];
+
+  for (const sceneGroup of groupsInScene) {
+    const group = registry.groups?.[sceneGroup.key];
+    
+    if (!group) continue;
+
+    const membersWithImages = (group.members || []).filter(m => m.reference_image_url);
+    
+    if (membersWithImages.length > 0) {
+      const memberRules = membersWithImages.map(member => {
+        const imageIndex = groupMemberIndexMap?.[member.id];
+        if (imageIndex !== undefined) {
+          return `  - ${member.name}: MUST match Reference Image #${imageIndex + 1}`;
+        }
+        return `  - ${member.name}: Match their uploaded reference image`;
+      }).join("\n");
+      
+      rules.push(`• ${group.name} (${membersWithImages.length} members with photos):\n${memberRules}`);
+    } else {
+      rules.push(`• ${group.name}: Generate ${group.detected_count || 'several'} ${group.singular || 'people'} with consistent appearances.`);
+    }
+  }
+
+  return rules.join("\n\n");
 }
 
 // -------------------------------------------------------
@@ -670,12 +807,13 @@ async function handler(req, res) {
     const existingHistory = existingForPage?.revision_history || [];
     const isRegen = !!isRegeneration;
 
-    // 3. Analyze scene composition (now includes props)
+    // 3. Analyze scene composition (now includes props and groups)
     console.log("=== ANALYZING SCENE ===");
     const sceneComposition = await analyzeSceneComposition(
       pageText, registry, project.character_models, allPages, page
     );
     console.log("Characters:", sceneComposition.characters_in_scene?.map(c => c.name));
+    console.log("Groups:", sceneComposition.groups_in_scene?.map(g => g.name));
     console.log("Props to SHOW:", sceneComposition.props_in_scene?.map(p => p.name));
     if (sceneComposition.hidden_props?.length > 0) {
       console.log("Props HIDDEN:", sceneComposition.hidden_props?.map(p => `${p.name} (${p.hiding_spot})`));
@@ -684,10 +822,9 @@ async function handler(req, res) {
       console.log("Props ABSENT (not shown):", sceneComposition.absent_props?.map(p => `${p.name} (${p.reason})`));
     }
 
-    // 4. Prepare character images
+    // 4. Prepare all reference images
     const characterImages = await prepareCharacterModelImages(registry, sceneComposition);
-
-    // 4b. Prepare prop reference images (include hidden props too)
+    const groupMemberImages = await prepareGroupMemberImages(registry, sceneComposition);
     const propImages = await preparePropReferenceImages(registry, sceneComposition);
 
     // 5. Extract location and new props
@@ -696,15 +833,62 @@ async function handler(req, res) {
       extractPropsUsingAI(pageText, registry.props),
     ]);
 
-    // Combine all reference images (characters first, then props)
-    const allReferenceImages = [...characterImages, ...propImages];
+    // 6. Combine all reference images with intelligent prioritization
+    // Priority: 1) Primary characters, 2) Group members, 3) Focal props, 4) Secondary chars, 5) Supporting props
+    const prioritizedImages = [];
     
-    // Build index maps so we can tell the model "Image #1 is Wowzer, Image #2 is PlayStation Controller"
+    // Add primary characters first (most important for consistency)
+    const primaryChars = characterImages.filter(img => {
+      const sceneChar = sceneComposition.characters_in_scene?.find(c => c.key === img.key);
+      return sceneChar?.prominence === 'primary';
+    });
+    prioritizedImages.push(...primaryChars);
+    
+    // Add group members (typically important when mentioned)
+    prioritizedImages.push(...groupMemberImages);
+    
+    // Add focal props
+    const focalProps = propImages.filter(img => img.importance === 'focal');
+    prioritizedImages.push(...focalProps);
+    
+    // Add secondary characters
+    const secondaryChars = characterImages.filter(img => {
+      const sceneChar = sceneComposition.characters_in_scene?.find(c => c.key === img.key);
+      return sceneChar?.prominence === 'secondary';
+    });
+    prioritizedImages.push(...secondaryChars);
+    
+    // Add supporting props
+    const supportingProps = propImages.filter(img => img.importance === 'supporting');
+    prioritizedImages.push(...supportingProps);
+    
+    // Add background characters
+    const bgChars = characterImages.filter(img => {
+      const sceneChar = sceneComposition.characters_in_scene?.find(c => c.key === img.key);
+      return sceneChar?.prominence === 'background';
+    });
+    prioritizedImages.push(...bgChars);
+    
+    // Add background props
+    const bgProps = propImages.filter(img => img.importance === 'background');
+    prioritizedImages.push(...bgProps);
+    
+    // Apply the total limit
+    const allReferenceImages = prioritizedImages.slice(0, MAX_TOTAL_REFERENCE_IMAGES);
+    
+    if (prioritizedImages.length > MAX_TOTAL_REFERENCE_IMAGES) {
+      console.log(`⚠️ Trimmed reference images from ${prioritizedImages.length} to ${MAX_TOTAL_REFERENCE_IMAGES}`);
+    }
+    
+    // Build index maps for prompt references
     const charImageIndexMap = {};
+    const groupMemberIndexMap = {};
     const propImageIndexMap = {};
     
     allReferenceImages.forEach((img, index) => {
-      if (img.importance) {
+      if (img.type === 'group_member') {
+        groupMemberIndexMap[img.key] = index;
+      } else if (img.importance) {
         // It's a prop (has importance field)
         propImageIndexMap[img.key] = index;
       } else {
@@ -714,10 +898,13 @@ async function handler(req, res) {
     });
     
     console.log("Image index map - Characters:", charImageIndexMap);
+    console.log("Image index map - Group Members:", groupMemberIndexMap);
     console.log("Image index map - Props:", propImageIndexMap);
+    console.log(`Total reference images: ${allReferenceImages.length}/${MAX_TOTAL_REFERENCE_IMAGES}`);
 
-    // 6. Build the prompt with image index references
+    // 7. Build the prompt with image index references
     const characterRules = buildCharacterVisualRules(registry, sceneComposition, charImageIndexMap);
+    const groupRules = buildGroupVisualRules(registry, sceneComposition, groupMemberIndexMap);
     const propRules = buildPropVisualRules(registry, sceneComposition, propImageIndexMap);
     
     const prompt = `
@@ -735,6 +922,14 @@ ${sceneComposition.characters_in_scene?.map(c => `${c.name} (${c.prominence}): $
 
 === CHARACTER VISUAL RULES ===
 ${characterRules}
+
+${sceneComposition.groups_in_scene?.length > 0 ? `
+=== GROUPS IN SCENE ===
+${sceneComposition.groups_in_scene?.map(g => `${g.name}: ${g.reason || ''}`).join("\n")}
+
+=== GROUP VISUAL RULES ===
+${groupRules}
+` : ''}
 
 === PROPS TO SHOW IN SCENE ===
 ${sceneComposition.props_in_scene?.map(p => `${p.name} (${p.importance}): ${p.reason || ''}`).join("\n") || "None - no props should appear"}
@@ -759,7 +954,9 @@ ${allReferenceImages.length > 0 ? `
 === REFERENCE IMAGES PROVIDED (${allReferenceImages.length} total) ===
 The following reference images are attached IN ORDER. You MUST use them:
 ${allReferenceImages.map((img, i) => {
-  if (img.isHidden) {
+  if (img.type === 'group_member') {
+    return `• Reference Image #${i + 1}: ${img.name} (GROUP MEMBER from ${img.group_name} - draw this exact person)`;
+  } else if (img.isHidden) {
     return `• Reference Image #${i + 1}: ${img.name} (PROP - show HIDDEN ${img.hidingSpot})`;
   } else if (img.importance) {
     return `• Reference Image #${i + 1}: ${img.name} (PROP - show this exact object)`;
@@ -768,7 +965,7 @@ ${allReferenceImages.map((img, i) => {
   }
 }).join("\n")}
 
-CRITICAL: Each character and prop listed above with a reference image MUST look EXACTLY like their reference image. Copy the colors, shape, and details precisely.
+CRITICAL: Each character, group member, and prop listed above with a reference image MUST look EXACTLY like their reference image. Copy the colors, shape, and details precisely.
 ` : ''}
 
 === ENVIRONMENT STYLE ===
